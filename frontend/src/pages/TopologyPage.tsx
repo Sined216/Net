@@ -19,14 +19,29 @@ const LINE_DASH: Record<string, string | undefined> = { solid: undefined, dashed
 const GROUP_PADDING = 30;
 const GROUP_HEADER = 26;
 
+/** Общая заглушка для ещё не загруженных запросов.
+ *
+ * Писать `const { data = [] } = useQuery(...)` здесь нельзя: пока запрос не
+ * ответил, `data` равно undefined, и литерал `[]` создаёт НОВЫЙ массив на
+ * каждый рендер. Эффект ниже сравнивает зависимости по ссылке, поэтому
+ * считал данные изменившимися, вызывал setNodes, получал новый рендер — и
+ * так по кругу, пока React не падал с «Maximum update depth exceeded»
+ * (ошибка #185) и не оставлял пустую страницу. Ловилось не всегда: если все
+ * шесть запросов успевали ответить достаточно быстро, цикл обрывался сам.
+ *
+ * Ссылка на константу стабильна между рендерами, поэтому эффект срабатывает
+ * только на настоящее изменение данных. `never[]` присваивается массиву
+ * любого типа, так что одной константы хватает на все запросы. */
+const EMPTY: never[] = [];
+
 export function TopologyPage() {
-  const { data: devices = [] } = useDevices();
-  const { data: templates = [] } = useDeviceTemplates();
-  const { data: types = [] } = useDeviceTypes();
-  const { data: links = [] } = useLinks();
-  const { data: linkTemplates = [] } = useLinkTemplates();
-  const { data: tags = [] } = useTags();
-  const { data: topologyGroups = [] } = useTopologyGroups();
+  const { data: devices = EMPTY } = useDevices();
+  const { data: templates = EMPTY } = useDeviceTemplates();
+  const { data: types = EMPTY } = useDeviceTypes();
+  const { data: links = EMPTY } = useLinks();
+  const { data: linkTemplates = EMPTY } = useLinkTemplates();
+  const { data: tags = EMPTY } = useTags();
+  const { data: topologyGroups = EMPTY } = useTopologyGroups();
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
 
