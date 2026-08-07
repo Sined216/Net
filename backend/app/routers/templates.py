@@ -87,7 +87,7 @@ def delete_template(template_id: int, db: Session = Depends(get_db),
         raise HTTPException(
             status_code=409,
             detail="По этому шаблону уже заведены устройства в спецификации — сначала удалите их",
-        )
+        ) from None
 
 
 # ---------- Порты шаблона ----------

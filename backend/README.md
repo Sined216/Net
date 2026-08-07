@@ -60,6 +60,24 @@ uvicorn app.main:app --reload
 ```
 Потребуется локально поднятый PostgreSQL с базой `netdoc`.
 
+## Тесты
+
+```bash
+pip install -r requirements-dev.txt
+createdb netdoc_test                     # нужен поднятый PostgreSQL
+TEST_DATABASE_URL=postgresql://netdoc:netdoc@localhost:5432/netdoc_test pytest -q
+ruff check .
+```
+
+Тесты гоняются на настоящем PostgreSQL, а не на SQLite: модели используют
+типы, которых в SQLite нет (`ARRAY`, а после перехода на нативные типы —
+`INET`/`MACADDR`), и проверять поведение на другом диалекте бессмысленно.
+Схема создаётся один раз на прогон, таблицы очищаются перед каждым тестом
+(`TRUNCATE ... RESTART IDENTITY`), поэтому коды устройств предсказуемы.
+
+Те же проверки выполняет CI (`.github/workflows/backend.yml`) на каждый
+pull request.
+
 ## Аутентификация
 
 `POST /auth/login` (form-data: `username`, `password`) → `access_token`.

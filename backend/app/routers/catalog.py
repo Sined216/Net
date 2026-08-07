@@ -38,7 +38,9 @@ def delete_device_type(type_id: int, db: Session = Depends(get_db),
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Тип используется в шаблонах устройств — сначала удалите их")
+        raise HTTPException(
+            status_code=409, detail="Тип используется в шаблонах устройств — сначала удалите их"
+        ) from None
 
 
 @router.get("/vlans", response_model=list[schemas.VlanOut])

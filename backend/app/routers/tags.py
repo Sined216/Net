@@ -9,7 +9,10 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 
 def _same_parent_exists(db: Session, name: str, parent_id: int | None, exclude_id: int | None = None) -> bool:
     q = db.query(models.Tag).filter(models.Tag.name == name)
-    q = q.filter(models.Tag.parent_id == parent_id) if parent_id is not None else q.filter(models.Tag.parent_id.is_(None))
+    if parent_id is not None:
+        q = q.filter(models.Tag.parent_id == parent_id)
+    else:
+        q = q.filter(models.Tag.parent_id.is_(None))
     if exclude_id is not None:
         q = q.filter(models.Tag.id != exclude_id)
     return q.first() is not None

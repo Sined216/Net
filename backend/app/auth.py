@@ -54,7 +54,9 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         if user_id is None:
             raise credentials_exception
     except JWTError:
-        raise credentials_exception
+        # from None: подробности разбора токена наружу не отдаём и в трассу
+        # не тянем — клиенту достаточно 401.
+        raise credentials_exception from None
 
     user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None:
