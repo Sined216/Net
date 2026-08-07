@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(py --version)",
+      "PowerShell(& python --version)",
+      "PowerShell(Get-Command psql -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command pg_ctl -ErrorAction SilentlyContinue)",
+      "Bash(\"/c/msys64/ucrt64/bin/python.exe\" -m py_compile app/*.py app/routers/*.py)"
+    ]
+  }
+}

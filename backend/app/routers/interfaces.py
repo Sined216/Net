@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.database import get_db
-from app import models, schemas, auth
+from app import models, schemas, auth, serialize
 from app.audit import log_change
 
 router = APIRouter(tags=["interfaces"])
@@ -23,7 +23,8 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
     log_change(db, user.id, "update", "interface", iface.id, old=old_snapshot, new=iface)
     db.commit()
     db.refresh(iface)
-    return iface
+    link_map = serialize.build_link_map(db, [iface.id])
+    return serialize.serialize_interface(iface, link_map)
 
 
 @router.delete("/interfaces/{interface_id}", status_code=204)
@@ -40,7 +41,7 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db),
 
 @router.get("/search", response_model=list[schemas.SearchResult])
 def search(query: str, db: Session = Depends(get_db)):
-    """Найти по IP, MAC или имени устройства/интерфейса."""
+    """Найти по IP, MAC или имени/коду устройства."""
     like = f"%{query}%"
     rows = (
         db.query(models.Interface, models.Device)

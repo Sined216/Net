@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql://netdoc:netdoc@db:5432/netdoc
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@factory.local}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-change-me-please}
       CORS_ORIGINS: "*"
     ports:

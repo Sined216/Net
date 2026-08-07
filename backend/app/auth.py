@@ -2,10 +2,11 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional, List
 
+from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError, InvalidHash
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,16 +16,23 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Argon2id — текущая рекомендация OWASP для хранения паролей (устойчив к
+# перебору на GPU/ASIC за счёт требований к памяти). Пришёл на смену
+# passlib+bcrypt: passlib не обновлялся с 2020 года и конфликтует с новыми
+# версиями bcrypt.
+ph = PasswordHasher()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return ph.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return ph.verify(hashed, plain)
+    except (VerificationError, InvalidHash):
+        return False
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

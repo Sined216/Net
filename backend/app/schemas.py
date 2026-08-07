@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict
 
 
 # ---------- Auth ----------
@@ -11,7 +11,7 @@ class Token(BaseModel):
 
 class UserCreate(BaseModel):
     full_name: str
-    email: EmailStr
+    username: str
     password: str
     role: str = "viewer"
 
@@ -20,42 +20,73 @@ class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     full_name: str
-    email: EmailStr
+    username: str
     role: str
     created_at: datetime
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 
-# ---------- Site ----------
-class SiteBase(BaseModel):
+# ---------- Tag (вложенный, вместо площадок) ----------
+class TagBase(BaseModel):
     name: str
-    address: Optional[str] = None
-    notes: Optional[str] = None
+    parent_id: Optional[int] = None
+    color: Optional[str] = None
 
 
-class SiteCreate(SiteBase):
+class TagCreate(TagBase):
     pass
 
 
-class SiteOut(SiteBase):
+class TagUpdate(BaseModel):
+    name: Optional[str] = None
+    parent_id: Optional[int] = None
+    color: Optional[str] = None
+
+
+class TagOut(TagBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
 
 
-# ---------- Device type ----------
+# ---------- Topology group (отдельный от тегов параметр: одна группа
+# на устройство, без вложенности — только для визуальной кластеризации
+# на топологии) ----------
+class TopologyGroupCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class TopologyGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class TopologyGroupOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    color: Optional[str] = None
+
+
+# ---------- Device type (категория устройства) ----------
+class DeviceTypeCreate(BaseModel):
+    name: str
+    code_prefix: str
+
+
 class DeviceTypeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
+    code_prefix: str
 
 
 # ---------- VLAN ----------
 class VlanBase(BaseModel):
-    site_id: Optional[int] = None
     vlan_number: int
     name: Optional[str] = None
     subnet: Optional[str] = None
@@ -73,27 +104,51 @@ class VlanOut(VlanBase):
     id: int
 
 
-# ---------- Interface ----------
-class InterfaceBase(BaseModel):
+# ---------- Interface template (порт в шаблоне устройства) ----------
+class InterfaceTemplateBase(BaseModel):
     label: str
     port_number: Optional[int] = None
-    status: str = "free"
     port_type: Optional[str] = None
-    vlan_id: Optional[int] = None
-    trunk_vlan_ids: Optional[List[int]] = None
-    ip: Optional[str] = None
-    mac: Optional[str] = None
-    notes: Optional[str] = None
 
 
-class InterfaceCreate(InterfaceBase):
+class InterfaceTemplateCreate(InterfaceTemplateBase):
     pass
 
 
+class InterfaceTemplateOut(InterfaceTemplateBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
+# ---------- Device template (шаблон устройства/модель) ----------
+class DeviceTemplateBase(BaseModel):
+    name: str
+    device_type_id: int
+    manufacturer: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DeviceTemplateCreate(DeviceTemplateBase):
+    interfaces: List[InterfaceTemplateCreate] = []
+
+
+class DeviceTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    device_type_id: Optional[int] = None
+    manufacturer: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DeviceTemplateOut(DeviceTemplateBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    interfaces: List[InterfaceTemplateOut] = []
+
+
+# ---------- Interface ----------
 class InterfaceUpdate(BaseModel):
     label: Optional[str] = None
     port_number: Optional[int] = None
-    status: Optional[str] = None
     port_type: Optional[str] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
@@ -102,57 +157,121 @@ class InterfaceUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class InterfaceOut(InterfaceBase):
-    model_config = ConfigDict(from_attributes=True)
+class InterfaceCreate(BaseModel):
+    """Ручное добавление порта сверх тех, что пришли из шаблона устройства."""
+    label: str
+    port_number: Optional[int] = None
+    port_type: Optional[str] = None
+    vlan_id: Optional[int] = None
+    trunk_vlan_ids: Optional[List[int]] = None
+    ip: Optional[str] = None
+    mac: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ConnectedTo(BaseModel):
+    """Куда подключён порт — вычисляется по наличию связи, нигде не хранится."""
+    link_id: int
+    device_id: int
+    device_code: str
+    device_name: Optional[str] = None
+    interface_id: int
+    interface_label: str
+
+
+class InterfaceOut(BaseModel):
     id: int
     device_id: int
+    label: str
+    port_number: Optional[int] = None
+    port_type: Optional[str] = None
+    vlan_id: Optional[int] = None
+    trunk_vlan_ids: Optional[List[int]] = None
+    ip: Optional[str] = None
+    mac: Optional[str] = None
+    notes: Optional[str] = None
+    connected_to: Optional[ConnectedTo] = None
 
 
-# ---------- Device ----------
+# ---------- Device (устройство в спецификации оборудования) ----------
 class DeviceBase(BaseModel):
-    code: str
-    name: str
-    device_type_id: int
-    model: Optional[str] = None
+    template_id: int
+    name: Optional[str] = None
     management_ip: Optional[str] = None
-    site_id: Optional[int] = None
     location: Optional[str] = None
     role: Optional[str] = None
     install_date: Optional[str] = None
     notes: Optional[str] = None
+    topology_group_id: Optional[int] = None
 
 
 class DeviceCreate(DeviceBase):
-    interfaces: Optional[List[InterfaceCreate]] = None
+    tag_ids: List[int] = []
 
 
 class DeviceUpdate(BaseModel):
-    code: Optional[str] = None
     name: Optional[str] = None
-    device_type_id: Optional[int] = None
-    model: Optional[str] = None
     management_ip: Optional[str] = None
-    site_id: Optional[int] = None
     location: Optional[str] = None
     role: Optional[str] = None
     install_date: Optional[str] = None
     notes: Optional[str] = None
+    topology_group_id: Optional[int] = None
+
+
+class DeviceTagsUpdate(BaseModel):
+    tag_ids: List[int]
+
+
+class DevicePositionUpdate(BaseModel):
+    """Позиция узла на топологии — сохраняется отдельно от общей формы
+    редактирования устройства, обновляется при перетаскивании узла."""
+    x: float
+    y: float
 
 
 class DeviceOut(DeviceBase):
-    model_config = ConfigDict(from_attributes=True)
     id: int
+    code: str
     created_at: datetime
     updated_at: datetime
     interfaces: List[InterfaceOut] = []
+    tags: List[TagOut] = []
+    topology_x: Optional[float] = None
+    topology_y: Optional[float] = None
+
+
+# ---------- Link template (пресет: среда + кабель + оформление на топологии) ----------
+class LinkTemplateBase(BaseModel):
+    name: str
+    media_type: str
+    cable_category: Optional[str] = None
+    color: str = "#888888"
+    line_style: str = "solid"
+
+
+class LinkTemplateCreate(LinkTemplateBase):
+    pass
+
+
+class LinkTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    media_type: Optional[str] = None
+    cable_category: Optional[str] = None
+    color: Optional[str] = None
+    line_style: Optional[str] = None
+
+
+class LinkTemplateOut(LinkTemplateBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
 
 
 # ---------- Link ----------
 class LinkCreate(BaseModel):
     interface_a_id: int
     interface_b_id: int
-    media_type: Optional[str] = None
-    cable_category: Optional[str] = None
+    template_id: Optional[int] = None
     connector_type: Optional[str] = None
     length_m: Optional[float] = None
     speed_mbps: Optional[int] = None
@@ -162,8 +281,7 @@ class LinkCreate(BaseModel):
 
 
 class LinkUpdate(BaseModel):
-    media_type: Optional[str] = None
-    cable_category: Optional[str] = None
+    template_id: Optional[int] = None
     connector_type: Optional[str] = None
     length_m: Optional[float] = None
     speed_mbps: Optional[int] = None
@@ -176,8 +294,7 @@ class LinkOut(BaseModel):
     id: int
     interface_a_id: int
     interface_b_id: int
-    media_type: Optional[str] = None
-    cable_category: Optional[str] = None
+    template_id: Optional[int] = None
     connector_type: Optional[str] = None
     length_m: Optional[float] = None
     speed_mbps: Optional[int] = None
@@ -191,18 +308,26 @@ class LinkOut(BaseModel):
 class TopologyNode(BaseModel):
     id: int
     code: str
-    name: str
+    name: Optional[str] = None
+    template_name: str
     device_type: str
-    site_id: Optional[int] = None
+    tag_ids: List[int] = []
+    topology_group_id: Optional[int] = None
+    topology_x: Optional[float] = None
+    topology_y: Optional[float] = None
 
 
 class TopologyEdge(BaseModel):
     link_id: int
     device_a_id: int
     device_b_id: int
+    interface_a_id: int
+    interface_b_id: int
     interface_a_label: str
     interface_b_label: str
     media_type: Optional[str] = None
+    color: Optional[str] = None
+    line_style: Optional[str] = None
     confirmed: bool
 
 
@@ -215,7 +340,7 @@ class TopologyOut(BaseModel):
 class SearchResult(BaseModel):
     device_id: int
     device_code: str
-    device_name: str
+    device_name: Optional[str] = None
     interface_id: int
     interface_label: str
     ip: Optional[str] = None

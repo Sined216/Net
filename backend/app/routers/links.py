@@ -28,6 +28,10 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
     if not iface_a or not iface_b:
         raise HTTPException(status_code=404, detail="Один из интерфейсов не найден")
 
+    if payload.template_id is not None:
+        if not db.query(models.LinkTemplate).filter(models.LinkTemplate.id == payload.template_id).first():
+            raise HTTPException(status_code=404, detail="Шаблон связи не найден")
+
     busy = db.query(models.Link).filter(
         or_(
             models.Link.interface_a_id.in_([a_id, b_id]),
@@ -43,10 +47,6 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
     link = models.Link(**data, updated_by=user.id)
     db.add(link)
 
-    # синхронизируем статус портов
-    iface_a.status = "up"
-    iface_b.status = "up"
-
     log_change(db, user.id, "create", "link", None, old=None, new=link)
     db.commit()
     db.refresh(link)
@@ -60,8 +60,13 @@ def update_link(link_id: int, payload: schemas.LinkUpdate, db: Session = Depends
     if not link:
         raise HTTPException(status_code=404, detail="Связь не найдена")
 
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("template_id") is not None:
+        if not db.query(models.LinkTemplate).filter(models.LinkTemplate.id == data["template_id"]).first():
+            raise HTTPException(status_code=404, detail="Шаблон связи не найден")
+
     old_snapshot = {c.name: getattr(link, c.name) for c in link.__table__.columns}
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    for field, value in data.items():
         setattr(link, field, value)
     link.updated_by = user.id
 
@@ -79,12 +84,8 @@ def delete_link(link_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Связь не найдена")
 
     old_snapshot = {c.name: getattr(link, c.name) for c in link.__table__.columns}
-    # освобождаем порты
-    for iface_id in (link.interface_a_id, link.interface_b_id):
-        iface = db.query(models.Interface).filter(models.Interface.id == iface_id).first()
-        if iface:
-            iface.status = "free"
-
+    # порты снова станут "свободными" сами по себе — статус вычисляется
+    # по наличию связи, отдельно ничего освобождать не нужно.
     log_change(db, user.id, "delete", "link", link.id, old=old_snapshot, new=None)
     db.delete(link)
     db.commit()
