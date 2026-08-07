@@ -1,10 +1,17 @@
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, Boolean, Float, ForeignKey,
-    CheckConstraint, UniqueConstraint, Numeric, DateTime, ARRAY, JSON, Table,
+    Column, Integer, BigInteger, Text, Boolean, Float, ForeignKey,
+    CheckConstraint, UniqueConstraint, Numeric, Date, DateTime, ARRAY, JSON, Table,
     func,
 )
+from sqlalchemy.dialects.postgresql import CIDR, INET, MACADDR
 from sqlalchemy.orm import relationship, backref
 from app.database import Base
+
+# Адреса и даты хранятся нативными типами PostgreSQL, а не строками: база
+# сама отвергает мусор вроде "10.10.1.300", нормализует запись MAC и умеет
+# искать по подсети. Раньше модели объявляли эти колонки как String, хотя
+# schema.sql описывал INET/CIDR/MACADDR/DATE — и база, поднятая приложением,
+# отличалась от базы, поднятой из schema.sql.
 
 
 class Tag(Base):
@@ -72,8 +79,8 @@ class Vlan(Base):
     id = Column(Integer, primary_key=True)
     vlan_number = Column(Integer, unique=True, nullable=False)
     name = Column(Text)
-    subnet = Column(String)
-    gateway = Column(String)
+    subnet = Column(CIDR)
+    gateway = Column(INET)
     dhcp_range = Column(Text)
     notes = Column(Text)
 
@@ -137,10 +144,10 @@ class Device(Base):
     template_id = Column(Integer, ForeignKey("device_templates.id"), nullable=False)
     code = Column(Text, unique=True, nullable=False)
     name = Column(Text)
-    management_ip = Column(String)
+    management_ip = Column(INET)
     location = Column(Text)
     role = Column(Text)
-    install_date = Column(String)
+    install_date = Column(Date)
     notes = Column(Text)
     topology_group_id = Column(Integer, ForeignKey("topology_groups.id", ondelete="SET NULL"))
     topology_x = Column(Float)
@@ -168,8 +175,8 @@ class Interface(Base):
     port_type = Column(Text)
     vlan_id = Column(Integer, ForeignKey("vlans.id", ondelete="SET NULL"))
     trunk_vlan_ids = Column(ARRAY(Integer))
-    ip = Column(String)
-    mac = Column(String)
+    ip = Column(INET)
+    mac = Column(MACADDR)
     notes = Column(Text)
 
     __table_args__ = (
@@ -215,7 +222,11 @@ class Link(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        CheckConstraint("interface_a_id <> interface_b_id"),
+        # Строгое "меньше", а не "не равно": стороны связи нормализуются по
+        # возрастанию id, поэтому одна и та же связь не может быть записана
+        # ещё и зеркально. Приложение раскладывает A/B в этом порядке само,
+        # база теперь это гарантирует.
+        CheckConstraint("interface_a_id < interface_b_id"),
         CheckConstraint("source IN ('manual','snmp','lldp')"),
     )
 

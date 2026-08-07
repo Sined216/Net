@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import Text, cast, or_
 
 from app.database import get_db
 from app import models, schemas, auth, serialize
@@ -41,15 +41,21 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db),
 
 @router.get("/search", response_model=list[schemas.SearchResult])
 def search(query: str, db: Session = Depends(get_db)):
-    """Найти по IP, MAC или имени/коду устройства."""
+    """Найти по IP, MAC или имени/коду устройства.
+
+    ip и mac приводятся к тексту: подстрочный поиск нужен, чтобы «10.10.»
+    находил всю подсеть, а у типов inet и macaddr оператора ILIKE нет.
+    MAC при сохранении нормализуется к виду aa:bb:cc:dd:ee:ff, так что
+    искать по нему стоит в этой же записи.
+    """
     like = f"%{query}%"
     rows = (
         db.query(models.Interface, models.Device)
         .join(models.Device, models.Device.id == models.Interface.device_id)
         .filter(
             or_(
-                models.Interface.ip.ilike(like),
-                models.Interface.mac.ilike(like),
+                cast(models.Interface.ip, Text).ilike(like),
+                cast(models.Interface.mac, Text).ilike(like),
                 models.Device.name.ilike(like),
                 models.Device.code.ilike(like),
             )

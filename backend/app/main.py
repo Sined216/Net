@@ -4,7 +4,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import Base, engine, SessionLocal
+from app.database import SessionLocal
 from app import models, auth
 from app.routers import (
     auth_router, tags, catalog, templates, devices, interfaces, links, link_templates,
@@ -51,7 +51,9 @@ DEFAULT_DEVICE_TYPES = [
 
 @app.on_event("startup")
 def on_startup():
-    Base.metadata.create_all(bind=engine)
+    """Наполнение справочников. Схему создаёт не приложение, а миграции
+    (`python -m app.db_upgrade` перед стартом uvicorn) — create_all умел
+    только досоздавать таблицы и не замечал изменений в существующих."""
     db = SessionLocal()
     try:
         # справочник типов устройств

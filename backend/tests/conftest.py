@@ -19,9 +19,15 @@ os.environ.setdefault(
     os.getenv("TEST_DATABASE_URL", "postgresql://netdoc:netdoc@localhost:5432/netdoc_test"),
 )
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+# Жёстко, а не setdefault: запуск pytest из корня репозитория подхватывает
+# .env развёртывания с ENVIRONMENT=production, и проверка продовой
+# конфигурации валит весь прогон на тестовом ключе. Тесты всегда идут в
+# режиме разработки — продовые проверки покрыты отдельно в test_config.py.
+os.environ["ENVIRONMENT"] = "development"
 
 from app import auth, models  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
+from app.db_upgrade import upgrade_database  # noqa: E402
 from app.main import app  # noqa: E402
 
 PASSWORD = "test-password-123"
@@ -38,10 +44,19 @@ def password_hash() -> str:
 
 @pytest.fixture(scope="session", autouse=True)
 def _schema():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    """Схема создаётся миграциями, а не create_all: так каждый прогон
+    заодно проверяет, что миграции применяются и дают ровно ту схему, на
+    которую рассчитывают модели."""
+    _drop_everything()
+    upgrade_database()
     yield
+    _drop_everything()
+
+
+def _drop_everything():
     Base.metadata.drop_all(bind=engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
 
 @pytest.fixture(autouse=True)

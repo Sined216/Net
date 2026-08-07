@@ -47,6 +47,30 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return url.toString();
 }
 
+interface ValidationIssue {
+  loc?: (string | number)[];
+  msg?: string;
+}
+
+/** FastAPI отдаёт ошибку либо строкой, либо — при провале валидации —
+ * массивом по одному объекту на поле. Раньше массив уходил в тост как
+ * JSON.stringify: пользователь видел `[{"type":"value_error","loc":...}]`
+ * вместо «management_ip: не похоже на IP-адрес». */
+function formatDetail(detail: unknown): string {
+  if (typeof detail === 'string') return detail;
+  if (!Array.isArray(detail)) return detail ? JSON.stringify(detail) : '';
+
+  return (detail as ValidationIssue[])
+    .map((issue) => {
+      const message = (issue.msg ?? '').replace(/^Value error,\s*/, '');
+      // loc — путь вида ["body", "management_ip"]; полезен только хвост.
+      const field = issue.loc?.filter((part) => part !== 'body').at(-1);
+      return field ? `${field}: ${message}` : message;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, form, query } = opts;
   const headers: Record<string, string> = {};
@@ -93,7 +117,7 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
 
   if (!res.ok) {
     const detail = data && typeof data === 'object' && 'detail' in data ? (data as { detail: unknown }).detail : res.statusText;
-    throw new ApiError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    throw new ApiError(formatDetail(detail) || res.statusText);
   }
   return data as T;
 }

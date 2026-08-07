@@ -1,6 +1,18 @@
-from datetime import datetime
-from typing import Optional, List
+from datetime import date, datetime
+from typing import Literal, Optional, List
 from pydantic import BaseModel, ConfigDict
+
+from app.fields import IPAddressStr, IPNetworkStr, MacAddressStr
+
+# Перечисления держим здесь, а не только в CHECK-ограничениях базы: иначе
+# опечатка в port_type доезжала до PostgreSQL и возвращалась пятисоткой
+# вместо понятного 422 с перечнем допустимых значений.
+Role = Literal["admin", "editor", "viewer"]
+PortType = Literal["access", "trunk", "uplink"]
+DeviceRole = Literal["core", "distribution", "access"]
+MediaType = Literal["copper", "fiber", "wireless", "dac", "other"]
+LineStyle = Literal["solid", "dashed", "dotted"]
+LinkSource = Literal["manual", "snmp", "lldp"]
 
 
 # ---------- Auth ----------
@@ -13,7 +25,7 @@ class UserCreate(BaseModel):
     full_name: str
     username: str
     password: str
-    role: str = "viewer"
+    role: Role = "viewer"
 
 
 class UserOut(BaseModel):
@@ -21,7 +33,7 @@ class UserOut(BaseModel):
     id: int
     full_name: str
     username: str
-    role: str
+    role: Role
     created_at: datetime
 
 
@@ -89,8 +101,8 @@ class DeviceTypeOut(BaseModel):
 class VlanBase(BaseModel):
     vlan_number: int
     name: Optional[str] = None
-    subnet: Optional[str] = None
-    gateway: Optional[str] = None
+    subnet: Optional[IPNetworkStr] = None
+    gateway: Optional[IPAddressStr] = None
     dhcp_range: Optional[str] = None
     notes: Optional[str] = None
 
@@ -108,7 +120,7 @@ class VlanOut(VlanBase):
 class InterfaceTemplateBase(BaseModel):
     label: str
     port_number: Optional[int] = None
-    port_type: Optional[str] = None
+    port_type: Optional[PortType] = None
 
 
 class InterfaceTemplateCreate(InterfaceTemplateBase):
@@ -149,11 +161,11 @@ class DeviceTemplateOut(DeviceTemplateBase):
 class InterfaceUpdate(BaseModel):
     label: Optional[str] = None
     port_number: Optional[int] = None
-    port_type: Optional[str] = None
+    port_type: Optional[PortType] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
-    ip: Optional[str] = None
-    mac: Optional[str] = None
+    ip: Optional[IPAddressStr] = None
+    mac: Optional[MacAddressStr] = None
     notes: Optional[str] = None
 
 
@@ -161,11 +173,11 @@ class InterfaceCreate(BaseModel):
     """Ручное добавление порта сверх тех, что пришли из шаблона устройства."""
     label: str
     port_number: Optional[int] = None
-    port_type: Optional[str] = None
+    port_type: Optional[PortType] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
-    ip: Optional[str] = None
-    mac: Optional[str] = None
+    ip: Optional[IPAddressStr] = None
+    mac: Optional[MacAddressStr] = None
     notes: Optional[str] = None
 
 
@@ -184,11 +196,11 @@ class InterfaceOut(BaseModel):
     device_id: int
     label: str
     port_number: Optional[int] = None
-    port_type: Optional[str] = None
+    port_type: Optional[PortType] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
-    ip: Optional[str] = None
-    mac: Optional[str] = None
+    ip: Optional[IPAddressStr] = None
+    mac: Optional[MacAddressStr] = None
     notes: Optional[str] = None
     connected_to: Optional[ConnectedTo] = None
 
@@ -197,10 +209,10 @@ class InterfaceOut(BaseModel):
 class DeviceBase(BaseModel):
     template_id: int
     name: Optional[str] = None
-    management_ip: Optional[str] = None
+    management_ip: Optional[IPAddressStr] = None
     location: Optional[str] = None
-    role: Optional[str] = None
-    install_date: Optional[str] = None
+    role: Optional[DeviceRole] = None
+    install_date: Optional[date] = None
     notes: Optional[str] = None
     topology_group_id: Optional[int] = None
 
@@ -211,10 +223,10 @@ class DeviceCreate(DeviceBase):
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
-    management_ip: Optional[str] = None
+    management_ip: Optional[IPAddressStr] = None
     location: Optional[str] = None
-    role: Optional[str] = None
-    install_date: Optional[str] = None
+    role: Optional[DeviceRole] = None
+    install_date: Optional[date] = None
     notes: Optional[str] = None
     topology_group_id: Optional[int] = None
 
@@ -244,10 +256,10 @@ class DeviceOut(DeviceBase):
 # ---------- Link template (пресет: среда + кабель + оформление на топологии) ----------
 class LinkTemplateBase(BaseModel):
     name: str
-    media_type: str
+    media_type: MediaType
     cable_category: Optional[str] = None
     color: str = "#888888"
-    line_style: str = "solid"
+    line_style: LineStyle = "solid"
 
 
 class LinkTemplateCreate(LinkTemplateBase):
@@ -256,10 +268,10 @@ class LinkTemplateCreate(LinkTemplateBase):
 
 class LinkTemplateUpdate(BaseModel):
     name: Optional[str] = None
-    media_type: Optional[str] = None
+    media_type: Optional[MediaType] = None
     cable_category: Optional[str] = None
     color: Optional[str] = None
-    line_style: Optional[str] = None
+    line_style: Optional[LineStyle] = None
 
 
 class LinkTemplateOut(LinkTemplateBase):
@@ -275,9 +287,11 @@ class LinkCreate(BaseModel):
     connector_type: Optional[str] = None
     length_m: Optional[float] = None
     speed_mbps: Optional[int] = None
-    source: str = "manual"
-    confirmed: bool = True
     notes: Optional[str] = None
+    # source и confirmed клиент не задаёт: связь, созданную руками, сервер
+    # всегда помечает manual/подтверждена. Поля существуют под будущий
+    # SNMP/LLDP-опрос, который будет заводить связи от своего имени и с
+    # confirmed=false до проверки человеком.
 
 
 class LinkUpdate(BaseModel):
@@ -298,7 +312,7 @@ class LinkOut(BaseModel):
     connector_type: Optional[str] = None
     length_m: Optional[float] = None
     speed_mbps: Optional[int] = None
-    source: str
+    source: LinkSource
     confirmed: bool
     notes: Optional[str] = None
     updated_at: datetime

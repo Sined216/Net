@@ -44,7 +44,9 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
     data = payload.model_dump()
     data["interface_a_id"] = a_id
     data["interface_b_id"] = b_id
-    link = models.Link(**data, updated_by=user.id)
+    # source/confirmed выставляет сервер, а не клиент: связь, заведённая
+    # через API руками, — всегда ручная и сразу подтверждённая.
+    link = models.Link(**data, source="manual", confirmed=True, updated_by=user.id)
     db.add(link)
 
     log_change(db, user.id, "create", "link", None, old=None, new=link)
