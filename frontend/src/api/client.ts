@@ -6,8 +6,14 @@ export class ApiError extends Error {}
 const BASE_URL_KEY = 'netdoc.baseUrl';
 const TOKEN_KEY = 'netdoc.token';
 
+/** Адрес API по умолчанию. В сборке для Docker подставляется `/api` — там
+ * фронтенд и бэкенд за одним nginx, и запросы идут на тот же origin (ни
+ * CORS, ни ввода адреса руками). При `npm run dev` остаётся прежний
+ * localhost:8000: бэкенд поднимается отдельно. */
+const DEFAULT_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 export function getBaseUrl(): string {
-  return localStorage.getItem(BASE_URL_KEY) || 'http://localhost:8000';
+  return localStorage.getItem(BASE_URL_KEY) || DEFAULT_BASE_URL;
 }
 export function setBaseUrl(url: string) {
   localStorage.setItem(BASE_URL_KEY, url.trim().replace(/\/$/, ''));
@@ -30,7 +36,9 @@ interface RequestOptions {
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
-  const url = new URL(getBaseUrl() + path);
+  // Второй аргумент нужен для относительного базового адреса (`/api`);
+  // на абсолютный (`http://host:8000`) он не влияет — тот побеждает.
+  const url = new URL(getBaseUrl() + path, window.location.origin);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
       if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
