@@ -62,6 +62,15 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
     throw new ApiError(`Не удалось подключиться к ${getBaseUrl()} (${(e as Error).message})`);
   }
 
+  // Пока чтение было открыто, истёкший токен ломал только правку. Теперь
+  // токен нужен всем запросам, поэтому просроченная сессия иначе выглядела
+  // бы как каскад красных тостов на каждой странице.
+  if (res.status === 401 && auth) {
+    setToken(null);
+    if (window.location.pathname !== '/login') window.location.assign('/login');
+    throw new ApiError('Сессия истекла — войдите заново');
+  }
+
   if (res.status === 204) return undefined as T;
 
   const text = await res.text();

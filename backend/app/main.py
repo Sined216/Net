@@ -1,9 +1,9 @@
-import os
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app import models, auth
 from app.routers import (
@@ -18,22 +18,26 @@ app = FastAPI(title="Network Documentation API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
-    allow_credentials=True,
+    allow_origins=settings.cors_origin_list,
+    # Авторизация идёт заголовком Authorization, а не куками, поэтому
+    # credentials браузеру пересылать не нужно. Заодно снимается конфликт:
+    # allow_credentials вместе со звёздочкой в origins всё равно не работает.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Все прикладные роутеры подключаются с обязательной авторизацией на уровне
+# роутера, а не хендлера: иначе новый GET-эндпоинт легко забыть защитить —
+# именно так и получилось, что вся карта сети с IP и MAC отдавалась без
+# токена. Исключения ровно два и они осознанные: вход (/auth/login, внутри
+# auth_router) и /health для проб контейнера.
+authenticated = [Depends(auth.get_current_user)]
+
 app.include_router(auth_router.router)
-app.include_router(tags.router)
-app.include_router(catalog.router)
-app.include_router(templates.router)
-app.include_router(devices.router)
-app.include_router(interfaces.router)
-app.include_router(links.router)
-app.include_router(link_templates.router)
-app.include_router(topology.router)
-app.include_router(topology_groups.router)
+for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
+               topology, topology_groups):
+    app.include_router(module.router, dependencies=authenticated)
 
 
 # (название, префикс кода устройства — SW-0001, SRV-0002...)
@@ -59,8 +63,8 @@ def on_startup():
 
         # первый администратор, если пользователей ещё нет
         if db.query(models.User).count() == 0:
-            admin_username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "admin")
-            admin_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "change-me-please")
+            admin_username = settings.bootstrap_admin_username
+            admin_password = settings.bootstrap_admin_password
             db.add(models.User(
                 full_name="Administrator",
                 username=admin_username,

@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timedelta
 from typing import Optional, List
 
@@ -9,12 +8,13 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app import models
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
+SECRET_KEY = settings.secret_key
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
 # Argon2id — текущая рекомендация OWASP для хранения паролей (устойчив к
 # перебору на GPU/ASIC за счёт требований к памяти). Пришёл на смену
