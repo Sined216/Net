@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import {
   ActionIcon, Badge, Button, Group, Modal, NumberInput, Select, Stack,
-  Table, Text, TextInput, Textarea, Title, Card, Collapse, ColorInput, UnstyledButton,
+  Table, Text, TextInput, Textarea, Title, Card, Collapse, ColorInput, Switch, Alert, UnstyledButton,
 } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import {
-  useAddTemplateInterface, useCreateDeviceTemplate, useCreateDeviceType, useDeleteDeviceTemplate,
+  useAddTemplateInterface, useCreateDeviceTemplate, useTemplateImpact, useCreateDeviceType, useDeleteDeviceTemplate,
   useDeleteDeviceType, useDeleteTemplateInterface, useDeviceTemplates, useDeviceTypes, useUpdateDeviceTemplate,
 } from '../api/hooks';
 import { nn } from '../lib/utils';
@@ -194,6 +194,9 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const [manufacturer, setManufacturer] = useState(template?.manufacturer ?? '');
   const [notes, setNotes] = useState(template?.notes ?? '');
   const [color, setColor] = useState(template?.color ?? '');
+  const [portsEditable, setPortsEditable] = useState(template?.ports_editable_on_device ?? false);
+  // Правка портов задевает все устройства модели — предупреждаем до нажатия.
+  const { data: impact } = useTemplateImpact(template?.id ?? null);
   const [draftPorts, setDraftPorts] = useState<DraftPort[]>([]);
   const draftSeq = useRef(0);
   const [portLabel, setPortLabel] = useState('');
@@ -259,6 +262,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
     const body = {
       name: name.trim(), device_type_id: parseInt(typeId, 10),
       manufacturer: nn(manufacturer), notes: nn(notes), color: nn(color),
+      ports_editable_on_device: portsEditable,
     };
     const onSuccess = () => { notifySuccess(isEdit ? 'Шаблон обновлён' : 'Шаблон создан'); onClose(); };
     if (isEdit) {
@@ -291,11 +295,27 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
             format="hex"
             swatches={['#4dabf7', '#40c057', '#fab005', '#fa5252', '#be4bdb', '#15aabf', '#868e96']}
           />
+          <Switch
+            label="Состав портов меняется на устройстве"
+            description="Для техники, у которой порты добавляют и снимают по факту — например ПК со съёмной сетевой картой. У остальных моделей порты правятся только здесь, в шаблоне."
+            checked={portsEditable}
+            onChange={(e) => setPortsEditable(e.currentTarget.checked)}
+          />
           <Textarea label="Заметки" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} rows={2} />
 
           <Text size="sm" c="dimmed">
             Порты шаблона{isEdit ? ' — изменения сохраняются сразу' : ''}:
           </Text>
+          {isEdit && impact != null && impact.devices > 0 && (
+            <Alert color={impact.connected_ports > 0 ? 'orange' : 'blue'} variant="light">
+              По этой модели заведено устройств: {impact.devices}. Добавленный порт появится у всех,
+              убранный — исчезнет у всех.
+              {impact.connected_ports > 0 && (
+                <> Подключённых кабелей у них: {impact.connected_ports} — если убрать порт, у кабеля
+                повиснет конец, но сам он останется задокументированным.</>
+              )}
+            </Alert>
+          )}
           <Table withTableBorder verticalSpacing={4}>
             <Table.Thead>
               <Table.Tr>

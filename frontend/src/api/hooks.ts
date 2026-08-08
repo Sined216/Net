@@ -23,6 +23,9 @@ export const useLinks = () => useQuery({ queryKey: ['links'], queryFn: api.listL
 export const useLinkTemplates = () => useQuery({ queryKey: ['linkTemplates'], queryFn: api.listLinkTemplates });
 export const useTopologyGroups = () => useQuery({ queryKey: ['topologyGroups'], queryFn: api.listTopologyGroups });
 export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: api.listUsers });
+/** Сколько устройств и подключённых портов заденет правка портов модели. */
+export const useTemplateImpact = (id: number | null) =>
+  useQuery({ queryKey: ['templateImpact', id], queryFn: () => api.templateImpact(id!), enabled: id != null });
 
 /** Ключи, которые нужно освежить после почти любой мутации — статус портов
  * (connected_to) и списки живут в devices/links одновременно. */
@@ -114,7 +117,9 @@ export function useAddTemplateInterface() {
   return useMutation({
     mutationFn: ({ templateId, body }: { templateId: number; body: InterfaceTemplateCreate }) =>
       api.addTemplateInterface(templateId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deviceTemplates'] }),
+    // Порт добавляется и всем устройствам этой модели — списки устройств и
+    // связей тоже устарели.
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links']),
   });
 }
 export function useDeleteTemplateInterface() {
@@ -122,7 +127,8 @@ export function useDeleteTemplateInterface() {
   return useMutation({
     mutationFn: ({ templateId, ifaceId }: { templateId: number; ifaceId: number }) =>
       api.deleteTemplateInterface(templateId, ifaceId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deviceTemplates'] }),
+    // Порт исчезает у всех устройств модели, а их кабели повисают.
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links']),
   });
 }
 
@@ -243,6 +249,13 @@ export function useUpdateLink() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: LinkUpdate }) => api.updateLink(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['links'] }),
+  });
+}
+export function useAttachLinkEnd() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, interfaceId }: { id: number; interfaceId: number }) => api.attachLinkEnd(id, interfaceId),
+    onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
 export function useDeleteLink() {

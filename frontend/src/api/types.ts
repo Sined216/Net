@@ -122,6 +122,8 @@ export interface DeviceTemplateCreate {
   notes?: string | null;
   /** Цвет узла на схеме — одна настройка на модель техники. */
   color?: string | null;
+  /** Разрешить менять состав портов у конкретного устройства (ПК со съёмной картой). */
+  ports_editable_on_device?: boolean;
   interfaces: InterfaceTemplateCreate[];
 }
 
@@ -130,6 +132,8 @@ export interface DeviceTemplateUpdate {
   device_type_id?: number;
   manufacturer?: string | null;
   notes?: string | null;
+  color?: string | null;
+  ports_editable_on_device?: boolean;
 }
 
 export interface DeviceTemplateOut {
@@ -139,7 +143,14 @@ export interface DeviceTemplateOut {
   manufacturer: string | null;
   notes: string | null;
   color: string | null;
+  ports_editable_on_device: boolean;
   interfaces: InterfaceTemplateOut[];
+}
+
+/** Что заденет правка портов модели. */
+export interface TemplateImpact {
+  devices: number;
+  connected_ports: number;
 }
 
 // ---------- Interface ----------
@@ -185,6 +196,9 @@ export interface InterfaceOut {
   ip: string | null;
   mac: string | null;
   notes: string | null;
+  /** Связь, в которой участвует порт. Есть даже при подвешенном втором
+   * конце, поэтому порт свободен ровно когда link_id пуст. */
+  link_id: number | null;
   connected_to: ConnectedTo | null;
 }
 
@@ -282,8 +296,9 @@ export interface LinkUpdate {
 
 export interface LinkOut {
   id: number;
-  interface_a_id: number;
-  interface_b_id: number;
+  /** Пусто — конец «подвешен»: порт удалили, кабель остался. */
+  interface_a_id: number | null;
+  interface_b_id: number | null;
   template_id: number | null;
   connector_type: string | null;
   length_m: number | null;

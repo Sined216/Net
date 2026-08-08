@@ -104,6 +104,11 @@ class DeviceTemplate(Base):
     # Цвет узла на схеме. Задаётся на модели техники, а не на устройстве:
     # одна настройка красит все «Cisco Catalyst 2960» разом.
     color = Column(Text)
+    # Состав портов обычно определяется моделью и правится в шаблоне. Но у
+    # части техники он меняется в жизни: в ПК доставили или сняли сетевую
+    # карту. Для таких моделей флаг разрешает править порты у конкретного
+    # устройства.
+    ports_editable_on_device = Column(Boolean, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     device_type = relationship("DeviceType", back_populates="templates")
@@ -217,8 +222,12 @@ class LinkTemplate(Base):
 class Link(Base):
     __tablename__ = "links"
     id = Column(Integer, primary_key=True)
-    interface_a_id = Column(Integer, ForeignKey("interfaces.id", ondelete="CASCADE"), nullable=False, unique=True)
-    interface_b_id = Column(Integer, ForeignKey("interfaces.id", ondelete="CASCADE"), nullable=False, unique=True)
+    # Концы связи могут пустовать: сняли с ПК сетевую карту — порт исчез, а
+    # кабель остался и физически никуда не делся. Такой конец «подвешен»,
+    # его подключают заново к новому порту. Поэтому ON DELETE SET NULL, а не
+    # CASCADE: раньше удаление порта молча уносило и саму связь.
+    interface_a_id = Column(Integer, ForeignKey("interfaces.id", ondelete="SET NULL"), unique=True)
+    interface_b_id = Column(Integer, ForeignKey("interfaces.id", ondelete="SET NULL"), unique=True)
     template_id = Column(Integer, ForeignKey("link_templates.id", ondelete="SET NULL"))
     connector_type = Column(Text)
     length_m = Column(Numeric(6, 1))
@@ -234,8 +243,11 @@ class Link(Base):
         # Строгое "меньше", а не "не равно": стороны связи нормализуются по
         # возрастанию id, поэтому одна и та же связь не может быть записана
         # ещё и зеркально. Приложение раскладывает A/B в этом порядке само,
-        # база теперь это гарантирует.
+        # база теперь это гарантирует. С пустым концом сравнение даёт NULL, и
+        # ограничение не срабатывает — подвешенная связь проходит.
         CheckConstraint("interface_a_id < interface_b_id"),
+        # Связь без обоих концов — мусор: удалять её нужно целиком.
+        CheckConstraint("interface_a_id IS NOT NULL OR interface_b_id IS NOT NULL"),
         CheckConstraint("source IN ('manual','snmp','lldp')"),
     )
 

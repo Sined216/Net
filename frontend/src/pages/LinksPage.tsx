@@ -89,8 +89,9 @@ export function LinksPage() {
 
       <Title order={2}>Связи между портами</Title>
       <Text c="dimmed" size="sm">
-        Новую связь создавайте прямо у порта, во вкладке «Устройства» — здесь можно назначить шаблон, уточнить
-        длину/разъём или удалить связь.
+        Новую связь создавайте перетаскиванием на схеме или прямо у порта устройства — здесь можно назначить
+        шаблон, уточнить длину/разъём или удалить связь. «Подвешен» означает, что порт на этом конце удалили
+        (например сняли сетевую карту), а кабель остался: подключить его заново можно у любого свободного порта.
       </Text>
       <Table withTableBorder verticalSpacing="xs">
         <Table.Thead>
@@ -103,22 +104,29 @@ export function LinksPage() {
         </Table.Thead>
         <Table.Tbody>
           {links.map((l) => {
-            const a = ifaceMap.get(l.interface_a_id);
-            const b = ifaceMap.get(l.interface_b_id);
+            // Конец может пустовать: порт удалили (сняли сетевую карту), а
+            // кабель остался проложен.
+            const a = l.interface_a_id != null ? ifaceMap.get(l.interface_a_id) : undefined;
+            const b = l.interface_b_id != null ? ifaceMap.get(l.interface_b_id) : undefined;
+            const dangling = l.interface_a_id == null || l.interface_b_id == null;
             const lt = l.template_id ? linkTemplates.find((t) => t.id === l.template_id) : null;
             return (
               <Table.Tr key={l.id}>
-                <Table.Td>{a?.device.code ?? '?'}</Table.Td>
-                <Table.Td>{a?.label ?? '?'}</Table.Td>
-                <Table.Td>{b?.device.code ?? '?'}</Table.Td>
-                <Table.Td>{b?.label ?? '?'}</Table.Td>
+                <Table.Td>{a?.device.code ?? <DanglingEnd />}</Table.Td>
+                <Table.Td>{a?.label ?? '—'}</Table.Td>
+                <Table.Td>{b?.device.code ?? <DanglingEnd />}</Table.Td>
+                <Table.Td>{b?.label ?? '—'}</Table.Td>
                 <Table.Td>
                   {lt ? (<><span className="tag-badge-dot" style={{ background: lt.color }} />{lt.name}</>) : <Text c="dimmed">— без шаблона —</Text>}
                 </Table.Td>
                 <Table.Td>{l.connector_type || '—'}</Table.Td>
                 <Table.Td>{l.length_m ?? '—'}</Table.Td>
                 <Table.Td>{l.source}</Table.Td>
-                <Table.Td>{l.confirmed ? '✓' : <Badge color="yellow" variant="light">не подтв.</Badge>}</Table.Td>
+                <Table.Td>
+                  {dangling
+                    ? <Badge color="orange" variant="light">подвешен</Badge>
+                    : l.confirmed ? '✓' : <Badge color="yellow" variant="light">не подтв.</Badge>}
+                </Table.Td>
                 <Table.Td>
                   <Group gap={4}>
                     <ActionIcon variant="subtle" onClick={() => setEditingLink(l)}><IconEdit size={16} /></ActionIcon>
@@ -148,6 +156,11 @@ export function LinksPage() {
       {editingLink && <LinkFormModal link={editingLink} templates={linkTemplates} onClose={() => setEditingLink(null)} />}
     </Stack>
   );
+}
+
+/** Конец связи, у которого удалили порт: кабель остался, втыкать некуда. */
+function DanglingEnd() {
+  return <Text c="orange" size="sm">— не подключён —</Text>;
 }
 
 function LinkTemplateFormModal({ template, onClose }: { template: LinkTemplateOut | null; onClose: () => void }) {

@@ -78,7 +78,14 @@ export function TopologyPage() {
   useEffect(() => {
     const ifaceToDevice = new Map<number, number>();
     for (const d of filteredDevices) for (const i of d.interfaces) ifaceToDevice.set(i.id, d.id);
-    const visibleLinks = links.filter((l) => ifaceToDevice.has(l.interface_a_id) && ifaceToDevice.has(l.interface_b_id));
+    // Связь с подвешенным концом нарисовать между двумя узлами нельзя —
+    // второго узла просто нет. Такие показываются на странице «Связи», где
+    // их и подключают заново.
+    const visibleLinks = links.filter(
+      (l): l is typeof l & { interface_a_id: number; interface_b_id: number } =>
+        l.interface_a_id != null && l.interface_b_id != null &&
+        ifaceToDevice.has(l.interface_a_id) && ifaceToDevice.has(l.interface_b_id),
+    );
 
     // Устройства с уже сохранённой позицией (перетащили руками в прошлый
     // раз) — "заморожены": не двигаются симуляцией, но отталкивают

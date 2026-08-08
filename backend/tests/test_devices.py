@@ -90,8 +90,29 @@ def test_filter_devices_by_tag(client, headers, make_device):
     assert [d["id"] for d in response.json()] == [tagged["id"]]
 
 
-def test_interface_added_manually_beyond_template(client, headers, make_device):
+def test_ports_cannot_be_added_to_device_by_default(client, headers, make_device):
+    """Состав портов — свойство модели: иначе одинаковые коммутаторы
+    разъезжаются по составу, и понять, где правда, невозможно."""
     device = make_device()
+    response = client.post(
+        f"/devices/{device['id']}/interfaces",
+        json={"label": "SFP1", "port_number": 3},
+        headers=headers["editor"],
+    )
+    assert response.status_code == 409
+    assert "шаблон" in response.json()["detail"].lower()
+
+
+def test_ports_can_be_added_when_model_allows(client, headers, template, make_device):
+    """У ПК сетевую карту действительно доставляют — для таких моделей
+    состав портов открыт явным флагом."""
+    client.patch(
+        f"/device-templates/{template.id}",
+        json={"ports_editable_on_device": True},
+        headers=headers["editor"],
+    )
+    device = make_device()
+
     response = client.post(
         f"/devices/{device['id']}/interfaces",
         json={"label": "SFP1", "port_number": 3},

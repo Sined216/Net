@@ -50,6 +50,10 @@ export function DevicePage() {
     );
   }
 
+  // Состав портов задаётся моделью; править у железки можно только там, где
+  // это отражает жизнь — ПК со съёмной сетевой картой.
+  const portsEditable = template?.ports_editable_on_device ?? false;
+
   const interfaces = [...device.interfaces].sort(
     (a, b) => (a.port_number ?? 9999) - (b.port_number ?? 9999) || a.label.localeCompare(b.label),
   );
@@ -137,7 +141,7 @@ export function DevicePage() {
           </Table.Thead>
           <Table.Tbody>
             {interfaces.map((i) => (
-              <InterfaceRow key={i.id} iface={i} vlans={vlans} freeEntries={freeEntries} />
+              <InterfaceRow key={i.id} iface={i} vlans={vlans} freeEntries={freeEntries} portsEditable={portsEditable} />
             ))}
             {interfaces.length === 0 && (
               <Table.Tr><Table.Td colSpan={9}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>
@@ -146,11 +150,22 @@ export function DevicePage() {
         </Table>
       </Paper>
 
-      <Group>
-        <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addPort}>Порт</Button>
-        <NumberInput size="xs" value={bulkCount} onChange={(v) => setBulkCount(v === '' ? '' : Number(v))} min={1} max={96} w={80} />
-        <Button size="xs" variant="light" onClick={generatePorts}>Сгенерировать N портов</Button>
-      </Group>
+      {portsEditable ? (
+        <Group>
+          <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addPort}>Порт</Button>
+          <NumberInput size="xs" value={bulkCount} onChange={(v) => setBulkCount(v === '' ? '' : Number(v))} min={1} max={96} w={80} />
+          <Button size="xs" variant="light" onClick={generatePorts}>Сгенерировать N портов</Button>
+          <Text size="xs" c="dimmed">
+            У этой модели состав портов меняется по факту, поэтому порты правятся прямо здесь.
+          </Text>
+        </Group>
+      ) : (
+        <Text size="sm" c="dimmed">
+          Состав портов задаётся моделью. Чтобы добавить или убрать порт, откройте
+          {' '}<Anchor component={Link} to="/templates">шаблон «{template?.name}»</Anchor>{' '}
+          — изменение применится ко всем устройствам этой модели.
+        </Text>
+      )}
     </Stack>
   );
 }

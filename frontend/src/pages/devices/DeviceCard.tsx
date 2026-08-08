@@ -22,6 +22,8 @@ export function DeviceCard({
   const deleteDevice = useDeleteDevice();
   const addInterface = useAddInterface();
 
+  const portsEditable = template?.ports_editable_on_device ?? false;
+
   const ifaces = [...device.interfaces].sort((a, b) => (a.port_number ?? 9999) - (b.port_number ?? 9999) || a.label.localeCompare(b.label));
   const displayName = device.name || template?.name || '—';
 
@@ -86,18 +88,24 @@ export function DeviceCard({
             </Table.Thead>
             <Table.Tbody>
               {ifaces.map((i) => (
-                <InterfaceRow key={i.id} iface={i} vlans={vlans} freeEntries={freeEntries} />
+                <InterfaceRow key={i.id} iface={i} vlans={vlans} freeEntries={freeEntries} portsEditable={portsEditable} />
               ))}
               {ifaces.length === 0 && (
                 <Table.Tr><Table.Td colSpan={9}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>
-          <Group mt="xs">
-            <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addPort}>Порт</Button>
-            <NumberInput size="xs" value={bulkCount} onChange={(v) => setBulkCount(v === '' ? '' : Number(v))} min={1} max={96} w={70} />
-            <Button size="xs" variant="light" onClick={generatePorts}>Сгенерировать N портов</Button>
-          </Group>
+          {portsEditable ? (
+            <Group mt="xs">
+              <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addPort}>Порт</Button>
+              <NumberInput size="xs" value={bulkCount} onChange={(v) => setBulkCount(v === '' ? '' : Number(v))} min={1} max={96} w={70} />
+              <Button size="xs" variant="light" onClick={generatePorts}>Сгенерировать N портов</Button>
+            </Group>
+          ) : (
+            <Text size="xs" c="dimmed" mt="xs">
+              Состав портов задаётся моделью — правится в шаблоне «{template?.name}».
+            </Text>
+          )}
         </div>
       </Collapse>
     </Card>

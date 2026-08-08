@@ -9,7 +9,7 @@ import type {
   DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
-  LinkOut, LinkCreate, LinkUpdate,
+  LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
   TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate,
   SearchResult,
 } from './types';
@@ -90,6 +90,9 @@ export const listLinks = () => apiFetch<LinkOut[]>('/links');
 export const createLink = (body: LinkCreate) => apiFetch<LinkOut>('/links', { method: 'POST', body });
 export const updateLink = (id: number, body: LinkUpdate) => apiFetch<LinkOut>(`/links/${id}`, { method: 'PATCH', body });
 export const deleteLink = (id: number) => apiFetch<void>(`/links/${id}`, { method: 'DELETE' });
+export const attachLinkEnd = (id: number, interfaceId: number) =>
+  apiFetch<LinkOut>(`/links/${id}/attach`, { method: 'POST', body: { interface_id: interfaceId } });
+export const templateImpact = (id: number) => apiFetch<TemplateImpact>(`/device-templates/${id}/impact`);
 
 // ---------- Search ----------
 export const search = (query: string) => apiFetch<SearchResult[]>('/search', { query: { query } });

@@ -5,6 +5,7 @@ from sqlalchemy import Text, cast, or_
 from app.database import get_db
 from app import models, schemas, auth, serialize
 from app.audit import log_change
+from app.routers.devices import _require_editable_ports
 
 router = APIRouter(tags=["interfaces"])
 
@@ -30,9 +31,19 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
 @router.delete("/interfaces/{interface_id}", status_code=204)
 def delete_interface(interface_id: int, db: Session = Depends(get_db),
                       user: models.User = Depends(auth.can_edit)):
+    """Убрать порт у конкретного устройства (сняли сетевую карту).
+
+    Связь при этом не удаляется: кабель остался проложен, у него повисает
+    конец — подключить его заново можно к другому порту.
+    Разрешено только моделям с изменяемым составом портов."""
     iface = db.query(models.Interface).filter(models.Interface.id == interface_id).first()
     if not iface:
         raise HTTPException(status_code=404, detail="Интерфейс не найден")
+
+    device = db.query(models.Device).filter(models.Device.id == iface.device_id).first()
+    if device is not None:
+        _require_editable_ports(db, device)
+
     old_snapshot = {c.name: getattr(iface, c.name) for c in iface.__table__.columns}
     log_change(db, user.id, "delete", "interface", iface.id, old=old_snapshot, new=None)
     db.delete(iface)

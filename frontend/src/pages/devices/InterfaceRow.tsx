@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActionIcon, Group, Select, Table, Text, TextInput } from '@mantine/core';
-import { IconCheck, IconTrash } from '@tabler/icons-react';
-import { useCreateLink, useDeleteInterface, useDeleteLink, useUpdateInterface } from '../../api/hooks';
+import { IconCheck, IconPlugConnected, IconTrash } from '@tabler/icons-react';
+import { useAttachLinkEnd, useCreateLink, useDeleteInterface, useDeleteLink, useUpdateInterface } from '../../api/hooks';
 import { nn, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import type { DeviceOut, InterfaceOut, PortType, VlanOut } from '../../api/types';
@@ -14,11 +14,13 @@ export interface FreeEntry {
 }
 
 export function InterfaceRow({
-  iface, vlans, freeEntries,
+  iface, vlans, freeEntries, portsEditable = false,
 }: {
   iface: InterfaceOut;
   vlans: VlanOut[];
   freeEntries: FreeEntry[];
+  /** Разрешает удалять порт — только у моделей со съёмными картами. */
+  portsEditable?: boolean;
 }) {
   const [label, setLabel] = useState(iface.label);
   const [portNumber, setPortNumber] = useState<string>(iface.port_number != null ? String(iface.port_number) : '');
@@ -33,6 +35,7 @@ export function InterfaceRow({
   const deleteInterface = useDeleteInterface();
   const createLink = useCreateLink();
   const deleteLink = useDeleteLink();
+  const attachEnd = useAttachLinkEnd();
 
   function save() {
     updateInterface.mutate(
@@ -45,8 +48,20 @@ export function InterfaceRow({
   }
 
   function remove() {
-    if (!confirm('Удалить порт? Связанная связь (если есть) тоже будет удалена.')) return;
+    const warning = iface.link_id
+      ? 'Убрать порт? Кабель останется задокументированным, но его конец повиснет — подключить заново можно к другому порту.'
+      : 'Убрать порт?';
+    if (!confirm(warning)) return;
     deleteInterface.mutate(iface.id, { onError: notifyError });
+  }
+
+  /** Второй конец кабеля повис (там сняли порт) — втыкаем его в выбранный. */
+  function attach() {
+    if (!connectTarget || !iface.link_id) return;
+    attachEnd.mutate(
+      { id: iface.link_id, interfaceId: parseInt(connectTarget, 10) },
+      { onSuccess: () => notifySuccess('Кабель подключён'), onError: notifyError },
+    );
   }
 
   function connect() {
@@ -58,9 +73,10 @@ export function InterfaceRow({
   }
 
   function disconnect() {
-    if (!iface.connected_to) return;
+    const linkId = iface.connected_to?.link_id ?? iface.link_id;
+    if (!linkId) return;
     if (!confirm('Удалить связь?')) return;
-    deleteLink.mutate(iface.connected_to.link_id, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
+    deleteLink.mutate(linkId, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
   }
 
   const connectData = groupFreeEntries(freeEntries, iface.id);
@@ -88,6 +104,22 @@ export function InterfaceRow({
             <Text size="xs" c="teal">→ {iface.connected_to.device_code} · {iface.connected_to.interface_label}</Text>
             <ActionIcon size="sm" variant="subtle" color="red" onClick={disconnect}><IconTrash size={14} /></ActionIcon>
           </Group>
+        ) : iface.link_id ? (
+          // Кабель воткнут, но на том конце порт удалили — предлагаем
+          // подключить его заново, а не заводить связь с нуля: длина,
+          // разъём и заметки останутся при ней.
+          <Group gap={4} wrap="nowrap">
+            <Select
+              size="xs" w={150} placeholder="повис — куда воткнуть?" data={connectData}
+              value={connectTarget} onChange={setConnectTarget} searchable
+            />
+            <ActionIcon size="sm" variant="subtle" color="orange" onClick={attach} title="Подключить второй конец">
+              <IconPlugConnected size={14} />
+            </ActionIcon>
+            <ActionIcon size="sm" variant="subtle" color="red" onClick={disconnect} title="Убрать кабель">
+              <IconTrash size={14} />
+            </ActionIcon>
+          </Group>
         ) : (
           <Group gap={4} wrap="nowrap">
             <Select size="xs" w={150} placeholder="— свободен —" data={connectData} value={connectTarget} onChange={setConnectTarget} searchable />
@@ -100,7 +132,11 @@ export function InterfaceRow({
       <Table.Td>
         <Group gap={4} wrap="nowrap">
           <ActionIcon size="sm" variant="subtle" onClick={save}><IconCheck size={14} /></ActionIcon>
-          <ActionIcon size="sm" variant="subtle" color="red" onClick={remove}><IconTrash size={14} /></ActionIcon>
+          {portsEditable && (
+            <ActionIcon size="sm" variant="subtle" color="red" onClick={remove} title="Убрать порт">
+              <IconTrash size={14} />
+            </ActionIcon>
+          )}
         </Group>
       </Table.Td>
     </Table.Tr>

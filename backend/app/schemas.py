@@ -171,6 +171,9 @@ class DeviceTemplateBase(BaseModel):
     notes: Optional[str] = None
     # Цвет узла на схеме; пусто — узел рисуется нейтральным.
     color: Optional[str] = None
+    # Разрешить менять состав портов у конкретного устройства (ПК, куда
+    # доставили сетевую карту). По умолчанию порты задаёт только шаблон.
+    ports_editable_on_device: bool = False
 
 
 class DeviceTemplateCreate(DeviceTemplateBase):
@@ -183,6 +186,14 @@ class DeviceTemplateUpdate(BaseModel):
     manufacturer: Optional[str] = None
     notes: Optional[str] = None
     color: Optional[str] = None
+    ports_editable_on_device: Optional[bool] = None
+
+
+class TemplateImpact(BaseModel):
+    """Что заденет правка портов модели: сколько устройств заведено по ней и
+    сколько их портов уже подключено кабелем."""
+    devices: int
+    connected_ports: int
 
 
 class DeviceTemplateOut(DeviceTemplateBase):
@@ -236,6 +247,9 @@ class InterfaceOut(BaseModel):
     ip: Optional[IPAddressStr] = None
     mac: Optional[MacAddressStr] = None
     notes: Optional[str] = None
+    # Связь, в которой участвует порт. Есть даже когда второй конец подвешен,
+    # поэтому свободен порт ровно тогда, когда link_id пуст.
+    link_id: Optional[int] = None
     connected_to: Optional[ConnectedTo] = None
 
 
@@ -337,11 +351,19 @@ class LinkUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class LinkAttach(BaseModel):
+    """Подключение подвешенного конца связи к порту: поставили новую сетевую
+    карту — воткнули в неё тот же кабель."""
+    interface_id: int
+
+
 class LinkOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    interface_a_id: int
-    interface_b_id: int
+    # Пустой конец — «подвешенный»: порт, в который был воткнут кабель,
+    # удалили, а сам кабель остался.
+    interface_a_id: Optional[int] = None
+    interface_b_id: Optional[int] = None
     template_id: Optional[int] = None
     connector_type: Optional[str] = None
     length_m: Optional[float] = None

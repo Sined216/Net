@@ -64,16 +64,40 @@ def test_template_port_added_and_removed(client, headers, template):
     assert removed.status_code == 204
 
 
-def test_ports_added_to_template_do_not_touch_existing_devices(client, headers, template, make_device):
-    """Порты копируются в устройство один раз, при создании: шаблон — это
-    описание модели, а не живая связь с уже заведёнными экземплярами."""
-    device = make_device()
+def test_port_added_to_template_appears_on_existing_devices(client, headers, template, make_device):
+    """Состав портов задаётся моделью: доукомплектовали модель — порт
+    появился у всех её экземпляров, а не только у будущих."""
+    first, second = make_device(), make_device()
     client.post(
         f"/device-templates/{template.id}/interfaces", json={"label": "SFP1"}, headers=headers["editor"]
     )
 
+    for device in (first, second):
+        refreshed = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+        assert [i["label"] for i in refreshed["interfaces"]] == ["Порт 1", "Порт 2", "SFP1"]
+
+
+def test_port_removed_from_template_disappears_from_devices(client, headers, template, make_device):
+    device = make_device()
+    tpl = client.get(f"/device-templates/{template.id}", headers=headers["viewer"]).json()
+    port_id = tpl["interfaces"][0]["id"]
+
+    client.delete(f"/device-templates/{template.id}/interfaces/{port_id}", headers=headers["editor"])
+
     refreshed = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
-    assert len(refreshed["interfaces"]) == 2
+    assert [i["label"] for i in refreshed["interfaces"]] == ["Порт 2"]
+
+
+def test_impact_reports_devices_and_connected_ports(client, headers, template, make_device):
+    a, b = make_device(), make_device()
+    client.post(
+        "/links",
+        json={"interface_a_id": a["interfaces"][0]["id"], "interface_b_id": b["interfaces"][0]["id"]},
+        headers=headers["editor"],
+    )
+
+    impact = client.get(f"/device-templates/{template.id}/impact", headers=headers["viewer"]).json()
+    assert impact == {"devices": 2, "connected_ports": 1}
 
 
 def test_device_type_in_use_cannot_be_deleted(client, headers, device_type, template):

@@ -3,6 +3,7 @@
 считается по наличию записи в links, поэтому собирается тут, а не
 отдаётся FastAPI напрямую из ORM-объекта."""
 
+from dataclasses import dataclass
 from typing import Iterable, Dict, List, Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -10,10 +11,21 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas
 
 
-def build_link_map(db: Session, interface_ids: Iterable[int]) -> Dict[int, schemas.ConnectedTo]:
+@dataclass
+class LinkEnd:
+    """Связь глазами одного из её портов. connected_to пусто, если второй
+    конец подвешен — порт при этом всё равно занят."""
+    link_id: int
+    connected_to: Optional[schemas.ConnectedTo]
+
+
+def build_link_map(db: Session, interface_ids: Iterable[int]) -> Dict[int, "LinkEnd"]:
     """Для набора id интерфейсов одним запросом находит все связи и
-    возвращает map: interface_id -> с чем соединён (с точки зрения этого
-    интерфейса, т.е. "другая" сторона связи)."""
+    возвращает map: interface_id -> связь с точки зрения этого интерфейса.
+
+    Другая сторона может отсутствовать: порт, в который был воткнут кабель,
+    удалили (сняли сетевую карту), и конец остался подвешенным. Такой порт
+    всё равно занят — предлагать его для нового подключения нельзя."""
     ids = list(interface_ids)
     if not ids:
         return {}
@@ -28,12 +40,15 @@ def build_link_map(db: Session, interface_ids: Iterable[int]) -> Dict[int, schem
         .all()
     )
 
-    result: Dict[int, schemas.ConnectedTo] = {}
+    result: Dict[int, LinkEnd] = {}
     for link in links:
         pairs = [(link.interface_a, link.interface_b), (link.interface_b, link.interface_a)]
         for this_iface, other_iface in pairs:
-            if this_iface.id in ids:
-                result[this_iface.id] = schemas.ConnectedTo(
+            if this_iface is None or this_iface.id not in ids:
+                continue
+            connected = None
+            if other_iface is not None:
+                connected = schemas.ConnectedTo(
                     link_id=link.id,
                     device_id=other_iface.device_id,
                     device_code=other_iface.device.code,
@@ -41,10 +56,12 @@ def build_link_map(db: Session, interface_ids: Iterable[int]) -> Dict[int, schem
                     interface_id=other_iface.id,
                     interface_label=other_iface.label,
                 )
+            result[this_iface.id] = LinkEnd(link_id=link.id, connected_to=connected)
     return result
 
 
-def serialize_interface(iface: models.Interface, link_map: Dict[int, schemas.ConnectedTo]) -> schemas.InterfaceOut:
+def serialize_interface(iface: models.Interface, link_map: Dict[int, LinkEnd]) -> schemas.InterfaceOut:
+    end = link_map.get(iface.id)
     return schemas.InterfaceOut(
         id=iface.id,
         device_id=iface.device_id,
@@ -56,7 +73,8 @@ def serialize_interface(iface: models.Interface, link_map: Dict[int, schemas.Con
         ip=iface.ip,
         mac=iface.mac,
         notes=iface.notes,
-        connected_to=link_map.get(iface.id),
+        link_id=end.link_id if end else None,
+        connected_to=end.connected_to if end else None,
     )
 
 
@@ -65,7 +83,7 @@ def serialize_interfaces(db: Session, interfaces: List[models.Interface]) -> Lis
     return [serialize_interface(i, link_map) for i in interfaces]
 
 
-def serialize_device(device: models.Device, link_map: Optional[Dict[int, schemas.ConnectedTo]] = None,
+def serialize_device(device: models.Device, link_map: Optional[Dict[int, LinkEnd]] = None,
                       db: Optional[Session] = None) -> schemas.DeviceOut:
     if link_map is None:
         link_map = build_link_map(db, (i.id for i in device.interfaces))
