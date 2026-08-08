@@ -128,6 +128,53 @@ def test_existing_database_is_stamped_and_upgraded(legacy_database):
     assert row[4] == "a4:bb:6d:11:22:33"
 
 
+def test_duplicate_port_numbers_are_resolved(legacy_database):
+    """Номера портов до этой ревизии ничего не значили: их можно было не
+    ставить вовсе и можно было поставить один и тот же дважды. Накат на
+    такую базу обязан развести конфликты сам — иначе бэкенд не поднимется."""
+    engine = legacy_database
+    _run([sys.executable, "-m", "alembic", "upgrade", "0005_dangling_ends"], LEGACY_DB)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO device_types(name, code_prefix) VALUES ('Коммутатор','SW')"))
+        conn.execute(text("INSERT INTO device_templates(name, device_type_id) VALUES ('Тестовый', 1)"))
+        # Два порта модели с одинаковым номером и один вовсе без номера.
+        conn.execute(
+            text(
+                "INSERT INTO device_template_interfaces(template_id, label, port_number) "
+                "VALUES (1,'Порт A',4), (1,'Порт B',4), (1,'Порт C',NULL)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO devices(template_id, code, name) VALUES (1,'SW-0001','Старое устройство')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO interfaces(device_id, label, port_number) "
+                "VALUES (1,'Порт A',4), (1,'Порт B',4), (1,'Порт C',NULL), (1,'Заведён руками',1)"
+            )
+        )
+
+    _run([sys.executable, "-m", "app.db_upgrade"], LEGACY_DB)
+
+    with engine.connect() as conn:
+        template_ports = dict(
+            conn.execute(text("SELECT label, port_number FROM device_template_interfaces")).all()
+        )
+        device_ports = dict(conn.execute(text("SELECT label, port_number FROM interfaces")).all())
+
+    # Номера уникальны и проставлены всем.
+    assert len(set(template_ports.values())) == 3
+    assert len(set(device_ports.values())) == 4
+    assert all(number is not None for number in device_ports.values())
+    # Номер, занятый первым по времени портом, за ним и остался.
+    assert template_ports["Порт A"] == 4
+    # Порт устройства получил номер своего порта в модели — состав сходится.
+    for label, number in template_ports.items():
+        assert device_ports[label] == number
+
+
 def _head_revision() -> str:
     """Последняя ревизия берётся из самих миграций, а не пишется в тесте:
     иначе каждая новая ревизия ломала бы этот тест на ровном месте."""
