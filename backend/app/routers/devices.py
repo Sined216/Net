@@ -72,8 +72,8 @@ def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db),
 
     for tpl_iface in template.interfaces:
         db.add(models.Interface(
-            device_id=device.id, label=tpl_iface.label,
-            port_number=tpl_iface.port_number, port_type=tpl_iface.port_type,
+            device_id=device.id, port_number=tpl_iface.port_number,
+            label=tpl_iface.label, port_type=tpl_iface.port_type,
         ))
 
     log_change(db, user.id, "create", "device", None, old=None, new=device)
@@ -174,7 +174,7 @@ def delete_device(device_id: int, db: Session = Depends(get_db),
 @router.get("/{device_id}/interfaces", response_model=list[schemas.InterfaceOut])
 def list_interfaces(device_id: int, db: Session = Depends(get_db)):
     ifaces = db.query(models.Interface).filter(models.Interface.device_id == device_id).order_by(
-        models.Interface.port_number, models.Interface.label
+        models.Interface.port_number
     ).all()
     return serialize.serialize_interfaces(db, ifaces)
 
@@ -213,10 +213,10 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     _require_editable_ports(db, device)
     exists = db.query(models.Interface).filter(
-        models.Interface.device_id == device_id, models.Interface.label == payload.label
+        models.Interface.device_id == device_id, models.Interface.port_number == payload.port_number
     ).first()
     if exists:
-        raise HTTPException(status_code=409, detail="У устройства уже есть интерфейс с таким названием")
+        raise HTTPException(status_code=409, detail=f"У устройства уже есть порт №{payload.port_number}")
 
     iface = models.Interface(device_id=device_id, **payload.model_dump())
     db.add(iface)

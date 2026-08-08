@@ -24,7 +24,7 @@ export function DeviceCard({
 
   const portsEditable = template?.ports_editable_on_device ?? false;
 
-  const ifaces = [...device.interfaces].sort((a, b) => (a.port_number ?? 9999) - (b.port_number ?? 9999) || a.label.localeCompare(b.label));
+  const ifaces = [...device.interfaces].sort((a, b) => a.port_number - b.port_number);
   const displayName = device.name || template?.name || '—';
 
   function handleDelete() {
@@ -82,7 +82,7 @@ export function DeviceCard({
           <Table withTableBorder verticalSpacing={4} mt="xs">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Порт</Table.Th><Table.Th>№</Table.Th><Table.Th>Тип</Table.Th><Table.Th>VLAN</Table.Th>
+                <Table.Th w={50}>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Тип</Table.Th><Table.Th>VLAN</Table.Th>
                 <Table.Th>IP</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Заметка</Table.Th><Table.Th>Подключение</Table.Th><Table.Th />
               </Table.Tr>
             </Table.Thead>

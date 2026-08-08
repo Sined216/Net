@@ -8,7 +8,7 @@ from app.database import SessionLocal
 from app import models, auth
 from app.routers import (
     auth_router, tags, catalog, templates, devices, interfaces, links, link_templates,
-    topology, topology_groups,
+    topology, topology_groups, schema,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +36,7 @@ authenticated = [Depends(auth.get_current_user)]
 
 app.include_router(auth_router.router)
 for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
-               topology, topology_groups):
+               topology, topology_groups, schema):
     app.include_router(module.router, dependencies=authenticated)
 
 

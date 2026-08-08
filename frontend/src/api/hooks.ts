@@ -22,6 +22,7 @@ export const useDevices = () => useQuery({ queryKey: ['devices'], queryFn: api.l
 export const useLinks = () => useQuery({ queryKey: ['links'], queryFn: api.listLinks });
 export const useLinkTemplates = () => useQuery({ queryKey: ['linkTemplates'], queryFn: api.listLinkTemplates });
 export const useTopologyGroups = () => useQuery({ queryKey: ['topologyGroups'], queryFn: api.listTopologyGroups });
+export const useDatabaseSchema = () => useQuery({ queryKey: ['schema'], queryFn: api.getDatabaseSchema });
 export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: api.listUsers });
 /** Сколько устройств и подключённых портов заденет правка портов модели. */
 export const useTemplateImpact = (id: number | null) =>

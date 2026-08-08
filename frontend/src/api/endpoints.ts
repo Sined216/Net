@@ -11,7 +11,7 @@ import type {
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
   TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate,
-  SearchResult,
+  SearchResult, DatabaseSchema,
 } from './types';
 
 // ---------- Auth ----------
@@ -96,3 +96,6 @@ export const templateImpact = (id: number) => apiFetch<TemplateImpact>(`/device-
 
 // ---------- Search ----------
 export const search = (query: string) => apiFetch<SearchResult[]>('/search', { query: { query } });
+
+// ---------- Структура БД ----------
+export const getDatabaseSchema = () => apiFetch<DatabaseSchema>('/schema');

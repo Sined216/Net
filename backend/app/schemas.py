@@ -149,8 +149,9 @@ class VlanOut(VlanBase):
 
 # ---------- Interface template (порт в шаблоне устройства) ----------
 class InterfaceTemplateBase(BaseModel):
-    label: str
-    port_number: Optional[int] = None
+    # Номер обязателен и уникален внутри модели: им порт и опознаётся.
+    port_number: int = Field(ge=1)
+    label: str = Field(min_length=1, max_length=100)
     port_type: Optional[PortType] = None
 
 
@@ -204,8 +205,13 @@ class DeviceTemplateOut(DeviceTemplateBase):
 
 # ---------- Interface ----------
 class InterfaceUpdate(BaseModel):
-    label: Optional[str] = None
-    port_number: Optional[int] = None
+    """Правка порта у конкретного устройства.
+
+    Ни названия, ни номера здесь нет: они описывают саму модель техники и
+    правятся в шаблоне — иначе одинаковые железки разъезжаются по названиям
+    портов. Здесь настраивается то, что у каждого экземпляра своё: адреса,
+    VLAN, заметка.
+    """
     port_type: Optional[PortType] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
@@ -215,9 +221,9 @@ class InterfaceUpdate(BaseModel):
 
 
 class InterfaceCreate(BaseModel):
-    """Ручное добавление порта сверх тех, что пришли из шаблона устройства."""
-    label: str
-    port_number: Optional[int] = None
+    """Добавление порта устройству — только для моделей со съёмными портами."""
+    port_number: int = Field(ge=1)
+    label: str = Field(min_length=1, max_length=100)
     port_type: Optional[PortType] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
@@ -239,8 +245,8 @@ class ConnectedTo(BaseModel):
 class InterfaceOut(BaseModel):
     id: int
     device_id: int
+    port_number: int
     label: str
-    port_number: Optional[int] = None
     port_type: Optional[PortType] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
@@ -404,6 +410,28 @@ class TopologyEdge(BaseModel):
 class TopologyOut(BaseModel):
     nodes: List[TopologyNode]
     edges: List[TopologyEdge]
+
+
+# ---------- Структура БД ----------
+class SchemaColumn(BaseModel):
+    name: str
+    type: str
+    nullable: bool
+    primary_key: bool
+    unique: bool
+    # «таблица.колонка», куда указывает внешний ключ; пусто, если это не он.
+    references: Optional[str] = None
+
+
+class SchemaTable(BaseModel):
+    name: str
+    note: Optional[str] = None
+    columns: List[SchemaColumn]
+    row_count: int
+
+
+class DatabaseSchema(BaseModel):
+    tables: List[SchemaTable]
 
 
 # ---------- Search ----------

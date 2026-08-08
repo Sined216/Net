@@ -21,7 +21,9 @@ export function DevicesPage() {
 
   const freeEntries: FreeEntry[] = useMemo(() => {
     const out: FreeEntry[] = [];
-    for (const d of devices) for (const i of d.interfaces) if (!i.connected_to) out.push({ device: d, iface: i });
+    // Свободен тот порт, в котором нет кабеля вообще. Подвешенный кабель
+    // тоже воткнут — такой порт занят, хоть на другом конце и пусто.
+    for (const d of devices) for (const i of d.interfaces) if (!i.link_id) out.push({ device: d, iface: i });
     return out;
   }, [devices]);
 

@@ -11,6 +11,7 @@ import { SearchPage } from './pages/SearchPage';
 import { TagsPage } from './pages/TagsPage';
 import { VlansPage } from './pages/VlansPage';
 import { UsersPage } from './pages/UsersPage';
+import { SchemaPage } from './pages/SchemaPage';
 
 export function App() {
   return (
@@ -32,6 +33,7 @@ export function App() {
         <Route path="/search" element={<SearchPage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/vlans" element={<VlansPage />} />
+        <Route path="/schema" element={<SchemaPage />} />
         <Route
           path="/users"
           element={

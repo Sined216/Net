@@ -105,8 +105,10 @@ export interface VlanOut extends VlanCreate {
 export type PortType = 'access' | 'trunk' | 'uplink';
 
 export interface InterfaceTemplateCreate {
+  /** Номер обязателен и уникален внутри модели: им порт и опознаётся —
+   * он напечатан на корпусе. Название — просто подпись и может совпадать. */
+  port_number: number;
   label: string;
-  port_number?: number | null;
   port_type?: PortType | null;
 }
 
@@ -154,9 +156,9 @@ export interface TemplateImpact {
 }
 
 // ---------- Interface ----------
+/** Правка порта у устройства. Названия и номера здесь нет: они описывают
+ * модель техники и правятся в шаблоне. */
 export interface InterfaceUpdate {
-  label?: string;
-  port_number?: number | null;
   port_type?: PortType | null;
   vlan_id?: number | null;
   trunk_vlan_ids?: number[] | null;
@@ -166,8 +168,8 @@ export interface InterfaceUpdate {
 }
 
 export interface InterfaceCreate {
+  port_number: number;
   label: string;
-  port_number?: number | null;
   port_type?: PortType | null;
   vlan_id?: number | null;
   trunk_vlan_ids?: number[] | null;
@@ -188,8 +190,8 @@ export interface ConnectedTo {
 export interface InterfaceOut {
   id: number;
   device_id: number;
+  port_number: number;
   label: string;
-  port_number: number | null;
   port_type: PortType | null;
   vlan_id: number | null;
   trunk_vlan_ids: number[] | null;
@@ -318,4 +320,26 @@ export interface SearchResult {
   interface_label: string;
   ip: string | null;
   mac: string | null;
+}
+
+// ---------- Структура БД ----------
+export interface SchemaColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primary_key: boolean;
+  unique: boolean;
+  /** «таблица.колонка», куда указывает внешний ключ. */
+  references: string | null;
+}
+
+export interface SchemaTable {
+  name: string;
+  note: string | null;
+  columns: SchemaColumn[];
+  row_count: number;
+}
+
+export interface DatabaseSchema {
+  tables: SchemaTable[];
 }

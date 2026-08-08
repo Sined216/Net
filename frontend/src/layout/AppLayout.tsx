@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AppShell, Group, NavLink as MantineNavLink, ScrollArea, Text, Button, Stack, Box } from '@mantine/core';
 import {
   IconDeviceDesktop, IconTemplate, IconPlugConnected, IconTopologyStar,
-  IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey,
+  IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
 } from '@tabler/icons-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/search', label: 'Поиск', icon: IconSearch },
   { to: '/tags', label: 'Теги', icon: IconTags },
   { to: '/vlans', label: 'VLAN', icon: IconNetwork },
+  { to: '/schema', label: 'Структура БД', icon: IconDatabase },
 ];
 
 export function AppLayout() {

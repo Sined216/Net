@@ -19,10 +19,11 @@ import type { LinkOut } from '../api/types';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { DeviceNode, DEVICE_NODE_WIDTH, DEVICE_NODE_HEIGHT, type DeviceNodeType } from './topology/DeviceNode';
 import { GroupNode, type GroupNodeType } from './topology/GroupNode';
+import { DanglingNode, DANGLING_NODE_SIZE, type DanglingNodeType } from './topology/DanglingNode';
 import { FloatingEdge, type FloatingEdgeType } from './topology/FloatingEdge';
 import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 
-const nodeTypes = { device: DeviceNode, group: GroupNode };
+const nodeTypes = { device: DeviceNode, group: GroupNode, dangling: DanglingNode };
 const edgeTypes = { floating: FloatingEdge };
 const LINE_DASH: Record<string, string | undefined> = { solid: undefined, dashed: '7 5', dotted: '2 4' };
 const GROUP_PADDING = 30;
@@ -54,7 +55,7 @@ export function TopologyPage() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<DeviceNodeType | GroupNodeType>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<DeviceNodeType | GroupNodeType | DanglingNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FloatingEdgeType>([]);
   const updatePosition = useUpdateDevicePosition();
   const deleteDevice = useDeleteDevice();
@@ -67,7 +68,7 @@ export function TopologyPage() {
    * перестройкой узлов. */
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const flowRef = useRef<ReactFlowInstance<DeviceNodeType | GroupNodeType, FloatingEdgeType> | null>(null);
+  const flowRef = useRef<ReactFlowInstance<DeviceNodeType | GroupNodeType | DanglingNodeType, FloatingEdgeType> | null>(null);
 
   /** Раскладка, которая уже сложилась в этой сессии.
    *
@@ -152,7 +153,9 @@ export function TopologyPage() {
       const template = templates.find((t) => t.id === d.template_id);
       const typeLabel = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '—' : '—';
       const ln = byId.get(String(d.id))!;
-      const connected = d.interfaces.filter((i) => i.connected_to).length;
+      // Порт с подвешенным кабелем тоже занят — иначе счётчик на узле
+      // расходился бы с тем, что показывает страница устройства.
+      const connected = d.interfaces.filter((i) => i.link_id).length;
       deviceNodesById.set(d.id, {
         id: String(d.id),
         type: 'device',
@@ -195,7 +198,59 @@ export function TopologyPage() {
       }
     }
 
-    const rfNodes: (DeviceNodeType | GroupNodeType)[] = [...groupNodes, ...deviceNodesById.values()];
+    // Подвешенные кабели: второй конец рисуется заглушкой рядом с живым
+    // устройством. Иначе снятая сетевая карта просто стирала кабель со
+    // схемы, хотя физически он остался проложен.
+    const danglingNodes: DanglingNodeType[] = [];
+    const danglingEdges: FloatingEdgeType[] = [];
+    // Сколько подвешенных кабелей уже отрисовано у этого устройства —
+    // чтобы вторая и третья заглушки не легли на первую.
+    const danglingPerDevice = new Map<number, number>();
+    for (const link of links) {
+      const liveEnd = link.interface_a_id ?? link.interface_b_id;
+      const emptyEnd = link.interface_a_id == null || link.interface_b_id == null;
+      if (!emptyEnd || liveEnd == null) continue;
+
+      const deviceId = ifaceToDevice.get(liveEnd);
+      const deviceNode = deviceId != null ? deviceNodesById.get(deviceId) : undefined;
+      if (!deviceNode) continue;
+
+      const stubId = `dangling-${link.id}`;
+      const index = danglingPerDevice.get(deviceId!) ?? 0;
+      danglingPerDevice.set(deviceId!, index + 1);
+      danglingNodes.push({
+        id: stubId,
+        type: 'dangling',
+        // Под устройством, а не сбоку: по бокам стоят соседи, с которыми
+        // оно связано, и заглушка наезжала бы на них. Каждая следующая —
+        // ниже предыдущей.
+        position: {
+          x: deviceNode.position.x + DEVICE_NODE_WIDTH / 2 - DANGLING_NODE_SIZE / 2,
+          y: deviceNode.position.y + DEVICE_NODE_HEIGHT + 46 + index * 30,
+        },
+        parentId: deviceNode.parentId,
+        data: { fromLabel: `${deviceNode.data.code} · ${ifaceLabel.get(liveEnd) ?? ''}`.trim() },
+        selectable: false,
+        draggable: false,
+      });
+      danglingEdges.push({
+        id: String(link.id),
+        source: String(deviceId),
+        target: stubId,
+        type: 'floating',
+        data: {
+          sourceLabel: ifaceLabel.get(liveEnd) ?? '',
+          targetLabel: 'не подключён',
+          color: 'var(--mantine-color-orange-6)',
+          dashArray: '4 4',
+          confirmed: link.confirmed,
+        },
+      });
+    }
+
+    const rfNodes: (DeviceNodeType | GroupNodeType | DanglingNodeType)[] = [
+      ...groupNodes, ...deviceNodesById.values(), ...danglingNodes,
+    ];
 
     const rfEdges: FloatingEdgeType[] = visibleLinks.map((l) => {
       const lt = l.template_id ? linkTemplates.find((t) => t.id === l.template_id) : null;
@@ -215,7 +270,7 @@ export function TopologyPage() {
     });
 
     setNodes(rfNodes);
-    setEdges(rfEdges);
+    setEdges([...rfEdges, ...danglingEdges]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredDevices, links, linkTemplates, templates, types, topologyGroups, focusedId]);
 

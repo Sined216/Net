@@ -178,8 +178,9 @@ function DeviceTypeFormModal({ onClose }: { onClose: () => void }) {
 
 interface DraftPort {
   _key: number;
+  /** Номер обязателен — им порт и опознаётся. */
+  port_number: number;
   label: string;
-  port_number: number | null;
   port_type: PortType | null;
 }
 
@@ -189,6 +190,7 @@ interface DraftPort {
 function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut | null; onClose: () => void }) {
   const isEdit = !!template;
   const { data: types = [] } = useDeviceTypes();
+  const { data: templates = [] } = useDeviceTemplates();
   const [name, setName] = useState(template?.name ?? '');
   const [typeId, setTypeId] = useState<string | null>(template ? String(template.device_type_id) : null);
   const [manufacturer, setManufacturer] = useState(template?.manufacturer ?? '');
@@ -200,6 +202,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const [draftPorts, setDraftPorts] = useState<DraftPort[]>([]);
   const draftSeq = useRef(0);
   const [portLabel, setPortLabel] = useState('');
+  const [portNumber, setPortNumber] = useState<number | ''>('');
   const [portType, setPortType] = useState<string | null>(null);
   const [genCount, setGenCount] = useState<number | ''>(24);
 
@@ -208,40 +211,50 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const addPort = useAddTemplateInterface();
   const removePort = useDeleteTemplateInterface();
 
-  const livePorts: InterfaceTemplateOut[] = template?.interfaces ?? [];
+  // Порты берём из свежих данных, а не из пропса: пропс — это снимок,
+  // сделанный при открытии модалки, и добавленный порт в нём не появлялся —
+  // он был виден только после закрытия, в списке шаблонов.
+  const live = isEdit ? templates.find((t) => t.id === template!.id) : undefined;
+  const livePorts: InterfaceTemplateOut[] = live?.interfaces ?? template?.interfaces ?? [];
   const currentPorts = isEdit ? livePorts : draftPorts;
-  const nextPortNumber = currentPorts.length + 1;
+  const nextPortNumber = Math.max(0, ...currentPorts.map((p) => p.port_number)) + 1;
 
   function addPortNow() {
-    const label = portLabel.trim();
-    if (!label) return;
-    if (currentPorts.some((p) => p.label === label)) { notifyError(new Error('Порт с таким названием уже есть')); return; }
+    const number = portNumber === '' ? nextPortNumber : portNumber;
+    const label = portLabel.trim() || `Порт ${number}`;
+    // Уникален номер, а не название: он напечатан на корпусе, по нему и
+    // находят гнездо. Названия совпадать не запрещено.
+    if (currentPorts.some((p) => p.port_number === number)) {
+      notifyError(new Error(`Порт №${number} уже есть в шаблоне`));
+      return;
+    }
     const pt = (portType || null) as PortType | null;
     if (isEdit) {
       addPort.mutate(
-        { templateId: template!.id, body: { label, port_number: nextPortNumber, port_type: pt } },
+        { templateId: template!.id, body: { port_number: number, label, port_type: pt } },
         { onError: notifyError },
       );
     } else {
       draftSeq.current += 1;
-      setDraftPorts((prev) => [...prev, { _key: draftSeq.current, label, port_number: nextPortNumber, port_type: pt }]);
+      setDraftPorts((prev) => [...prev, { _key: draftSeq.current, port_number: number, label, port_type: pt }]);
     }
     setPortLabel('');
+    setPortNumber('');
   }
 
   function generatePorts() {
     const n = typeof genCount === 'number' ? genCount : 0;
     if (n <= 0) return;
-    const start = currentPorts.length;
+    const start = Math.max(0, ...currentPorts.map((p) => p.port_number));
     if (isEdit) {
       for (let i = 1; i <= n; i++) {
-        addPort.mutate({ templateId: template!.id, body: { label: `Порт ${start + i}`, port_number: start + i } });
+        addPort.mutate({ templateId: template!.id, body: { port_number: start + i, label: `Порт ${start + i}` } });
       }
     } else {
       const newPorts: DraftPort[] = [];
       for (let i = 1; i <= n; i++) {
         draftSeq.current += 1;
-        newPorts.push({ _key: draftSeq.current, label: `Порт ${start + i}`, port_number: start + i, port_type: null });
+        newPorts.push({ _key: draftSeq.current, port_number: start + i, label: `Порт ${start + i}`, port_type: null });
       }
       setDraftPorts((prev) => [...prev, ...newPorts]);
     }
@@ -249,7 +262,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
 
   function removePortNow(key: number) {
     if (isEdit) {
-      if (!confirm('Удалить порт из шаблона? На уже созданных устройствах его порты не изменятся.')) return;
+      if (!confirm('Убрать порт из модели? Он исчезнет у всех устройств этой модели; кабели, воткнутые в него, останутся с подвешенным концом.')) return;
       removePort.mutate({ templateId: template!.id, ifaceId: key }, { onError: notifyError });
     } else {
       setDraftPorts((prev) => prev.filter((p) => p._key !== key));
@@ -319,17 +332,17 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
           <Table withTableBorder verticalSpacing={4}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Порт</Table.Th>
-                <Table.Th>№</Table.Th>
+                <Table.Th w={60}>№</Table.Th>
+                <Table.Th>Название</Table.Th>
                 <Table.Th>Тип</Table.Th>
                 <Table.Th w={40} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {[...currentPorts].sort((a, b) => (a.port_number ?? 9999) - (b.port_number ?? 9999)).map((p) => (
+              {[...currentPorts].sort((a, b) => a.port_number - b.port_number).map((p) => (
                 <Table.Tr key={isEdit ? (p as InterfaceTemplateOut).id : (p as DraftPort)._key}>
+                  <Table.Td fw={600}>{p.port_number}</Table.Td>
                   <Table.Td>{p.label}</Table.Td>
-                  <Table.Td>{p.port_number ?? '—'}</Table.Td>
                   <Table.Td>{p.port_type ?? '—'}</Table.Td>
                   <Table.Td>
                     <ActionIcon
@@ -353,8 +366,14 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
             </Table.Tbody>
           </Table>
           <Group align="flex-end">
+            <NumberInput
+              label="№" description="уникален" placeholder={String(nextPortNumber)} min={1} w={110}
+              value={portNumber} onChange={(v) => setPortNumber(v === '' ? '' : Number(v))}
+            />
             <TextInput
-              label="Название порта" placeholder="Название порта" value={portLabel} style={{ flex: 2 }}
+              label="Название порта" description="просто подпись, может повторяться"
+              placeholder={`Порт ${portNumber === '' ? nextPortNumber : portNumber}`}
+              value={portLabel} style={{ flex: 2 }}
               onChange={(e) => setPortLabel(e.currentTarget.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPortNow(); } }}
             />

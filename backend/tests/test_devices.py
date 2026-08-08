@@ -96,7 +96,7 @@ def test_ports_cannot_be_added_to_device_by_default(client, headers, make_device
     device = make_device()
     response = client.post(
         f"/devices/{device['id']}/interfaces",
-        json={"label": "SFP1", "port_number": 3},
+        json={"port_number": 3, "label": "SFP1"},
         headers=headers["editor"],
     )
     assert response.status_code == 409
@@ -115,15 +115,17 @@ def test_ports_can_be_added_when_model_allows(client, headers, template, make_de
 
     response = client.post(
         f"/devices/{device['id']}/interfaces",
-        json={"label": "SFP1", "port_number": 3},
+        json={"port_number": 3, "label": "SFP1"},
         headers=headers["editor"],
     )
     assert response.status_code == 201
 
     duplicate = client.post(
-        f"/devices/{device['id']}/interfaces", json={"label": "SFP1"}, headers=headers["editor"]
+        f"/devices/{device['id']}/interfaces",
+        json={"port_number": 3, "label": "SFP2"},
+        headers=headers["editor"],
     )
-    assert duplicate.status_code == 409
+    assert duplicate.status_code == 409, "номер занят — название тут ни при чём"
 
 
 def test_position_is_saved(client, headers, make_device):

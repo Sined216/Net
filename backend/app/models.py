@@ -124,12 +124,15 @@ class InterfaceTemplate(Base):
     __tablename__ = "device_template_interfaces"
     id = Column(Integer, primary_key=True)
     template_id = Column(Integer, ForeignKey("device_templates.id", ondelete="CASCADE"), nullable=False)
+    # Номер порта — то, чем порт опознаётся: он напечатан на корпусе и по нему
+    # человек находит гнездо. Название («Gi0/1», «eth0») — просто подпись,
+    # у разных портов она может совпадать.
+    port_number = Column(Integer, nullable=False)
     label = Column(Text, nullable=False)
-    port_number = Column(Integer)
     port_type = Column(Text)
 
     __table_args__ = (
-        UniqueConstraint("template_id", "label"),
+        UniqueConstraint("template_id", "port_number"),
         CheckConstraint("port_type IN ('access','trunk','uplink') OR port_type IS NULL"),
     )
 
@@ -184,8 +187,10 @@ class Interface(Base):
     __tablename__ = "interfaces"
     id = Column(Integer, primary_key=True)
     device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    # Уникален номер, а не название: два порта могут называться одинаково,
+    # но занимать разные гнёзда. Связь всегда указывает на конкретное гнездо.
+    port_number = Column(Integer, nullable=False)
     label = Column(Text, nullable=False)
-    port_number = Column(Integer)
     port_type = Column(Text)
     vlan_id = Column(Integer, ForeignKey("vlans.id", ondelete="SET NULL"))
     trunk_vlan_ids = Column(ARRAY(Integer))
@@ -194,7 +199,7 @@ class Interface(Base):
     notes = Column(Text)
 
     __table_args__ = (
-        UniqueConstraint("device_id", "label"),
+        UniqueConstraint("device_id", "port_number"),
         CheckConstraint("port_type IN ('access','trunk','uplink') OR port_type IS NULL"),
     )
 

@@ -43,11 +43,11 @@ def create_template(payload: schemas.DeviceTemplateCreate, db: Session = Depends
     db.add(template)
     db.flush()  # получить template.id
 
-    labels = set()
+    numbers = set()
     for iface in payload.interfaces:
-        if iface.label in labels:
-            raise HTTPException(status_code=400, detail=f"Повторяющийся label порта в шаблоне: {iface.label}")
-        labels.add(iface.label)
+        if iface.port_number in numbers:
+            raise HTTPException(status_code=400, detail=f"Порт №{iface.port_number} указан дважды")
+        numbers.add(iface.port_number)
         db.add(models.InterfaceTemplate(template_id=template.id, **iface.model_dump()))
 
     log_change(db, user.id, "create", "device_template", None, old=None, new=template)
@@ -106,30 +106,32 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
     if db.query(models.InterfaceTemplate).filter(
-        models.InterfaceTemplate.template_id == template_id, models.InterfaceTemplate.label == payload.label
+        models.InterfaceTemplate.template_id == template_id,
+        models.InterfaceTemplate.port_number == payload.port_number,
     ).first():
-        raise HTTPException(status_code=409, detail="В шаблоне уже есть порт с таким названием")
+        raise HTTPException(status_code=409, detail=f"В шаблоне уже есть порт №{payload.port_number}")
 
     iface = models.InterfaceTemplate(template_id=template_id, **payload.model_dump())
     db.add(iface)
 
     devices = db.query(models.Device).filter(models.Device.template_id == template_id).all()
     existing = {
-        (row.device_id) for row in db.query(models.Interface).filter(
+        row.device_id for row in db.query(models.Interface).filter(
             models.Interface.device_id.in_([d.id for d in devices] or [0]),
-            models.Interface.label == payload.label,
+            models.Interface.port_number == payload.port_number,
         ).all()
     }
     for device in devices:
         if device.id in existing:
             continue
         db.add(models.Interface(
-            device_id=device.id, label=payload.label,
-            port_number=payload.port_number, port_type=payload.port_type,
+            device_id=device.id, port_number=payload.port_number,
+            label=payload.label, port_type=payload.port_type,
         ))
 
     log_change(db, user.id, "update", "device_template", template_id,
-               old=None, new={"добавлен порт": payload.label, "устройств затронуто": len(devices) - len(existing)})
+               old=None, new={"добавлен порт": f"№{payload.port_number} {payload.label}",
+                              "устройств затронуто": len(devices) - len(existing)})
     db.commit()
     db.refresh(iface)
     return iface
@@ -155,7 +157,8 @@ def delete_template_interface(template_id: int, iface_id: int, db: Session = Dep
     if device_ids:
         doomed = [
             row.id for row in db.query(models.Interface).filter(
-                models.Interface.device_id.in_(device_ids), models.Interface.label == iface.label,
+                models.Interface.device_id.in_(device_ids),
+                models.Interface.port_number == iface.port_number,
             ).all()
         ]
         if doomed:
@@ -173,7 +176,7 @@ def delete_template_interface(template_id: int, iface_id: int, db: Session = Dep
             ).delete(synchronize_session=False)
 
     log_change(db, user.id, "update", "device_template", template_id,
-               old={"убран порт": iface.label, "устройств затронуто": removed}, new=None)
+               old={"убран порт": f"№{iface.port_number} {iface.label}", "устройств затронуто": removed}, new=None)
     db.delete(iface)
     db.commit()
 

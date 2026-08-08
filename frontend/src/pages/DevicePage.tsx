@@ -35,7 +35,9 @@ export function DevicePage() {
   // Свободные порты всех устройств — из них выбирают, куда подключить порт.
   const freeEntries: FreeEntry[] = useMemo(() => {
     const out: FreeEntry[] = [];
-    for (const d of devices) for (const i of d.interfaces) if (!i.connected_to) out.push({ device: d, iface: i });
+    // Свободен тот порт, в котором нет кабеля вообще. Подвешенный кабель
+    // тоже воткнут — такой порт занят, хоть на другом конце и пусто.
+    for (const d of devices) for (const i of d.interfaces) if (!i.link_id) out.push({ device: d, iface: i });
     return out;
   }, [devices]);
 
@@ -54,10 +56,9 @@ export function DevicePage() {
   // это отражает жизнь — ПК со съёмной сетевой картой.
   const portsEditable = template?.ports_editable_on_device ?? false;
 
-  const interfaces = [...device.interfaces].sort(
-    (a, b) => (a.port_number ?? 9999) - (b.port_number ?? 9999) || a.label.localeCompare(b.label),
-  );
-  const connectedCount = interfaces.filter((i) => i.connected_to).length;
+  const interfaces = [...device.interfaces].sort((a, b) => a.port_number - b.port_number);
+  // Занят и тот порт, у которого второй конец кабеля повис.
+  const busyCount = interfaces.filter((i) => i.link_id).length;
 
   function addPort() {
     const n = device!.interfaces.length + 1;
@@ -117,7 +118,7 @@ export function DevicePage() {
           <Field label="Расположение">{device.location || '—'}</Field>
           <Field label="Роль">{device.role || '—'}</Field>
           <Field label="Установлено">{device.install_date || '—'}</Field>
-          <Field label="Порты">{connectedCount} из {interfaces.length} подключено</Field>
+          <Field label="Порты">{busyCount} из {interfaces.length} занято</Field>
         </Group>
         {device.tags.length > 0 && (
           <Group gap={6} mt="sm">
@@ -134,7 +135,7 @@ export function DevicePage() {
         <Table verticalSpacing={4}>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Порт</Table.Th><Table.Th>№</Table.Th><Table.Th>Тип</Table.Th><Table.Th>VLAN</Table.Th>
+              <Table.Th w={50}>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Тип</Table.Th><Table.Th>VLAN</Table.Th>
               <Table.Th>IP</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Заметка</Table.Th>
               <Table.Th>Подключение</Table.Th><Table.Th />
             </Table.Tr>

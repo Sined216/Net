@@ -22,8 +22,6 @@ export function InterfaceRow({
   /** Разрешает удалять порт — только у моделей со съёмными картами. */
   portsEditable?: boolean;
 }) {
-  const [label, setLabel] = useState(iface.label);
-  const [portNumber, setPortNumber] = useState<string>(iface.port_number != null ? String(iface.port_number) : '');
   const [portType, setPortType] = useState<string | null>(iface.port_type);
   const [vlanId, setVlanId] = useState<string | null>(iface.vlan_id != null ? String(iface.vlan_id) : null);
   const [ip, setIp] = useState(iface.ip ?? '');
@@ -41,7 +39,9 @@ export function InterfaceRow({
     updateInterface.mutate(
       {
         id: iface.id,
-        body: { label: label.trim(), port_number: nnInt(portNumber), port_type: (portType as PortType) || null, vlan_id: nnInt(vlanId), ip: nn(ip), mac: nn(mac), notes: nn(notes) },
+        // Ни номера, ни названия: они описывают модель техники и правятся в
+        // шаблоне. Здесь — только то, что у каждого экземпляра своё.
+        body: { port_type: (portType as PortType) || null, vlan_id: nnInt(vlanId), ip: nn(ip), mac: nn(mac), notes: nn(notes) },
       },
       { onSuccess: () => notifySuccess('Порт сохранён'), onError: notifyError },
     );
@@ -83,8 +83,11 @@ export function InterfaceRow({
 
   return (
     <Table.Tr>
-      <Table.Td><TextInput size="xs" value={label} onChange={(e) => setLabel(e.currentTarget.value)} w={80} /></Table.Td>
-      <Table.Td><TextInput size="xs" value={portNumber} onChange={(e) => setPortNumber(e.currentTarget.value)} w={55} /></Table.Td>
+      {/* Номер и название приходят из шаблона модели и здесь только
+          показываются: правка на устройстве разводила бы одинаковые железки
+          по названиям портов. */}
+      <Table.Td><Text size="xs" fw={600}>{iface.port_number}</Text></Table.Td>
+      <Table.Td><Text size="xs">{iface.label}</Text></Table.Td>
       <Table.Td>
         <Select size="xs" data={PORT_TYPES} value={portType} onChange={setPortType} clearable w={100} />
       </Table.Td>
