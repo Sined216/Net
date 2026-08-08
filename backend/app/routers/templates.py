@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, ports, schemas, auth
+from app import cables, models, ports, schemas, auth
 from app.audit import log_change
 
 router = APIRouter(prefix="/device-templates", tags=["device-templates"])
@@ -156,14 +156,12 @@ def delete_template_interface(template_id: int, iface_id: int, db: Session = Dep
             ).all()
         ]
         if doomed:
-            # Связь между двумя портами одного и того же названия (два
-            # одинаковых устройства воткнуты друг в друга) теряет сразу оба
-            # конца — подвешивать нечего, такую удаляем целиком. Иначе
-            # осталась бы запись без единого конца, и база её не примет.
-            db.query(models.Link).filter(
-                models.Link.interface_a_id.in_(doomed),
-                models.Link.interface_b_id.in_(doomed),
-            ).delete(synchronize_session=False)
+            # Кабель, у которого не остаётся ни одного конца, удаляется
+            # целиком: подвешивать нечего, а запись без концов база не
+            # примет. Так бывает, когда двумя концами он воткнут в порты с
+            # одним номером (два одинаковых устройства соединены между
+            # собой) или когда второй конец повис ещё раньше.
+            cables.drop_cables_without_ends(db, doomed)
 
             removed = db.query(models.Interface).filter(
                 models.Interface.id.in_(doomed),

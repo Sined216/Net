@@ -1,0 +1,20 @@
+import { createContext, useContext } from 'react';
+
+/** Что можно сделать с устройством прямо на схеме.
+ *
+ * Узлы React Flow пересобираются на каждое изменение данных, поэтому
+ * передавать обработчики через `data` узла нельзя: в них застыло бы
+ * состояние того рендера, на котором узел собрали. Контекст читается в
+ * момент клика и всегда актуален.
+ */
+export interface TopologyActions {
+  edit: (deviceId: number) => void;
+  copy: (deviceId: number) => void;
+  remove: (deviceId: number) => void;
+}
+
+export const TopologyActionsContext = createContext<TopologyActions | null>(null);
+
+export function useTopologyActions(): TopologyActions | null {
+  return useContext(TopologyActionsContext);
+}

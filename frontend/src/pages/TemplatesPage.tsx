@@ -110,16 +110,16 @@ export function TemplatesPage() {
                 <Table withTableBorder verticalSpacing={4}>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Порт</Table.Th>
-                      <Table.Th>№</Table.Th>
+                      <Table.Th w={60}>№</Table.Th>
+                      <Table.Th>Название</Table.Th>
                       <Table.Th>Тип</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {tpl.interfaces.map((i) => (
                       <Table.Tr key={i.id}>
+                        <Table.Td fw={600}>{i.port_number}</Table.Td>
                         <Table.Td>{i.label}</Table.Td>
-                        <Table.Td>{i.port_number ?? '—'}</Table.Td>
                         <Table.Td>{i.port_type ?? '—'}</Table.Td>
                       </Table.Tr>
                     ))}

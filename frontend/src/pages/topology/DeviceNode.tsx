@@ -1,5 +1,7 @@
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
-import { Text, Tooltip } from '@mantine/core';
+import { Handle, NodeToolbar, Position, type NodeProps, type Node } from '@xyflow/react';
+import { ActionIcon, Group, Paper, Text, Tooltip } from '@mantine/core';
+import { IconCopy, IconPencil, IconTrash } from '@tabler/icons-react';
+import { useTopologyActions } from './actions';
 
 export interface DeviceNodeData extends Record<string, unknown> {
   code: string;
@@ -33,9 +35,11 @@ const NEUTRAL = 'var(--mantine-color-dimmed)';
  * разъезжались. Взамен — счётчик "занято/всего", а какие именно порты
  * соединены, видно из подписей на самих рёбрах.
  */
-export function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
+export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
   const accent = data.color || NEUTRAL;
   const connected = data.portsConnected > 0;
+  const actions = useTopologyActions();
+  const deviceId = parseInt(id, 10);
 
   return (
     <div
@@ -51,6 +55,32 @@ export function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
         boxShadow: `0 1px 10px color-mix(in srgb, ${accent} 22%, transparent)`,
       }}
     >
+      {/* Панель действий над выделенным узлом: править, скопировать,
+          удалить — не уходя со схемы на страницу устройства. */}
+      {actions && (
+        <NodeToolbar isVisible={selected} position={Position.Top} offset={8}>
+          <Paper withBorder shadow="sm" p={2} radius="md">
+            <Group gap={2} wrap="nowrap">
+              <Tooltip label="Редактировать">
+                <ActionIcon variant="subtle" size="sm" onClick={() => actions.edit(deviceId)}>
+                  <IconPencil size={15} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Копировать — новое устройство по той же модели">
+                <ActionIcon variant="subtle" size="sm" onClick={() => actions.copy(deviceId)}>
+                  <IconCopy size={15} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Удалить">
+                <ActionIcon variant="subtle" size="sm" color="red" onClick={() => actions.remove(deviceId)}>
+                  <IconTrash size={15} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          </Paper>
+        </NodeToolbar>
+      )}
+
       {/* Точки подключения: за них тянут кабель мышкой. Раньше обе были
           скрыты и не принимали события — связь можно было создать только из
           карточки устройства. Видимы при наведении, чтобы не рябить на
@@ -63,7 +93,9 @@ export function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
         type="target" position={Position.Left} id="tgt"
         style={{ width: 9, height: 9, background: accent, border: '2px solid var(--mantine-color-body)' }}
       />
-      <Tooltip label={`${data.code} — ${data.subtitle} (${data.typeLabel})`}>
+      {/* Пока узел выделен, над ним висит панель действий — подсказка
+          перекрыла бы её собой. */}
+      <Tooltip label={`${data.code} — ${data.subtitle} (${data.typeLabel})`} disabled={selected}>
         <div
           style={{
             borderRadius: 8.5,

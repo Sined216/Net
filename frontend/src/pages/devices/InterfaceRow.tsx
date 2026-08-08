@@ -80,14 +80,18 @@ export function InterfaceRow({
   }
 
   const connectData = groupFreeEntries(freeEntries, iface.id);
+  // Кабель воткнут, но на том конце порта уже нет. Порт занят, а подключение
+  // недоделано — тем же оранжевым, что и заглушка на схеме, чтобы такие
+  // порты было видно, не вчитываясь в столбец подключения.
+  const dangling = !!iface.link_id && !iface.connected_to;
 
   return (
     <Table.Tr>
       {/* Номер и название приходят из шаблона модели и здесь только
           показываются: правка на устройстве разводила бы одинаковые железки
           по названиям портов. */}
-      <Table.Td><Text size="xs" fw={600}>{iface.port_number}</Text></Table.Td>
-      <Table.Td><Text size="xs">{iface.label}</Text></Table.Td>
+      <Table.Td><Text size="xs" fw={600} c={dangling ? 'orange' : undefined}>{iface.port_number}</Text></Table.Td>
+      <Table.Td><Text size="xs" c={dangling ? 'orange' : undefined}>{iface.label}</Text></Table.Td>
       <Table.Td>
         <Select size="xs" data={PORT_TYPES} value={portType} onChange={setPortType} clearable w={100} />
       </Table.Td>

@@ -176,3 +176,29 @@ def test_deleting_device_removes_links_entirely(client, headers, linked_pair):
     спецификации, и кабель «в никуда» — уже не документ, а мусор."""
     client.delete(f"/devices/{linked_pair['pc']['id']}", headers=headers["editor"])
     assert client.get("/links", headers=headers["viewer"]).json() == []
+
+
+def test_cable_disappears_when_its_last_end_is_removed(client, headers, pc_template):
+    """Кабель без единого конца нигде не задокументирован — он исчезает.
+
+    Раньше на этом падало: у связи обязан быть хотя бы один конец, и попытка
+    снять последний оборачивалась ошибкой сервера."""
+    def make_pc():
+        return client.post("/devices", json={"template_id": pc_template.id}, headers=headers["editor"]).json()
+
+    a, b = make_pc(), make_pc()
+    link = client.post(
+        "/links",
+        json={"interface_a_id": a["interfaces"][0]["id"], "interface_b_id": b["interfaces"][0]["id"]},
+        headers=headers["editor"],
+    ).json()
+
+    # сняли карту с одной стороны — конец повис, кабель остался
+    assert client.delete(f"/interfaces/{a['interfaces'][0]['id']}", headers=headers["editor"]).status_code == 204
+    links = client.get("/links", headers=headers["viewer"]).json()
+    assert link["id"] in [item["id"] for item in links]
+
+    # сняли и со второй — держаться кабелю больше не за что
+    assert client.delete(f"/interfaces/{b['interfaces'][0]['id']}", headers=headers["editor"]).status_code == 204
+    links = client.get("/links", headers=headers["viewer"]).json()
+    assert link["id"] not in [item["id"] for item in links]

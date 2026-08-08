@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Text, cast, or_
 
 from app.database import get_db
-from app import models, ports, schemas, auth, serialize
+from app import cables, models, ports, schemas, auth, serialize
 from app.audit import log_change
 from app.routers.devices import _require_editable_ports
 
@@ -47,6 +47,9 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db),
     old_snapshot = {c.name: getattr(iface, c.name) for c in iface.__table__.columns}
     log_change(db, user.id, "delete", "interface", iface.id, old=old_snapshot, new=None)
     device_id = iface.device_id
+    # Если это был последний оставшийся конец кабеля, кабель исчезает вместе
+    # с портом: висеть в спецификации, не будучи никуда воткнутым, он не может.
+    cables.drop_cables_without_ends(db, [iface.id])
     db.delete(iface)
     # Ряд номеров остаётся сплошным: после снятой карты не должно оставаться
     # пропущенного номера — гнезда с таким номером у железки нет.

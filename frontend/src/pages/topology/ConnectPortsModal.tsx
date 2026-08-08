@@ -94,13 +94,17 @@ function deviceLabel(device: DeviceOut | undefined): string {
 }
 
 /** Занятые порты в список не попадают: связь на порт можно повесить только
- * одну, и предлагать занятый — значит гарантированно получить отказ. */
+ * одну, и предлагать занятый — значит гарантированно получить отказ.
+ *
+ * Занят и тот порт, у которого второй конец кабеля повис: кабель в нём
+ * сидит, просто ведёт в никуда. Раньше проверялось наличие соседа, и такие
+ * порты предлагались — выбор заканчивался отказом сервера. */
 function useFreePorts(device: DeviceOut | undefined) {
   return useMemo(() => {
     if (!device) return [];
     return device.interfaces
-      .filter((i) => !i.connected_to)
-      .sort((a, b) => (a.port_number ?? 9999) - (b.port_number ?? 9999) || a.label.localeCompare(b.label))
-      .map((i) => ({ value: String(i.id), label: i.label }));
+      .filter((i) => !i.link_id)
+      .sort((a, b) => a.port_number - b.port_number)
+      .map((i) => ({ value: String(i.id), label: `№${i.port_number} · ${i.label}` }));
   }, [device]);
 }

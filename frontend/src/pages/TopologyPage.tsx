@@ -8,14 +8,16 @@ import { IconPlus, IconUsersGroup } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import {
   useDeviceTemplates, useDeviceTypes, useDevices, useLinkTemplates, useLinks, useTags,
-  useTopologyGroups, useUpdateDevicePosition, useDeleteDevice, useDeleteLink,
+  useTopologyGroups, useUpdateDevicePosition, useDeleteDevice, useDeleteLink, useCreateDevice,
 } from '../api/hooks';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
+import { AttachEndModal } from './topology/AttachEndModal';
+import { TopologyActionsContext, type TopologyActions } from './topology/actions';
 import { LinkFormModal } from './links/LinkFormModal';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import { flattenTagsOrdered } from '../lib/utils';
-import { notifyError } from '../lib/notify';
-import type { LinkOut } from '../api/types';
+import { notifyError, notifySuccess } from '../lib/notify';
+import type { DeviceOut, LinkOut } from '../api/types';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { DeviceNode, DEVICE_NODE_WIDTH, DEVICE_NODE_HEIGHT, type DeviceNodeType } from './topology/DeviceNode';
 import { GroupNode, type GroupNodeType } from './topology/GroupNode';
@@ -27,6 +29,9 @@ const nodeTypes = { device: DeviceNode, group: GroupNode, dangling: DanglingNode
 const edgeTypes = { floating: FloatingEdge };
 const LINE_DASH: Record<string, string | undefined> = { solid: undefined, dashed: '7 5', dotted: '2 4' };
 const GROUP_PADDING = 30;
+/** Узел-заглушка свободного конца: `dangling-<id связи>`. Префикс отличает
+ * его от узла устройства, id которого — просто число. */
+const DANGLING_PREFIX = 'dangling-';
 const GROUP_HEADER = 26;
 
 /** Общая заглушка для ещё не загруженных запросов.
@@ -60,9 +65,13 @@ export function TopologyPage() {
   const updatePosition = useUpdateDevicePosition();
   const deleteDevice = useDeleteDevice();
   const deleteLink = useDeleteLink();
+  const createDevice = useCreateDevice();
   const [editingLink, setEditingLink] = useState<LinkOut | null>(null);
+  const [editingDevice, setEditingDevice] = useState<DeviceOut | null>(null);
   const [addingDevice, setAddingDevice] = useState(false);
   const [connecting, setConnecting] = useState<{ sourceId: number; targetId: number } | null>(null);
+  /** Повисший конец, который перетащили на устройство: осталось выбрать порт. */
+  const [attaching, setAttaching] = useState<{ linkId: number; deviceId: number } | null>(null);
   /** Устройство, на которое пришли по ссылке со своей страницы. Живёт в
    * состоянии, а не только в адресе: иначе подсветку затирало бы первой же
    * перестройкой узлов. */
@@ -215,7 +224,7 @@ export function TopologyPage() {
       const deviceNode = deviceId != null ? deviceNodesById.get(deviceId) : undefined;
       if (!deviceNode) continue;
 
-      const stubId = `dangling-${link.id}`;
+      const stubId = `${DANGLING_PREFIX}${link.id}`;
       const index = danglingPerDevice.get(deviceId!) ?? 0;
       danglingPerDevice.set(deviceId!, index + 1);
       danglingNodes.push({
@@ -231,6 +240,8 @@ export function TopologyPage() {
         parentId: deviceNode.parentId,
         data: { fromLabel: `${deviceNode.data.code} · ${ifaceLabel.get(liveEnd) ?? ''}`.trim() },
         selectable: false,
+        // Перетаскивание самой заглушки выключено: тянут за неё кабель, а
+        // не двигают её по схеме — иначе жест был бы двусмысленным.
         draggable: false,
       });
       danglingEdges.push({
@@ -275,13 +286,69 @@ export function TopologyPage() {
   }, [filteredDevices, links, linkTemplates, templates, types, topologyGroups, focusedId]);
 
   /** Кабель тянут между устройствами, а связь в модели — между портами,
-   * поэтому после отпускания спрашиваем, какие именно порты соединить. */
+   * поэтому после отпускания спрашиваем, какие именно порты соединить.
+   *
+   * Отдельный случай — заглушка свободного конца: её тоже можно потянуть на
+   * устройство, но новая связь при этом не создаётся, у существующей
+   * дотыкается второй конец. */
   const handleConnect = useCallback((connection: Connection) => {
+    const ends = [connection.source, connection.target];
+    const stub = ends.find((id) => id.startsWith(DANGLING_PREFIX));
+    if (stub) {
+      const device = ends.find((id) => id !== stub);
+      const deviceId = device ? parseInt(device, 10) : NaN;
+      if (!Number.isFinite(deviceId)) return;
+      setAttaching({ linkId: parseInt(stub.slice(DANGLING_PREFIX.length), 10), deviceId });
+      return;
+    }
+
     const sourceId = parseInt(connection.source, 10);
     const targetId = parseInt(connection.target, 10);
     if (!sourceId || !targetId || sourceId === targetId) return;
     setConnecting({ sourceId, targetId });
   }, []);
+
+  /** Действия панели над узлом. Копия — новое устройство по той же модели:
+   * код ему выдаётся свой, порты копируются из модели, а положение берётся
+   * рядом с оригиналом, чтобы копию было видно. */
+  const actions: TopologyActions = useMemo(() => ({
+    edit: (deviceId) => {
+      const device = devices.find((d) => d.id === deviceId);
+      if (device) setEditingDevice(device);
+    },
+    copy: (deviceId) => {
+      const source = devices.find((d) => d.id === deviceId);
+      if (!source) return;
+      createDevice.mutate(
+        {
+          template_id: source.template_id,
+          name: source.name,
+          location: source.location,
+          role: source.role,
+          notes: source.notes,
+          topology_group_id: source.topology_group_id,
+          tag_ids: source.tags.map((t) => t.id),
+          // IP и дату установки намеренно не копируем: они у каждой железки
+          // свои, а скопированный IP означал бы конфликт адресов.
+        },
+        {
+          onSuccess: (created) => {
+            notifySuccess(`Создано устройство ${created.code}`);
+            const at = placed.current.get(deviceId);
+            if (at) updatePosition.mutate({ id: created.id, body: { x: at.x + 60, y: at.y + 90 } });
+          },
+          onError: notifyError,
+        },
+      );
+    },
+    remove: (deviceId) => {
+      const device = devices.find((d) => d.id === deviceId);
+      if (!device) return;
+      if (!confirm(`Удалить устройство «${device.code}» вместе с портами и связями?`)) return;
+      deleteDevice.mutate(deviceId, { onError: notifyError });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [devices]);
 
   /** Переход со страницы устройства: `?device=12` — показать и подсветить. */
   const focusDeviceId = searchParams.get('device');
@@ -368,6 +435,7 @@ export function TopologyPage() {
   }
 
   return (
+    <TopologyActionsContext.Provider value={actions}>
     <Stack h="100%" gap="sm">
       <Group justify="space-between">
         <Title order={2}>Схема связей</Title>
@@ -421,10 +489,11 @@ export function TopologyPage() {
         )}
       </Paper>
       <Text c="dimmed" size="sm">
-        Соединить устройства — потяните за точку на краю узла до другого узла и выберите порты. Клик по линии
-        открывает правку связи. Клавиша Delete удаляет выделенный узел или линию. Узлы можно перетаскивать,
-        позиция сохраняется. Цвет узла берётся из модели техники, цвет линии — из шаблона связи. Пунктирная
-        рамка — группа (кнопка «Группы»).
+        Соединить устройства — потяните за точку на краю узла до другого узла и выберите порты. Клик по узлу
+        открывает панель: править, копировать, удалить. Клик по линии открывает правку связи. Оранжевый кружок
+        с «?» — свободный конец кабеля: потяните его на устройство, чтобы воткнуть в порт. Клавиша Delete
+        удаляет выделенный узел или линию. Узлы можно перетаскивать, позиция сохраняется. Цвет узла берётся из
+        модели техники, цвет линии — из шаблона связи. Пунктирная рамка — группа (кнопка «Группы»).
       </Text>
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
       {editingLink && (
@@ -444,6 +513,17 @@ export function TopologyPage() {
           onClose={() => setConnecting(null)}
         />
       )}
+      {attaching && (
+        <AttachEndModal
+          linkId={attaching.linkId}
+          deviceId={attaching.deviceId}
+          onClose={() => setAttaching(null)}
+        />
+      )}
+      {editingDevice && (
+        <DeviceFormModal device={editingDevice} onClose={() => setEditingDevice(null)} />
+      )}
     </Stack>
+    </TopologyActionsContext.Provider>
   );
 }
