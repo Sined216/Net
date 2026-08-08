@@ -11,7 +11,13 @@ const ROLES: { value: DeviceRole; label: string }[] = [
   { value: 'access', label: 'access' },
 ];
 
-export function DeviceFormModal({ device, onClose }: { device: DeviceOut | null; onClose: () => void }) {
+export function DeviceFormModal({ device, onClose, onCreated }: {
+  device: DeviceOut | null;
+  onClose: () => void;
+  /** Позволяет вызвавшей странице доделать своё — например схеме поставить
+   * новый узел туда, куда человек смотрит. */
+  onCreated?: (deviceId: number) => void;
+}) {
   const isEdit = !!device;
   const { data: templates = [] } = useDeviceTemplates();
   const { data: tags = [] } = useTags();
@@ -68,7 +74,14 @@ export function DeviceFormModal({ device, onClose }: { device: DeviceOut | null;
       if (!templateId) { notifyError(new Error('Выберите шаблон устройства')); return; }
       createDevice.mutate(
         { ...body, template_id: parseInt(templateId, 10), tag_ids: [...tagIds] },
-        { onSuccess: () => { notifySuccess('Устройство создано'); onClose(); }, onError: notifyError },
+        {
+          onSuccess: (created) => {
+            onCreated?.(created.id);
+            notifySuccess('Устройство создано');
+            onClose();
+          },
+          onError: notifyError,
+        },
       );
     }
   }

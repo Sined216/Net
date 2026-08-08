@@ -4,14 +4,18 @@ import {
   type Connection, type Node, type ReactFlowInstance,
 } from '@xyflow/react';
 import { Button, Group, Paper, Select, Stack, Text, Title } from '@mantine/core';
-import { IconUsersGroup } from '@tabler/icons-react';
+import { IconPlus, IconUsersGroup } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import {
   useDeviceTemplates, useDeviceTypes, useDevices, useLinkTemplates, useLinks, useTags,
-  useTopologyGroups, useUpdateDevicePosition,
+  useTopologyGroups, useUpdateDevicePosition, useDeleteDevice, useDeleteLink,
 } from '../api/hooks';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
+import { LinkFormModal } from './links/LinkFormModal';
+import { DeviceFormModal } from './devices/DeviceFormModal';
 import { flattenTagsOrdered } from '../lib/utils';
+import { notifyError } from '../lib/notify';
+import type { LinkOut } from '../api/types';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { DeviceNode, DEVICE_NODE_WIDTH, DEVICE_NODE_HEIGHT, type DeviceNodeType } from './topology/DeviceNode';
 import { GroupNode, type GroupNodeType } from './topology/GroupNode';
@@ -53,6 +57,10 @@ export function TopologyPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<DeviceNodeType | GroupNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FloatingEdgeType>([]);
   const updatePosition = useUpdateDevicePosition();
+  const deleteDevice = useDeleteDevice();
+  const deleteLink = useDeleteLink();
+  const [editingLink, setEditingLink] = useState<LinkOut | null>(null);
+  const [addingDevice, setAddingDevice] = useState(false);
   const [connecting, setConnecting] = useState<{ sourceId: number; targetId: number } | null>(null);
   /** Устройство, на которое пришли по ссылке со своей страницы. Живёт в
    * состоянии, а не только в адресе: иначе подсветку затирало бы первой же
@@ -248,6 +256,52 @@ export function TopologyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedId, nodes.length]);
 
+  /** Клик по линии — правка связи: шаблон, длина, разъём, удаление. */
+  const handleEdgeClick = useCallback((_event: unknown, edge: { id: string }) => {
+    const link = links.find((l) => String(l.id) === edge.id);
+    if (link) setEditingLink(link);
+  }, [links]);
+
+  /**
+   * Удаление узла или линии клавишей Delete.
+   *
+   * React Flow спрашивает разрешение до того, как убрать элемент из своего
+   * состояния, — здесь и подтверждаем у человека, и удаляем на сервере.
+   * Вернуть false значит «не трогай»: иначе узел исчез бы со схемы, а в базе
+   * остался, и вернулся бы при следующем обновлении данных.
+   */
+  const handleBeforeDelete = useCallback(async ({ nodes: doomedNodes, edges: doomedEdges }: {
+    nodes: Node[];
+    edges: { id: string }[];
+  }) => {
+    const devices = doomedNodes.filter((n) => n.type === 'device');
+    if (devices.length === 0 && doomedEdges.length === 0) return false;
+
+    const what = [
+      devices.length > 0 && `устройств: ${devices.length} (вместе с портами и связями)`,
+      doomedEdges.length > 0 && `связей: ${doomedEdges.length}`,
+    ].filter(Boolean).join(', ');
+    if (!confirm(`Удалить ${what}?`)) return false;
+
+    await Promise.all([
+      ...devices.map((n) => deleteDevice.mutateAsync(parseInt(n.id, 10))),
+      ...doomedEdges.map((e) => deleteLink.mutateAsync(parseInt(e.id, 10))),
+    ]).catch(notifyError);
+    return true;
+  }, [deleteDevice, deleteLink]);
+
+  /** Новое устройство появляется там, куда человек смотрит, а не за краем
+   * экрана: берём центр видимой области. */
+  function placeNewDevice(deviceId: number) {
+    const flow = flowRef.current;
+    if (!flow) return;
+    const { x, y } = flow.screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+    updatePosition.mutate({ id: deviceId, body: { x, y } });
+  }
+
   function handleNodeDragStop(_event: unknown, node: Node) {
     if (node.type !== 'device') return;
     let x = node.position.x, y = node.position.y;
@@ -271,6 +325,9 @@ export function TopologyPage() {
           <Button variant="light" leftSection={<IconUsersGroup size={16} />} onClick={() => setGroupsModalOpen(true)}>
             Группы
           </Button>
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setAddingDevice(true)}>
+            Устройство
+          </Button>
         </Group>
       </Group>
       <Paper withBorder style={{ height: 640 }}>
@@ -284,6 +341,11 @@ export function TopologyPage() {
             onEdgesChange={onEdgesChange}
             onNodeDragStop={handleNodeDragStop}
             onConnect={handleConnect}
+            onEdgeClick={handleEdgeClick}
+            onBeforeDelete={handleBeforeDelete}
+            // По умолчанию React Flow слушает только Backspace — на клавише
+            // Delete ничего не происходило, хотя подсказка обещала обратное.
+            deleteKeyCode={['Delete', 'Backspace']}
             onInit={(instance) => { flowRef.current = instance; }}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
@@ -304,11 +366,22 @@ export function TopologyPage() {
         )}
       </Paper>
       <Text c="dimmed" size="sm">
-        Чтобы соединить устройства, наведите на узел и потяните за точку на его краю до другого узла — останется
-        выбрать порты. Узлы можно перетаскивать, позиция сохраняется. Подписи на связях — с какого порта на
-        какой; цвет и стиль линии — из шаблона связи. Пунктирная рамка — группа (кнопка «Группы»).
+        Соединить устройства — потяните за точку на краю узла до другого узла и выберите порты. Клик по линии
+        открывает правку связи. Клавиша Delete удаляет выделенный узел или линию. Узлы можно перетаскивать,
+        позиция сохраняется. Цвет узла берётся из модели техники, цвет линии — из шаблона связи. Пунктирная
+        рамка — группа (кнопка «Группы»).
       </Text>
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
+      {editingLink && (
+        <LinkFormModal link={editingLink} templates={linkTemplates} onClose={() => setEditingLink(null)} />
+      )}
+      {addingDevice && (
+        <DeviceFormModal
+          device={null}
+          onCreated={placeNewDevice}
+          onClose={() => setAddingDevice(false)}
+        />
+      )}
       {connecting && (
         <ConnectPortsModal
           sourceId={connecting.sourceId}
