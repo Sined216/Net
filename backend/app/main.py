@@ -72,6 +72,9 @@ def on_startup():
                 username=admin_username,
                 password_hash=auth.hash_password(admin_password),
                 role="admin",
+                # Пароль лежит в .env и виден всем, у кого есть доступ к
+                # серверу, — интерфейс потребует сменить его при первом входе.
+                must_change_password=True,
             ))
             db.commit()
             log.warning(

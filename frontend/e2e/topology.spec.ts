@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { API_URL } from '../playwright.config';
-import { credentials, seedTopology } from './fixtures';
+import { ensureUiUser, seedTopology } from './fixtures';
 
 /**
  * Схема связей на медленном API.
@@ -15,20 +15,32 @@ import { credentials, seedTopology } from './fixtures';
 
 const SLOW_MS = 1500;
 
+/** Безобидный шум браузера: срабатывает на любой перерисовке, к которой
+ * привязан ResizeObserver (у React Flow он есть), приложение при этом
+ * работает. Пропускать его нужно, иначе тест падал бы через раз. */
+const HARMLESS = /ResizeObserver loop/;
+
 async function collectPageErrors(page: Page) {
   const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('pageerror', (error) => {
+    if (!HARMLESS.test(error.message)) errors.push(error.message);
+  });
   return errors;
 }
+
+let uiUser: { username: string; password: string };
 
 async function signIn(page: Page) {
   await page.goto('/login');
   // Поля по порядку: адрес API, логин, пароль.
   await page.locator('input').nth(0).fill(API_URL);
-  await page.locator('input').nth(1).fill(credentials.username);
-  await page.locator('input[type="password"]').fill(credentials.password);
+  await page.locator('input').nth(1).fill(uiUser.username);
+  await page.locator('input[type="password"]').fill(uiUser.password);
   await page.getByRole('button', { name: 'Войти' }).click();
   await page.waitForURL(/\/devices/);
+  // Под этим пользователем требования сменить пароль быть не должно —
+  // иначе тесты смотрели бы интерфейс из-под модального окна.
+  await expect(page.getByText('Пароль вашей учётной записи задавал не вы')).toBeHidden();
 }
 
 /** Придерживает ответы API, оставляя вход быстрым — иначе не залогиниться. */
@@ -42,6 +54,7 @@ async function delayApi(page: Page, ms: number) {
 }
 
 test.beforeAll(async () => {
+  uiUser = await ensureUiUser();
   await seedTopology();
 });
 

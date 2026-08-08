@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { AppShell, Group, NavLink as MantineNavLink, ScrollArea, Text, Button, Stack, Box } from '@mantine/core';
 import {
   IconDeviceDesktop, IconTemplate, IconPlugConnected, IconTopologyStar,
-  IconSearch, IconTags, IconNetwork, IconUsers, IconLogout,
+  IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey,
 } from '@tabler/icons-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 const NAV_ITEMS = [
   { to: '/devices', label: 'Устройства', icon: IconDeviceDesktop },
@@ -18,6 +20,11 @@ const NAV_ITEMS = [
 
 export function AppLayout() {
   const { user, signOut } = useAuth();
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+
+  // Пароль назначен не владельцем — до смены работать нельзя. Модалка без
+  // крестика, мимо неё не пройти.
+  const mustChangePassword = user?.must_change_password ?? false;
 
   return (
     <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="md">
@@ -45,6 +52,12 @@ export function AppLayout() {
           <Text size="sm" c="dimmed" px="xs">
             {user?.full_name} ({user?.role})
           </Text>
+          <Button
+            variant="subtle" size="xs" leftSection={<IconKey size={16} />}
+            onClick={() => setPasswordModalOpen(true)} fullWidth justify="start"
+          >
+            Сменить пароль
+          </Button>
           <Button variant="subtle" size="xs" leftSection={<IconLogout size={16} />} onClick={signOut} fullWidth justify="start">
             Выйти
           </Button>
@@ -54,6 +67,9 @@ export function AppLayout() {
         <Group justify="space-between" mb="md" hiddenFrom="sm" />
         <Outlet />
       </AppShell.Main>
+      {(passwordModalOpen || mustChangePassword) && (
+        <ChangePasswordModal forced={mustChangePassword} onClose={() => setPasswordModalOpen(false)} />
+      )}
     </AppShell>
   );
 }

@@ -1,0 +1,235 @@
+"""Управление учётными записями.
+
+Отдельный файл, а не дополнение test_auth.py: здесь проверяется не вход как
+таковой, а жизненный цикл учётной записи — смена пароля, роли, блокировка и
+защита от того, чтобы остаться без администраторов.
+"""
+
+import pytest
+
+from tests.conftest import PASSWORD
+
+NEW_PASSWORD = "новый-длинный-пароль"
+
+
+def _login(client, username, password):
+    return client.post("/auth/login", data={"username": username, "password": password})
+
+
+# ---------- смена своего пароля ----------
+
+def test_user_changes_own_password(client, headers):
+    response = client.post(
+        "/auth/me/password",
+        json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+        headers=headers["viewer"],
+    )
+    assert response.status_code == 200
+
+    assert _login(client, "viewer", NEW_PASSWORD).status_code == 200
+    assert _login(client, "viewer", PASSWORD).status_code == 401, "старый пароль должен перестать работать"
+
+
+def test_wrong_current_password_is_rejected(client, headers):
+    response = client.post(
+        "/auth/me/password",
+        json={"current_password": "не тот пароль", "new_password": NEW_PASSWORD},
+        headers=headers["viewer"],
+    )
+    assert response.status_code == 400
+    assert _login(client, "viewer", PASSWORD).status_code == 200, "пароль не должен был смениться"
+
+
+def test_new_password_cannot_repeat_current(client, headers):
+    response = client.post(
+        "/auth/me/password",
+        json={"current_password": PASSWORD, "new_password": PASSWORD},
+        headers=headers["viewer"],
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize("weak", ["короткий", "12345678901", ""])
+def test_short_password_is_rejected(client, headers, weak):
+    response = client.post(
+        "/auth/me/password",
+        json={"current_password": PASSWORD, "new_password": weak},
+        headers=headers["viewer"],
+    )
+    assert response.status_code == 422
+
+
+def test_short_password_rejected_on_user_creation(client, headers):
+    response = client.post(
+        "/auth/users",
+        json={"full_name": "Новый", "username": "newbie", "password": "коротко"},
+        headers=headers["admin"],
+    )
+    assert response.status_code == 422
+
+
+# ---------- требование сменить пароль ----------
+
+def test_created_user_must_change_password(client, headers):
+    created = client.post(
+        "/auth/users",
+        json={"full_name": "Новый", "username": "newbie", "password": "временный-пароль-123", "role": "editor"},
+        headers=headers["admin"],
+    ).json()
+    assert created["must_change_password"] is True, "пароль придумал администратор, значит его знает не только владелец"
+
+    token = _login(client, "newbie", "временный-пароль-123").json()["access_token"]
+    own = {"Authorization": f"Bearer {token}"}
+
+    changed = client.post(
+        "/auth/me/password",
+        json={"current_password": "временный-пароль-123", "new_password": NEW_PASSWORD},
+        headers=own,
+    )
+    assert changed.status_code == 200
+    assert changed.json()["must_change_password"] is False
+
+
+def test_admin_reset_sets_the_flag_again(client, headers, users):
+    response = client.post(
+        f"/auth/users/{users['viewer'].id}/password",
+        json={"new_password": NEW_PASSWORD},
+        headers=headers["admin"],
+    )
+    assert response.status_code == 200
+    assert response.json()["must_change_password"] is True
+    assert _login(client, "viewer", NEW_PASSWORD).status_code == 200
+
+
+def test_only_admin_resets_passwords(client, headers, users):
+    response = client.post(
+        f"/auth/users/{users['admin'].id}/password",
+        json={"new_password": NEW_PASSWORD},
+        headers=headers["editor"],
+    )
+    assert response.status_code == 403
+
+
+# ---------- правка учётной записи ----------
+
+def test_admin_changes_role_and_name(client, headers, users):
+    response = client.patch(
+        f"/auth/users/{users['viewer'].id}",
+        json={"role": "editor", "full_name": "Пётр Петров"},
+        headers=headers["admin"],
+    )
+    assert response.status_code == 200
+    assert response.json()["role"] == "editor"
+    assert response.json()["full_name"] == "Пётр Петров"
+
+
+def test_role_change_takes_effect_immediately(client, headers, users, template):
+    """Права проверяются по базе на каждом запросе, а не по роли внутри
+    токена: разжалованный не должен доработать смену с прежними правами."""
+    client.patch(f"/auth/users/{users['editor'].id}", json={"role": "viewer"}, headers=headers["admin"])
+
+    response = client.post("/devices", json={"template_id": template.id}, headers=headers["editor"])
+    assert response.status_code == 403
+
+
+def test_editor_cannot_edit_users(client, headers, users):
+    response = client.patch(
+        f"/auth/users/{users['viewer'].id}", json={"role": "admin"}, headers=headers["editor"]
+    )
+    assert response.status_code == 403
+
+
+def test_unknown_user_is_404(client, headers):
+    assert client.patch("/auth/users/9999", json={"role": "viewer"}, headers=headers["admin"]).status_code == 404
+
+
+# ---------- блокировка ----------
+
+def test_blocked_user_cannot_log_in_or_use_token(client, headers, users):
+    editor_token = headers["editor"]
+    assert client.get("/devices", headers=editor_token).status_code == 200
+
+    response = client.delete(f"/auth/users/{users['editor'].id}", headers=headers["admin"])
+    assert response.status_code == 200
+    assert response.json()["is_active"] is False
+
+    # Уже выданный токен должен перестать работать сразу, а не по истечении срока.
+    assert client.get("/devices", headers=editor_token).status_code == 401
+    assert _login(client, "editor", PASSWORD).status_code == 401
+
+
+def test_blocked_user_can_be_restored(client, headers, users):
+    client.delete(f"/auth/users/{users['editor'].id}", headers=headers["admin"])
+
+    response = client.patch(
+        f"/auth/users/{users['editor'].id}", json={"is_active": True}, headers=headers["admin"]
+    )
+    assert response.status_code == 200
+    assert _login(client, "editor", PASSWORD).status_code == 200
+
+
+def test_admin_cannot_block_himself(client, headers, users):
+    response = client.delete(f"/auth/users/{users['admin'].id}", headers=headers["admin"])
+    assert response.status_code == 409
+
+
+def test_blocked_user_row_survives(client, headers, users, db):
+    """Блокировка не удаляет строку: журнал изменений ссылается на автора."""
+    client.delete(f"/auth/users/{users['editor'].id}", headers=headers["admin"])
+
+    from app import models
+    assert db.query(models.User).filter(models.User.username == "editor").count() == 1
+
+
+# ---------- защита последнего администратора ----------
+
+def test_last_admin_cannot_be_demoted(client, headers, users):
+    response = client.patch(
+        f"/auth/users/{users['admin'].id}", json={"role": "editor"}, headers=headers["admin"]
+    )
+    assert response.status_code == 409
+    assert "администратор" in response.json()["detail"].lower()
+
+
+def test_last_admin_cannot_be_blocked(client, headers, users):
+    response = client.patch(
+        f"/auth/users/{users['admin'].id}", json={"is_active": False}, headers=headers["admin"]
+    )
+    assert response.status_code == 409
+
+
+def test_admin_can_be_demoted_when_another_one_exists(client, headers, users):
+    client.post(
+        "/auth/users",
+        json={"full_name": "Второй админ", "username": "admin2", "password": "второй-длинный-пароль", "role": "admin"},
+        headers=headers["admin"],
+    )
+
+    response = client.patch(
+        f"/auth/users/{users['admin'].id}", json={"role": "editor"}, headers=headers["admin"]
+    )
+    assert response.status_code == 200
+
+
+def test_blocked_admin_does_not_count_as_a_spare(client, headers, users):
+    """Заблокированный админ войти не может, поэтому не должен считаться
+    заменой последнему активному."""
+    second = client.post(
+        "/auth/users",
+        json={"full_name": "Второй админ", "username": "admin2", "password": "второй-длинный-пароль", "role": "admin"},
+        headers=headers["admin"],
+    ).json()
+    client.delete(f"/auth/users/{second['id']}", headers=headers["admin"])
+
+    response = client.patch(
+        f"/auth/users/{users['admin'].id}", json={"role": "editor"}, headers=headers["admin"]
+    )
+    assert response.status_code == 409
+
+
+# ---------- список ----------
+
+def test_user_list_exposes_state_but_not_hashes(client, headers):
+    users_list = client.get("/auth/users", headers=headers["admin"]).json()
+    assert {"is_active", "must_change_password"} <= set(users_list[0])
+    assert "password_hash" not in users_list[0]

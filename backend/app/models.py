@@ -50,6 +50,12 @@ class User(Base):
     username = Column(Text, unique=True, nullable=False)
     password_hash = Column(Text, nullable=False)
     role = Column(Text, nullable=False)
+    # Мягкая блокировка вместо удаления: audit_log ссылается на пользователя,
+    # и записи «кто менял устройство» не должны терять автора при увольнении.
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    # Взводится администратору, созданному при первом запуске, и после сброса
+    # пароля другим админом: пока флаг стоит, интерфейс требует сменить пароль.
+    must_change_password = Column(Boolean, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (CheckConstraint("role IN ('admin','editor','viewer')"),)

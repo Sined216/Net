@@ -128,6 +128,17 @@ def test_existing_database_is_stamped_and_upgraded(legacy_database):
     assert row[4] == "a4:bb:6d:11:22:33"
 
 
+def _head_revision() -> str:
+    """Последняя ревизия берётся из самих миграций, а не пишется в тесте:
+    иначе каждая новая ревизия ломала бы этот тест на ровном месте."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(os.path.join(BACKEND_ROOT, "alembic.ini"))
+    config.set_main_option("script_location", os.path.join(BACKEND_ROOT, "alembic"))
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
 def test_upgrade_is_idempotent(legacy_database):
     """Контейнер перезапускается часто — повторный накат не должен ничего
     ломать."""
@@ -136,7 +147,7 @@ def test_upgrade_is_idempotent(legacy_database):
 
     with legacy_database.connect() as conn:
         version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "0002_native_types"
+    assert version == _head_revision()
 
 
 def test_fresh_database_gets_full_schema(legacy_database):

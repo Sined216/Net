@@ -11,18 +11,38 @@ export interface Token {
   token_type: string;
 }
 
+export type UserRole = 'admin' | 'editor' | 'viewer';
+
 export interface UserCreate {
   full_name: string;
   username: string;
   password: string;
-  role: string;
+  role: UserRole;
+}
+
+export interface UserUpdate {
+  full_name?: string;
+  role?: UserRole;
+  is_active?: boolean;
+}
+
+export interface PasswordChange {
+  current_password: string;
+  new_password: string;
+}
+
+export interface PasswordReset {
+  new_password: string;
 }
 
 export interface UserOut {
   id: number;
   full_name: string;
   username: string;
-  role: 'admin' | 'editor' | 'viewer';
+  role: UserRole;
+  is_active: boolean;
+  /** Пароль назначен не владельцем — интерфейс требует сменить его при входе. */
+  must_change_password: boolean;
   created_at: string;
 }
 

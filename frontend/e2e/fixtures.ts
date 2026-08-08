@@ -4,26 +4,26 @@ import { API_URL } from '../playwright.config';
 const ADMIN_USERNAME = process.env.E2E_ADMIN_USERNAME ?? 'admin';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'change-me-please';
 
-export const credentials = { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
+/** Пароль пользователя, под которым ходят тесты интерфейса. */
+const UI_PASSWORD = 'e2e-postoyannyj-parol';
 
-async function apiContext(): Promise<APIRequestContext> {
+async function login(username: string, password: string): Promise<string> {
   const anonymous = await request.newContext({ baseURL: API_URL });
-  const response = await anonymous.post('/auth/login', {
-    form: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD },
-  });
+  const response = await anonymous.post('/auth/login', { form: { username, password } });
   if (!response.ok()) {
     throw new Error(
-      `Не удалось войти как ${ADMIN_USERNAME}: ${response.status()} ${await response.text()}. ` +
+      `Не удалось войти как ${username}: ${response.status()} ${await response.text()}. ` +
         'Проверьте BOOTSTRAP_ADMIN_PASSWORD у запущенного бэкенда.',
     );
   }
   const { access_token: token } = await response.json();
   await anonymous.dispose();
+  return token;
+}
 
-  return request.newContext({
-    baseURL: API_URL,
-    extraHTTPHeaders: { Authorization: `Bearer ${token}` },
-  });
+async function contextFor(username: string, password: string): Promise<APIRequestContext> {
+  const token = await login(username, password);
+  return request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
 }
 
 async function json(api: APIRequestContext, method: 'post' | 'patch', path: string, data: unknown) {
@@ -33,12 +33,47 @@ async function json(api: APIRequestContext, method: 'post' | 'patch', path: stri
 }
 
 /**
+ * Заводит пользователя, под которым тесты работают в интерфейсе.
+ *
+ * Под администратором ходить нельзя: ему при первом запуске взводится
+ * требование сменить пароль, и поверх страницы висит модальное окно, которое
+ * нельзя закрыть, — тесты проверяли бы интерфейс из-под него.
+ *
+ * Логин уникален для прогона: пароль, назначенный админом, тоже требует
+ * смены, а сменить его можно только один раз. Переиспользовать учётную
+ * запись между прогонами дороже, чем завести новую.
+ */
+export async function ensureUiUser(): Promise<{ username: string; password: string }> {
+  const admin = await contextFor(ADMIN_USERNAME, ADMIN_PASSWORD);
+  const username = `e2e-${Date.now()}`;
+  const temporary = 'e2e-vremennyj-parol';
+
+  await json(admin, 'post', '/auth/users', {
+    full_name: 'Тестовый пользователь',
+    username,
+    password: temporary,
+    role: 'editor',
+  });
+  await admin.dispose();
+
+  // Смена пароля владельцем снимает требование сменить пароль.
+  const own = await contextFor(username, temporary);
+  await json(own, 'post', '/auth/me/password', {
+    current_password: temporary,
+    new_password: UI_PASSWORD,
+  });
+  await own.dispose();
+
+  return { username, password: UI_PASSWORD };
+}
+
+/**
  * Наполняет базу минимумом, на котором видна схема: два устройства в одной
  * группе и связь между их портами. Тест сам готовит данные, чтобы не зависеть
  * от того, что лежит в базе разработчика.
  */
 export async function seedTopology() {
-  const api = await apiContext();
+  const api = await contextFor(ADMIN_USERNAME, ADMIN_PASSWORD);
 
   const types = await (await api.get('/device-types')).json();
   const template = await json(api, 'post', '/device-templates', {

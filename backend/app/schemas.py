@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal, Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.fields import IPAddressStr, IPNetworkStr, MacAddressStr
 
@@ -16,16 +16,45 @@ LinkSource = Literal["manual", "snmp", "lldp"]
 
 
 # ---------- Auth ----------
+# Двенадцать символов — рекомендация OWASP для паролей без второго фактора.
+# Требование длины, а не «одна заглавная и цифра»: длина даёт стойкость, а
+# правила состава лишь толкают людей к «Password1!».
+MIN_PASSWORD_LENGTH = 12
+Password = Field(min_length=MIN_PASSWORD_LENGTH, max_length=128)
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
 
 class UserCreate(BaseModel):
-    full_name: str
-    username: str
-    password: str
+    full_name: str = Field(min_length=1, max_length=200)
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Password
     role: Role = "viewer"
+
+
+class UserUpdate(BaseModel):
+    """Правка чужой учётной записи администратором. Пароль сюда не входит —
+    для него отдельный эндпоинт, чтобы случайная отправка формы не сбрасывала
+    его молча."""
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    role: Optional[Role] = None
+    is_active: Optional[bool] = None
+
+
+class PasswordChange(BaseModel):
+    """Смена своего пароля. Текущий спрашивается, чтобы уведённой сессией
+    нельзя было отобрать учётную запись у владельца."""
+    current_password: str
+    new_password: str = Password
+
+
+class PasswordReset(BaseModel):
+    """Сброс пароля администратором: текущий он не знает, поэтому не
+    спрашивается. Пользователю ставится требование сменить пароль."""
+    new_password: str = Password
 
 
 class UserOut(BaseModel):
@@ -34,6 +63,8 @@ class UserOut(BaseModel):
     full_name: str
     username: str
     role: Role
+    is_active: bool
+    must_change_password: bool
     created_at: datetime
 
 

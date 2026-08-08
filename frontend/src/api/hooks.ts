@@ -10,7 +10,7 @@ import type {
   LinkTemplateCreate, LinkTemplateUpdate,
   LinkCreate, LinkUpdate,
   TopologyGroupCreate, TopologyGroupUpdate,
-  UserCreate,
+  UserCreate, UserUpdate, PasswordReset,
 } from './types';
 
 // ---------- Queries ----------
@@ -258,6 +258,27 @@ export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UserCreate) => api.createUser(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: UserUpdate }) => api.updateUser(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+export function useDeactivateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deactivateUser(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+export function useResetUserPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: PasswordReset }) => api.resetUserPassword(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }

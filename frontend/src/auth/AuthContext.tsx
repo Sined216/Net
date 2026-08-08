@@ -10,6 +10,8 @@ interface AuthState {
   loginError: string | null;
   signIn: (baseUrl: string, username: string, password: string) => Promise<void>;
   signOut: () => void;
+  /** Перечитать себя с сервера — после смены пароля или роли. */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -55,6 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function refreshUser() {
+    setUser(await api.me());
+  }
+
   function signOut() {
     setToken(null);
     setUser(null);
@@ -62,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginError, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, loginError, signIn, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

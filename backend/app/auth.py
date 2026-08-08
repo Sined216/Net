@@ -61,6 +61,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None:
         raise credentials_exception
+    if not user.is_active:
+        # Блокировка должна действовать немедленно, а не по истечении уже
+        # выданного токена: проверяем на каждом запросе, а не при входе.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Учётная запись заблокирована",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
