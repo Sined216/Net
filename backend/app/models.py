@@ -101,6 +101,9 @@ class DeviceTemplate(Base):
     device_type_id = Column(Integer, ForeignKey("device_types.id"), nullable=False)
     manufacturer = Column(Text)
     notes = Column(Text)
+    # Цвет узла на схеме. Задаётся на модели техники, а не на устройстве:
+    # одна настройка красит все «Cisco Catalyst 2960» разом.
+    color = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     device_type = relationship("DeviceType", back_populates="templates")

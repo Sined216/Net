@@ -120,6 +120,8 @@ export interface DeviceTemplateCreate {
   device_type_id: number;
   manufacturer?: string | null;
   notes?: string | null;
+  /** Цвет узла на схеме — одна настройка на модель техники. */
+  color?: string | null;
   interfaces: InterfaceTemplateCreate[];
 }
 
@@ -136,6 +138,7 @@ export interface DeviceTemplateOut {
   device_type_id: number;
   manufacturer: string | null;
   notes: string | null;
+  color: string | null;
   interfaces: InterfaceTemplateOut[];
 }
 

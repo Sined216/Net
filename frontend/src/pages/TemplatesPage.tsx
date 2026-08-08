@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import {
   ActionIcon, Badge, Button, Group, Modal, NumberInput, Select, Stack,
-  Table, Text, TextInput, Textarea, Title, Card, Collapse, UnstyledButton,
+  Table, Text, TextInput, Textarea, Title, Card, Collapse, ColorInput, UnstyledButton,
 } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import {
@@ -82,6 +82,7 @@ export function TemplatesPage() {
                 <Group gap="xs">
                   {expanded === tpl.id ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
                   <Text fw={600}>{tpl.name}</Text>
+                  {tpl.color && <span className="tag-badge-dot" style={{ background: tpl.color }} />}
                   {tpl.manufacturer && <Text c="dimmed">{tpl.manufacturer}</Text>}
                   <Badge variant="light">{typeName(tpl.device_type_id)}</Badge>
                   <Badge variant="light" color="gray">{tpl.interfaces.length} порт(ов)</Badge>
@@ -192,6 +193,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const [typeId, setTypeId] = useState<string | null>(template ? String(template.device_type_id) : null);
   const [manufacturer, setManufacturer] = useState(template?.manufacturer ?? '');
   const [notes, setNotes] = useState(template?.notes ?? '');
+  const [color, setColor] = useState(template?.color ?? '');
   const [draftPorts, setDraftPorts] = useState<DraftPort[]>([]);
   const draftSeq = useRef(0);
   const [portLabel, setPortLabel] = useState('');
@@ -254,7 +256,10 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!typeId) return;
-    const body = { name: name.trim(), device_type_id: parseInt(typeId, 10), manufacturer: nn(manufacturer), notes: nn(notes) };
+    const body = {
+      name: name.trim(), device_type_id: parseInt(typeId, 10),
+      manufacturer: nn(manufacturer), notes: nn(notes), color: nn(color),
+    };
     const onSuccess = () => { notifySuccess(isEdit ? 'Шаблон обновлён' : 'Шаблон создан'); onClose(); };
     if (isEdit) {
       updateTemplate.mutate({ id: template!.id, body }, { onSuccess, onError: notifyError });
@@ -277,6 +282,15 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
             <Select label="Тип устройства" data={types.map((t) => ({ value: String(t.id), label: t.name }))} value={typeId} onChange={setTypeId} required />
           </Group>
           <TextInput label="Производитель" value={manufacturer} onChange={(e) => setManufacturer(e.currentTarget.value)} />
+          <ColorInput
+            label="Цвет на схеме"
+            description="Красит все устройства этой модели. Пусто — нейтральный узел."
+            placeholder="— без цвета —"
+            value={color}
+            onChange={setColor}
+            format="hex"
+            swatches={['#4dabf7', '#40c057', '#fab005', '#fa5252', '#be4bdb', '#15aabf', '#868e96']}
+          />
           <Textarea label="Заметки" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} rows={2} />
 
           <Text size="sm" c="dimmed">

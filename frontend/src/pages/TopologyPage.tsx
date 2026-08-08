@@ -113,6 +113,7 @@ export function TopologyPage() {
         data: {
           code: d.code, subtitle: d.name || template?.name || '—', typeLabel,
           portsTotal: d.interfaces.length, portsConnected: connected,
+          color: template?.color ?? null,
         },
       });
     }

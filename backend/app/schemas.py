@@ -169,6 +169,8 @@ class DeviceTemplateBase(BaseModel):
     device_type_id: int
     manufacturer: Optional[str] = None
     notes: Optional[str] = None
+    # Цвет узла на схеме; пусто — узел рисуется нейтральным.
+    color: Optional[str] = None
 
 
 class DeviceTemplateCreate(DeviceTemplateBase):
@@ -180,6 +182,7 @@ class DeviceTemplateUpdate(BaseModel):
     device_type_id: Optional[int] = None
     manufacturer: Optional[str] = None
     notes: Optional[str] = None
+    color: Optional[str] = None
 
 
 class DeviceTemplateOut(DeviceTemplateBase):

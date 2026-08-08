@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
-import { Badge, Text, Tooltip } from '@mantine/core';
+import { Text, Tooltip } from '@mantine/core';
 
 export interface DeviceNodeData extends Record<string, unknown> {
   code: string;
@@ -7,40 +7,77 @@ export interface DeviceNodeData extends Record<string, unknown> {
   typeLabel: string;
   portsTotal: number;
   portsConnected: number;
+  /** Цвет модели техники (device_templates.color). Пусто — нейтральный узел. */
+  color?: string | null;
 }
 
 export type DeviceNodeType = Node<DeviceNodeData, 'device'>;
 
-export const DEVICE_NODE_WIDTH = 170;
-export const DEVICE_NODE_HEIGHT = 56;
+export const DEVICE_NODE_WIDTH = 178;
+export const DEVICE_NODE_HEIGHT = 62;
 
-/** Узел устройства. Раньше тут был ряд квадратиков — по одному на порт — и
- * связи целились точно в свой квадратик; с плавающими рёбрами (см.
- * FloatingEdge) точка касания линии считается по границе прямоугольника,
- * а не по конкретному порту, поэтому ряд квадратиков и узел разъезжались.
- * Взамен — компактный бейдж "занято/всего", какие именно порты соединены
- * видно из подписей на самих рёбрах. */
+const NEUTRAL = 'var(--mantine-color-dimmed)';
+
+/** Узел устройства в духе Turbo Flow: тёмная карточка с подсвеченной рамкой,
+ * цвет которой берётся из модели техники — все коммутаторы одного цвета, все
+ * станки другого.
+ *
+ * Градиентную рамку из оригинального примера намеренно не делаем анимированной:
+ * это CSS-анимация на каждом узле, и на нескольких сотнях устройств схема
+ * начинает подтормаживать на ровном месте. Статический градиент даёт тот же
+ * вид без этой цены.
+ *
+ * Раньше тут был ряд квадратиков — по одному на порт — и связи целились точно
+ * в свой квадратик; с плавающими рёбрами (см. FloatingEdge) точка касания
+ * считается по границе прямоугольника, поэтому ряд квадратиков и узел
+ * разъезжались. Взамен — счётчик "занято/всего", а какие именно порты
+ * соединены, видно из подписей на самих рёбрах.
+ */
 export function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
+  const accent = data.color || NEUTRAL;
+  const connected = data.portsConnected > 0;
+
   return (
     <div
       style={{
         width: DEVICE_NODE_WIDTH,
         minHeight: DEVICE_NODE_HEIGHT,
-        border: '1.5px solid var(--mantine-color-default-border)',
-        borderRadius: 8,
-        background: 'var(--mantine-color-body)',
-        padding: '6px 8px',
+        borderRadius: 10,
+        // Рамка-градиент: подложка красится, содержимое лежит поверх на фоне
+        // страницы — так рамка получается цветной без второго элемента.
+        padding: 1.5,
+        background: `linear-gradient(140deg, ${accent}, color-mix(in srgb, ${accent} 25%, transparent))`,
+        boxShadow: `0 1px 10px color-mix(in srgb, ${accent} 22%, transparent)`,
       }}
     >
       <Handle type="source" position={Position.Top} id="src" style={{ opacity: 0, pointerEvents: 'none' }} />
       <Handle type="target" position={Position.Top} id="tgt" style={{ opacity: 0, pointerEvents: 'none' }} />
       <Tooltip label={`${data.code} — ${data.subtitle} (${data.typeLabel})`}>
-        <div>
-          <Text size="sm" fw={700} truncate>{data.code}</Text>
-          <Text size="xs" c="dimmed" truncate>{data.subtitle}</Text>
-          <Badge mt={4} size="xs" variant="light" color={data.portsConnected > 0 ? 'teal' : 'gray'}>
-            {data.portsConnected}/{data.portsTotal} порт.
-          </Badge>
+        <div
+          style={{
+            borderRadius: 8.5,
+            background: 'var(--mantine-color-body)',
+            padding: '7px 9px',
+            height: '100%',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span
+              style={{
+                width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                background: accent,
+              }}
+            />
+            <Text size="sm" fw={700} truncate style={{ flex: 1, minWidth: 0 }}>
+              {data.code}
+            </Text>
+            <Text size="xs" c={connected ? 'teal' : 'dimmed'} fw={600} style={{ flexShrink: 0 }}>
+              {data.portsConnected}/{data.portsTotal}
+            </Text>
+          </div>
+          <Text size="xs" c="dimmed" truncate mt={2}>
+            {data.subtitle}
+          </Text>
         </div>
       </Tooltip>
     </div>
