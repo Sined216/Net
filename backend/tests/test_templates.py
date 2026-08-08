@@ -5,36 +5,25 @@ def test_create_template_with_ports(client, headers, device_type):
             "name": "Cisco Catalyst 2960-24TT",
             "device_type_id": device_type.id,
             "manufacturer": "Cisco",
-            "interfaces": [{"port_number": 1, "label": "Gi0/1"}, {"port_number": 2, "label": "Gi0/2"}],
+            "interfaces": [{"label": "Gi0/1"}, {"label": "Gi0/2"}],
         },
         headers=headers["editor"],
     )
     assert response.status_code == 201
-    assert len(response.json()["interfaces"]) == 2
+    interfaces = response.json()["interfaces"]
+    assert len(interfaces) == 2
+    # Номер — место в ряду гнёзд, его раздаёт сервер по порядку списка.
+    assert sorted(i["port_number"] for i in interfaces) == [1, 2]
 
 
-def test_duplicate_port_numbers_in_one_template_are_rejected(client, headers, device_type):
-    """Уникален номер, а не название: порт опознают по номеру на корпусе."""
-    response = client.post(
-        "/device-templates",
-        json={
-            "name": "Кривой шаблон",
-            "device_type_id": device_type.id,
-            "interfaces": [{"port_number": 1, "label": "Gi0/1"}, {"port_number": 1, "label": "Gi0/2"}],
-        },
-        headers=headers["editor"],
-    )
-    assert response.status_code == 400
-
-
-def test_same_label_on_different_numbers_is_allowed(client, headers, device_type):
+def test_same_label_on_different_ports_is_allowed(client, headers, device_type):
     """Название — просто подпись, совпадать ей не запрещено."""
     response = client.post(
         "/device-templates",
         json={
             "name": "Две одинаково подписанные пары",
             "device_type_id": device_type.id,
-            "interfaces": [{"port_number": 1, "label": "eth"}, {"port_number": 2, "label": "eth"}],
+            "interfaces": [{"label": "eth"}, {"label": "eth"}],
         },
         headers=headers["editor"],
     )
@@ -61,24 +50,44 @@ def test_unused_template_can_be_deleted(client, headers, template):
 
 
 def test_template_port_added_and_removed(client, headers, template):
+    """Новый порт встаёт в конец ряда — номер ему даёт сервер."""
     added = client.post(
         f"/device-templates/{template.id}/interfaces",
-        json={"port_number": 3, "label": "SFP1"},
+        json={"label": "SFP1"},
         headers=headers["editor"],
     )
     assert added.status_code == 201
+    assert added.json()["port_number"] == 3, "в шаблоне уже два порта"
 
-    duplicate = client.post(
+    another = client.post(
         f"/device-templates/{template.id}/interfaces",
-        json={"port_number": 3, "label": "SFP2"},
+        json={"label": "SFP2"},
         headers=headers["editor"],
     )
-    assert duplicate.status_code == 409, "номер занят — название тут ни при чём"
+    assert another.json()["port_number"] == 4
 
     removed = client.delete(
         f"/device-templates/{template.id}/interfaces/{added.json()['id']}", headers=headers["editor"]
     )
     assert removed.status_code == 204
+
+
+def test_port_numbers_stay_contiguous_after_removal(client, headers, template, make_device):
+    """Ряд гнёзд сплошной: убрали порт из середины — остальные сдвинулись.
+
+    Пропущенный номер означал бы гнездо, которого у железки нет."""
+    device = make_device()
+    tpl = client.get(f"/device-templates/{template.id}", headers=headers["viewer"]).json()
+    first = sorted(tpl["interfaces"], key=lambda i: i["port_number"])[0]
+
+    client.delete(f"/device-templates/{template.id}/interfaces/{first['id']}", headers=headers["editor"])
+
+    tpl = client.get(f"/device-templates/{template.id}", headers=headers["viewer"]).json()
+    assert [i["port_number"] for i in sorted(tpl["interfaces"], key=lambda i: i["port_number"])] == [1]
+    refreshed = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert [i["port_number"] for i in refreshed["interfaces"]] == [1]
+    # Устройство и модель по-прежнему сходятся: номер один и тот же порт.
+    assert [i["label"] for i in refreshed["interfaces"]] == [tpl["interfaces"][0]["label"]]
 
 
 def test_port_added_to_template_appears_on_existing_devices(client, headers, template, make_device):
@@ -87,7 +96,7 @@ def test_port_added_to_template_appears_on_existing_devices(client, headers, tem
     first, second = make_device(), make_device()
     client.post(
         f"/device-templates/{template.id}/interfaces",
-        json={"port_number": 3, "label": "SFP1"},
+        json={"label": "SFP1"},
         headers=headers["editor"],
     )
 
@@ -122,3 +131,26 @@ def test_impact_reports_devices_and_connected_ports(client, headers, template, m
 def test_device_type_in_use_cannot_be_deleted(client, headers, device_type, template):
     response = client.delete(f"/device-types/{device_type.id}", headers=headers["editor"])
     assert response.status_code == 409
+
+
+def test_template_port_lands_before_hand_made_ports(client, headers, template, make_device):
+    """Порт модели встаёт сразу за портами модели, а не за самодельными.
+
+    Иначе номер порта в модели и в устройстве разошёлся бы, и правка модели
+    перестала бы попадать в нужное гнездо."""
+    client.patch(
+        f"/device-templates/{template.id}",
+        json={"ports_editable_on_device": True},
+        headers=headers["editor"],
+    )
+    device = make_device()
+    client.post(f"/devices/{device['id']}/interfaces", json={"label": "Своя карта"},
+                headers=headers["editor"])
+
+    client.post(f"/device-templates/{template.id}/interfaces", json={"label": "SFP1"},
+                headers=headers["editor"])
+
+    refreshed = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert [(i["port_number"], i["label"]) for i in refreshed["interfaces"]] == [
+        (1, "Порт 1"), (2, "Порт 2"), (3, "SFP1"), (4, "Своя карта"),
+    ]

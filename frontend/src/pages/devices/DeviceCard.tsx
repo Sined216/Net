@@ -34,7 +34,7 @@ export function DeviceCard({
 
   function addPort() {
     const n = device.interfaces.length + 1;
-    addInterface.mutate({ deviceId: device.id, body: { label: `Порт ${n}`, port_number: n } }, { onError: notifyError });
+    addInterface.mutate({ deviceId: device.id, body: { label: `Порт ${n}` } }, { onError: notifyError });
   }
 
   function generatePorts() {
@@ -43,7 +43,7 @@ export function DeviceCard({
     if (!confirm(`Создать ${n} портов ("Порт 1".."Порт ${n}")?`)) return;
     const start = device.interfaces.length + 1;
     for (let i = start; i < start + n; i++) {
-      addInterface.mutate({ deviceId: device.id, body: { label: `Порт ${i}`, port_number: i } });
+      addInterface.mutate({ deviceId: device.id, body: { label: `Порт ${i}` } });
     }
   }
 

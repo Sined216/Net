@@ -164,15 +164,16 @@ def test_duplicate_port_numbers_are_resolved(legacy_database):
         )
         device_ports = dict(conn.execute(text("SELECT label, port_number FROM interfaces")).all())
 
-    # Номера уникальны и проставлены всем.
-    assert len(set(template_ports.values())) == 3
-    assert len(set(device_ports.values())) == 4
-    assert all(number is not None for number in device_ports.values())
-    # Номер, занятый первым по времени портом, за ним и остался.
-    assert template_ports["Порт A"] == 4
-    # Порт устройства получил номер своего порта в модели — состав сходится.
+    # Номера идут подряд, без пропусков и повторов.
+    assert sorted(template_ports.values()) == [1, 2, 3]
+    assert sorted(device_ports.values()) == [1, 2, 3, 4]
+    # Порядок портов сохранён: у кого номер был меньше, тот и остался раньше.
+    assert template_ports["Порт A"] < template_ports["Порт B"] < template_ports["Порт C"]
+    # Порт устройства получил номер своего порта в модели — состав сходится,
+    # а заведённый руками ушёл в конец ряда.
     for label, number in template_ports.items():
         assert device_ports[label] == number
+    assert device_ports["Заведён руками"] == 4
 
 
 def _head_revision() -> str:

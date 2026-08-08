@@ -3,7 +3,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, schemas, auth, serialize
+from app import models, ports, schemas, auth, serialize
 from app.audit import log_change
 from app.codegen import next_device_code
 
@@ -212,13 +212,9 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     _require_editable_ports(db, device)
-    exists = db.query(models.Interface).filter(
-        models.Interface.device_id == device_id, models.Interface.port_number == payload.port_number
-    ).first()
-    if exists:
-        raise HTTPException(status_code=409, detail=f"У устройства уже есть порт №{payload.port_number}")
 
-    iface = models.Interface(device_id=device_id, **payload.model_dump())
+    number = ports.next_number(db, models.Interface, "device_id", device_id)
+    iface = models.Interface(device_id=device_id, port_number=number, **payload.model_dump())
     db.add(iface)
     log_change(db, user.id, "create", "interface", None, old=None, new=iface)
     db.commit()

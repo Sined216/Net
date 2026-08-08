@@ -149,19 +149,20 @@ class VlanOut(VlanBase):
 
 # ---------- Interface template (порт в шаблоне устройства) ----------
 class InterfaceTemplateBase(BaseModel):
-    # Номер обязателен и уникален внутри модели: им порт и опознаётся.
-    port_number: int = Field(ge=1)
     label: str = Field(min_length=1, max_length=100)
     port_type: Optional[PortType] = None
 
 
 class InterfaceTemplateCreate(InterfaceTemplateBase):
-    pass
+    """Номер не передаётся: порты нумеруются подряд, новый встаёт в конец."""
 
 
 class InterfaceTemplateOut(InterfaceTemplateBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    # Номер — место порта в ряду гнёзд, им порт и опознаётся. Ряд всегда
+    # сплошной, поэтому номер назначает сервер, а не пользователь.
+    port_number: int
 
 
 # ---------- Device template (шаблон устройства/модель) ----------
@@ -221,8 +222,9 @@ class InterfaceUpdate(BaseModel):
 
 
 class InterfaceCreate(BaseModel):
-    """Добавление порта устройству — только для моделей со съёмными портами."""
-    port_number: int = Field(ge=1)
+    """Добавление порта устройству — только для моделей со съёмными портами.
+
+    Номер не передаётся: порт встаёт в конец ряда."""
     label: str = Field(min_length=1, max_length=100)
     port_type: Optional[PortType] = None
     vlan_id: Optional[int] = None

@@ -178,7 +178,8 @@ function DeviceTypeFormModal({ onClose }: { onClose: () => void }) {
 
 interface DraftPort {
   _key: number;
-  /** Номер обязателен — им порт и опознаётся. */
+  /** Номер — место порта в ряду гнёзд; его раздаёт сервер, а в черновике
+   * он равен позиции в списке. */
   port_number: number;
   label: string;
   port_type: PortType | null;
@@ -202,7 +203,6 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const [draftPorts, setDraftPorts] = useState<DraftPort[]>([]);
   const draftSeq = useRef(0);
   const [portLabel, setPortLabel] = useState('');
-  const [portNumber, setPortNumber] = useState<number | ''>('');
   const [portType, setPortType] = useState<string | null>(null);
   const [genCount, setGenCount] = useState<number | ''>(24);
 
@@ -217,38 +217,30 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const live = isEdit ? templates.find((t) => t.id === template!.id) : undefined;
   const livePorts: InterfaceTemplateOut[] = live?.interfaces ?? template?.interfaces ?? [];
   const currentPorts = isEdit ? livePorts : draftPorts;
-  const nextPortNumber = Math.max(0, ...currentPorts.map((p) => p.port_number)) + 1;
+  // Номера идут подряд, без пропусков: новый порт всегда встаёт в конец
+  // ряда, поэтому его номер — это просто количество портов плюс один.
+  const nextPortNumber = currentPorts.length + 1;
 
   function addPortNow() {
-    const number = portNumber === '' ? nextPortNumber : portNumber;
+    const number = nextPortNumber;
     const label = portLabel.trim() || `Порт ${number}`;
-    // Уникален номер, а не название: он напечатан на корпусе, по нему и
-    // находят гнездо. Названия совпадать не запрещено.
-    if (currentPorts.some((p) => p.port_number === number)) {
-      notifyError(new Error(`Порт №${number} уже есть в шаблоне`));
-      return;
-    }
     const pt = (portType || null) as PortType | null;
     if (isEdit) {
-      addPort.mutate(
-        { templateId: template!.id, body: { port_number: number, label, port_type: pt } },
-        { onError: notifyError },
-      );
+      addPort.mutate({ templateId: template!.id, body: { label, port_type: pt } }, { onError: notifyError });
     } else {
       draftSeq.current += 1;
       setDraftPorts((prev) => [...prev, { _key: draftSeq.current, port_number: number, label, port_type: pt }]);
     }
     setPortLabel('');
-    setPortNumber('');
   }
 
   function generatePorts() {
     const n = typeof genCount === 'number' ? genCount : 0;
     if (n <= 0) return;
-    const start = Math.max(0, ...currentPorts.map((p) => p.port_number));
+    const start = currentPorts.length;
     if (isEdit) {
       for (let i = 1; i <= n; i++) {
-        addPort.mutate({ templateId: template!.id, body: { port_number: start + i, label: `Порт ${start + i}` } });
+        addPort.mutate({ templateId: template!.id, body: { label: `Порт ${start + i}` } });
       }
     } else {
       const newPorts: DraftPort[] = [];
@@ -265,7 +257,10 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
       if (!confirm('Убрать порт из модели? Он исчезнет у всех устройств этой модели; кабели, воткнутые в него, останутся с подвешенным концом.')) return;
       removePort.mutate({ templateId: template!.id, ifaceId: key }, { onError: notifyError });
     } else {
-      setDraftPorts((prev) => prev.filter((p) => p._key !== key));
+      // Ряд гнёзд сплошной — после удаления из середины номера сдвигаются.
+      setDraftPorts((prev) => prev
+        .filter((p) => p._key !== key)
+        .map((p, index) => ({ ...p, port_number: index + 1 })));
     }
   }
 
@@ -282,7 +277,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
       updateTemplate.mutate({ id: template!.id, body }, { onSuccess, onError: notifyError });
     } else {
       createTemplate.mutate(
-        { ...body, interfaces: draftPorts.map(({ label, port_number, port_type }) => ({ label, port_number, port_type })) },
+        { ...body, interfaces: draftPorts.map(({ label, port_type }) => ({ label, port_type })) },
         { onSuccess, onError: notifyError },
       );
     }
@@ -366,13 +361,10 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
             </Table.Tbody>
           </Table>
           <Group align="flex-end">
-            <NumberInput
-              label="№" description="уникален" placeholder={String(nextPortNumber)} min={1} w={110}
-              value={portNumber} onChange={(v) => setPortNumber(v === '' ? '' : Number(v))}
-            />
+            <Text size="sm" fw={600} pb={7} w={64}>№ {nextPortNumber}</Text>
             <TextInput
               label="Название порта" description="просто подпись, может повторяться"
-              placeholder={`Порт ${portNumber === '' ? nextPortNumber : portNumber}`}
+              placeholder={`Порт ${nextPortNumber}`}
               value={portLabel} style={{ flex: 2 }}
               onChange={(e) => setPortLabel(e.currentTarget.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPortNow(); } }}

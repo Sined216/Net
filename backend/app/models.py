@@ -112,8 +112,11 @@ class DeviceTemplate(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     device_type = relationship("DeviceType", back_populates="templates")
+    # Порты отдаются в порядке гнёзд, а не в порядке заведения в базе:
+    # человек читает их так же, как смотрит на переднюю панель.
     interfaces = relationship(
-        "InterfaceTemplate", back_populates="template", cascade="all, delete-orphan"
+        "InterfaceTemplate", back_populates="template", cascade="all, delete-orphan",
+        order_by="InterfaceTemplate.port_number",
     )
     devices = relationship("Device", back_populates="template")
 
@@ -176,7 +179,10 @@ class Device(Base):
     __table_args__ = (CheckConstraint("role IN ('core','distribution','access') OR role IS NULL"),)
 
     template = relationship("DeviceTemplate", back_populates="devices")
-    interfaces = relationship("Interface", back_populates="device", cascade="all, delete-orphan")
+    interfaces = relationship(
+        "Interface", back_populates="device", cascade="all, delete-orphan",
+        order_by="Interface.port_number",
+    )
     tags = relationship("Tag", secondary=device_tags, backref="devices")
     topology_group = relationship("TopologyGroup", back_populates="devices")
 

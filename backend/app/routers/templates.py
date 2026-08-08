@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, schemas, auth
+from app import models, ports, schemas, auth
 from app.audit import log_change
 
 router = APIRouter(prefix="/device-templates", tags=["device-templates"])
@@ -43,12 +43,9 @@ def create_template(payload: schemas.DeviceTemplateCreate, db: Session = Depends
     db.add(template)
     db.flush()  # получить template.id
 
-    numbers = set()
-    for iface in payload.interfaces:
-        if iface.port_number in numbers:
-            raise HTTPException(status_code=400, detail=f"Порт №{iface.port_number} указан дважды")
-        numbers.add(iface.port_number)
-        db.add(models.InterfaceTemplate(template_id=template.id, **iface.model_dump()))
+    # Номера раздаются по порядку списка: ряд гнёзд сплошной, 1..N.
+    for number, iface in enumerate(payload.interfaces, start=1):
+        db.add(models.InterfaceTemplate(template_id=template.id, port_number=number, **iface.model_dump()))
 
     log_change(db, user.id, "create", "device_template", None, old=None, new=template)
     db.commit()
@@ -99,39 +96,33 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
 
     Состав портов задаётся моделью, а не набивается у каждой железки
     отдельно: доукомплектовали модель — порт появляется у всех устройств
-    этой модели. У кого порт с таким названием уже есть (завели руками на
-    устройстве с изменяемым составом портов), тот пропускается.
+    этой модели. Номер новому порту даётся следующий по порядку: ряд гнёзд
+    сплошной, и своего номера у порта в модели и в устройстве быть не
+    может — он один и тот же.
     """
     template = db.query(models.DeviceTemplate).filter(models.DeviceTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
-    if db.query(models.InterfaceTemplate).filter(
-        models.InterfaceTemplate.template_id == template_id,
-        models.InterfaceTemplate.port_number == payload.port_number,
-    ).first():
-        raise HTTPException(status_code=409, detail=f"В шаблоне уже есть порт №{payload.port_number}")
 
-    iface = models.InterfaceTemplate(template_id=template_id, **payload.model_dump())
+    number = ports.next_number(db, models.InterfaceTemplate, "template_id", template_id)
+    iface = models.InterfaceTemplate(template_id=template_id, port_number=number, **payload.model_dump())
     db.add(iface)
 
     devices = db.query(models.Device).filter(models.Device.template_id == template_id).all()
-    existing = {
-        row.device_id for row in db.query(models.Interface).filter(
-            models.Interface.device_id.in_([d.id for d in devices] or [0]),
-            models.Interface.port_number == payload.port_number,
-        ).all()
-    }
     for device in devices:
-        if device.id in existing:
-            continue
+        # У устройства со съёмными портами к портам модели могут быть
+        # добавлены свои; порт модели встаёт сразу за портами модели, а
+        # самодельные сдвигаются дальше.
+        ports.make_room(db, models.Interface, "device_id", device.id, number)
         db.add(models.Interface(
-            device_id=device.id, port_number=payload.port_number,
+            device_id=device.id, port_number=number,
             label=payload.label, port_type=payload.port_type,
         ))
+        ports.renumber(db, models.Interface, "device_id", device.id)
 
     log_change(db, user.id, "update", "device_template", template_id,
-               old=None, new={"добавлен порт": f"№{payload.port_number} {payload.label}",
-                              "устройств затронуто": len(devices) - len(existing)})
+               old=None, new={"добавлен порт": f"№{number} {payload.label}",
+                              "устройств затронуто": len(devices)})
     db.commit()
     db.refresh(iface)
     return iface
@@ -145,6 +136,9 @@ def delete_template_interface(template_id: int, iface_id: int, db: Session = Dep
     Связи при этом НЕ удаляются: кабель физически остаётся проложенным, у
     него просто повисает конец. Подключить его заново можно к другому порту
     (POST /links/{id}/attach).
+
+    Оставшиеся порты перенумеровываются: ряд гнёзд сплошной, дырка в нём
+    означала бы гнездо, которого нет.
     """
     iface = db.query(models.InterfaceTemplate).filter(
         models.InterfaceTemplate.id == iface_id, models.InterfaceTemplate.template_id == template_id
@@ -178,6 +172,9 @@ def delete_template_interface(template_id: int, iface_id: int, db: Session = Dep
     log_change(db, user.id, "update", "device_template", template_id,
                old={"убран порт": f"№{iface.port_number} {iface.label}", "устройств затронуто": removed}, new=None)
     db.delete(iface)
+    ports.renumber(db, models.InterfaceTemplate, "template_id", template_id)
+    for device_id in device_ids:
+        ports.renumber(db, models.Interface, "device_id", device_id)
     db.commit()
 
 

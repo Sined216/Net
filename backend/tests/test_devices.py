@@ -96,7 +96,7 @@ def test_ports_cannot_be_added_to_device_by_default(client, headers, make_device
     device = make_device()
     response = client.post(
         f"/devices/{device['id']}/interfaces",
-        json={"port_number": 3, "label": "SFP1"},
+        json={"label": "SFP1"},
         headers=headers["editor"],
     )
     assert response.status_code == 409
@@ -115,17 +115,24 @@ def test_ports_can_be_added_when_model_allows(client, headers, template, make_de
 
     response = client.post(
         f"/devices/{device['id']}/interfaces",
-        json={"port_number": 3, "label": "SFP1"},
+        json={"label": "SFP1"},
         headers=headers["editor"],
     )
     assert response.status_code == 201
+    assert response.json()["port_number"] == 3, "порт встаёт в конец ряда"
 
-    duplicate = client.post(
+    another = client.post(
         f"/devices/{device['id']}/interfaces",
-        json={"port_number": 3, "label": "SFP2"},
+        json={"label": "SFP2"},
         headers=headers["editor"],
     )
-    assert duplicate.status_code == 409, "номер занят — название тут ни при чём"
+    assert another.json()["port_number"] == 4
+
+    # Убрали карту из середины — ряд снова сплошной.
+    client.delete(f"/interfaces/{response.json()['id']}", headers=headers["editor"])
+    refreshed = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert [i["port_number"] for i in refreshed["interfaces"]] == [1, 2, 3]
+    assert [i["label"] for i in refreshed["interfaces"]][-1] == "SFP2"
 
 
 def test_position_is_saved(client, headers, make_device):

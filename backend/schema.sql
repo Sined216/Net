@@ -83,10 +83,12 @@ CREATE TABLE device_templates (
 CREATE TABLE device_template_interfaces (
     id           SERIAL PRIMARY KEY,
     template_id  INTEGER NOT NULL REFERENCES device_templates(id) ON DELETE CASCADE,
+    -- Номер — место порта в ряду гнёзд: 1..N подряд, без пропусков. Им порт
+    -- и опознаётся, он напечатан на корпусе. Раздаёт номера приложение.
+    port_number  INTEGER NOT NULL,
     label        TEXT NOT NULL,               -- "Порт 1", "Gi0/1", "SFP1"...
-    port_number  INTEGER,
     port_type    TEXT CHECK (port_type IN ('access','trunk','uplink')),
-    UNIQUE (template_id, label)
+    UNIQUE (template_id, port_number)
 );
 
 -- Группа устройств на топологии — отдельный от тегов параметр: ровно одна
@@ -134,15 +136,17 @@ CREATE TABLE device_tags (
 CREATE TABLE interfaces (
     id             SERIAL PRIMARY KEY,
     device_id      INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    -- Номер уникален, название — просто подпись: два порта могут называться
+    -- одинаково, но занимать разные гнёзда. Связь указывает на гнездо.
+    port_number    INTEGER NOT NULL,
     label          TEXT NOT NULL,
-    port_number    INTEGER,
     port_type      TEXT CHECK (port_type IN ('access','trunk','uplink')),
     vlan_id        INTEGER REFERENCES vlans(id) ON DELETE SET NULL,
     trunk_vlan_ids INTEGER[],
     ip             INET,
     mac            MACADDR,
     notes          TEXT,
-    UNIQUE (device_id, label)
+    UNIQUE (device_id, port_number)
 );
 
 -- Шаблон/пресет связи: тип среды передачи + категория кабеля (для меди:

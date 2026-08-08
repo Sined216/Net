@@ -76,7 +76,7 @@ def test_dangling_end_reattaches_to_a_new_port(client, headers, linked_pair):
 
     new_port = client.post(
         f"/devices/{linked_pair['pc']['id']}/interfaces",
-        json={"label": "eth1", "port_number": 2},
+        json={"label": "eth1"},
         headers=headers["editor"],
     ).json()
 

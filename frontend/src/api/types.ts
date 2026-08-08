@@ -105,15 +105,16 @@ export interface VlanOut extends VlanCreate {
 export type PortType = 'access' | 'trunk' | 'uplink';
 
 export interface InterfaceTemplateCreate {
-  /** Номер обязателен и уникален внутри модели: им порт и опознаётся —
-   * он напечатан на корпусе. Название — просто подпись и может совпадать. */
-  port_number: number;
+  /** Номер не передаётся: порты нумеруются подряд, новый встаёт в конец
+   * ряда. Название — просто подпись, повторяться ей не запрещено. */
   label: string;
   port_type?: PortType | null;
 }
 
 export interface InterfaceTemplateOut extends InterfaceTemplateCreate {
   id: number;
+  /** Место порта в ряду гнёзд, 1..N без пропусков. Назначает сервер. */
+  port_number: number;
 }
 
 // ---------- Device template ----------
@@ -168,7 +169,7 @@ export interface InterfaceUpdate {
 }
 
 export interface InterfaceCreate {
-  port_number: number;
+  /** Номер порт получает сам — встаёт в конец ряда. */
   label: string;
   port_type?: PortType | null;
   vlan_id?: number | null;
