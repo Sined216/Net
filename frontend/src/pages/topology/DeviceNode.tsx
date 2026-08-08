@@ -39,6 +39,7 @@ export function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
 
   return (
     <div
+      className="topology-device-node"
       style={{
         width: DEVICE_NODE_WIDTH,
         minHeight: DEVICE_NODE_HEIGHT,
@@ -50,8 +51,18 @@ export function DeviceNode({ data }: NodeProps<DeviceNodeType>) {
         boxShadow: `0 1px 10px color-mix(in srgb, ${accent} 22%, transparent)`,
       }}
     >
-      <Handle type="source" position={Position.Top} id="src" style={{ opacity: 0, pointerEvents: 'none' }} />
-      <Handle type="target" position={Position.Top} id="tgt" style={{ opacity: 0, pointerEvents: 'none' }} />
+      {/* Точки подключения: за них тянут кабель мышкой. Раньше обе были
+          скрыты и не принимали события — связь можно было создать только из
+          карточки устройства. Видимы при наведении, чтобы не рябить на
+          схеме из сотен узлов. */}
+      <Handle
+        type="source" position={Position.Right} id="src"
+        style={{ width: 9, height: 9, background: accent, border: '2px solid var(--mantine-color-body)' }}
+      />
+      <Handle
+        type="target" position={Position.Left} id="tgt"
+        style={{ width: 9, height: 9, background: accent, border: '2px solid var(--mantine-color-body)' }}
+      />
       <Tooltip label={`${data.code} — ${data.subtitle} (${data.typeLabel})`}>
         <div
           style={{

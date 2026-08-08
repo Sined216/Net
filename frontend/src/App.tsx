@@ -3,6 +3,7 @@ import { LoginPage } from './auth/LoginPage';
 import { RequireAdmin, RequireAuth } from './auth/RequireAuth';
 import { AppLayout } from './layout/AppLayout';
 import { DevicesPage } from './pages/DevicesPage';
+import { DevicePage } from './pages/DevicePage';
 import { TemplatesPage } from './pages/TemplatesPage';
 import { LinksPage } from './pages/LinksPage';
 import { TopologyPage } from './pages/TopologyPage';
@@ -24,6 +25,7 @@ export function App() {
       >
         <Route index element={<Navigate to="/devices" replace />} />
         <Route path="/devices" element={<DevicesPage />} />
+        <Route path="/devices/:deviceId" element={<DevicePage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/links" element={<LinksPage />} />
         <Route path="/topology" element={<TopologyPage />} />

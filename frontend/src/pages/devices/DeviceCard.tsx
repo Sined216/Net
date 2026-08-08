@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ActionIcon, Badge, Button, Card, Collapse, Group, NumberInput, Table, Text, UnstyledButton } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronRight, IconEdit, IconExternalLink, IconPlus, IconTrash } from '@tabler/icons-react';
+import { Link } from 'react-router-dom';
 import { useAddInterface, useDeleteDevice } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { InterfaceRow, type FreeEntry } from './InterfaceRow';
@@ -64,6 +65,9 @@ export function DeviceCard({
           </Group>
         </UnstyledButton>
         <Group gap={4} wrap="nowrap">
+          <ActionIcon variant="subtle" component={Link} to={`/devices/${device.id}`} title="Открыть страницу устройства">
+            <IconExternalLink size={16} />
+          </ActionIcon>
           <ActionIcon variant="subtle" onClick={onEdit}><IconEdit size={16} /></ActionIcon>
           <ActionIcon variant="subtle" color="red" onClick={handleDelete}><IconTrash size={16} /></ActionIcon>
         </Group>

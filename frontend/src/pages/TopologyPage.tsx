@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, type Node } from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ReactFlow, Background, Controls, MiniMap, ConnectionMode, useNodesState, useEdgesState,
+  type Connection, type Node, type ReactFlowInstance,
+} from '@xyflow/react';
 import { Button, Group, Paper, Select, Stack, Text, Title } from '@mantine/core';
 import { IconUsersGroup } from '@tabler/icons-react';
+import { useSearchParams } from 'react-router-dom';
 import {
   useDeviceTemplates, useDeviceTypes, useDevices, useLinkTemplates, useLinks, useTags,
   useTopologyGroups, useUpdateDevicePosition,
 } from '../api/hooks';
+import { ConnectPortsModal } from './topology/ConnectPortsModal';
 import { flattenTagsOrdered } from '../lib/utils';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { DeviceNode, DEVICE_NODE_WIDTH, DEVICE_NODE_HEIGHT, type DeviceNodeType } from './topology/DeviceNode';
@@ -48,6 +53,22 @@ export function TopologyPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<DeviceNodeType | GroupNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FloatingEdgeType>([]);
   const updatePosition = useUpdateDevicePosition();
+  const [connecting, setConnecting] = useState<{ sourceId: number; targetId: number } | null>(null);
+  /** Устройство, на которое пришли по ссылке со своей страницы. Живёт в
+   * состоянии, а не только в адресе: иначе подсветку затирало бы первой же
+   * перестройкой узлов. */
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const flowRef = useRef<ReactFlowInstance<DeviceNodeType | GroupNodeType, FloatingEdgeType> | null>(null);
+
+  /** Раскладка, которая уже сложилась в этой сессии.
+   *
+   * Без неё эффект ниже пересчитывал пружинную симуляцию заново на каждое
+   * изменение данных — создали связь, поправили имя, и вся схема
+   * перестраивалась, а узлы прыгали на новые места. Теперь единожды
+   * вычисленное положение считается таким же закреплённым, как сохранённое
+   * в базе: двигаются только устройства, которых на схеме ещё не было. */
+  const placed = useRef(new Map<number, { x: number; y: number }>());
 
   const filteredDevices = useMemo(
     () => (tagFilter ? devices.filter((d) => d.tags.some((t) => String(t.id) === tagFilter)) : devices),
@@ -62,14 +83,22 @@ export function TopologyPage() {
     // Устройства с уже сохранённой позицией (перетащили руками в прошлый
     // раз) — "заморожены": не двигаются симуляцией, но отталкивают
     // остальные узлы, чтобы новые не легли поверх них.
-    const layoutNodes: LayoutNode[] = filteredDevices.map((d) => ({
-      id: String(d.id),
-      x: d.topology_x ?? 0,
-      y: d.topology_y ?? 0,
-      vx: 0, vy: 0,
-      fixed: d.topology_x != null && d.topology_y != null,
-    }));
+    const layoutNodes: LayoutNode[] = filteredDevices.map((d) => {
+      // Приоритет: сохранённая в базе позиция, затем уже сложившаяся в этой
+      // сессии, и только новые устройства отдаём симуляции.
+      const saved = d.topology_x != null && d.topology_y != null
+        ? { x: d.topology_x, y: d.topology_y }
+        : placed.current.get(d.id);
+      return {
+        id: String(d.id),
+        x: saved?.x ?? 0,
+        y: saved?.y ?? 0,
+        vx: 0, vy: 0,
+        fixed: saved != null,
+      };
+    });
     const byId = new Map(layoutNodes.map((n) => [n.id, n]));
+    const hasNewcomers = layoutNodes.some((n) => !n.fixed);
 
     const springs: Spring[] = [];
     for (const l of visibleLinks) {
@@ -95,7 +124,10 @@ export function TopologyPage() {
       }
     }
 
-    computeForceLayout(layoutNodes, springs, 1100, 750);
+    // Все узлы уже размещены — считать нечего, и главное, нельзя: симуляция
+    // сдвинула бы схему под пользователем.
+    if (hasNewcomers) computeForceLayout(layoutNodes, springs, 1100, 750);
+    for (const n of layoutNodes) placed.current.set(parseInt(n.id, 10), { x: n.x, y: n.y });
 
     const ifaceLabel = new Map<number, string>();
     for (const d of filteredDevices) for (const i of d.interfaces) ifaceLabel.set(i.id, i.label);
@@ -109,6 +141,7 @@ export function TopologyPage() {
       deviceNodesById.set(d.id, {
         id: String(d.id),
         type: 'device',
+        selected: String(d.id) === focusedId,
         position: { x: ln.x - DEVICE_NODE_WIDTH / 2, y: ln.y - DEVICE_NODE_HEIGHT / 2 },
         data: {
           code: d.code, subtitle: d.name || template?.name || '—', typeLabel,
@@ -169,7 +202,44 @@ export function TopologyPage() {
     setNodes(rfNodes);
     setEdges(rfEdges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredDevices, links, linkTemplates, templates, types, topologyGroups]);
+  }, [filteredDevices, links, linkTemplates, templates, types, topologyGroups, focusedId]);
+
+  /** Кабель тянут между устройствами, а связь в модели — между портами,
+   * поэтому после отпускания спрашиваем, какие именно порты соединить. */
+  const handleConnect = useCallback((connection: Connection) => {
+    const sourceId = parseInt(connection.source, 10);
+    const targetId = parseInt(connection.target, 10);
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    setConnecting({ sourceId, targetId });
+  }, []);
+
+  /** Переход со страницы устройства: `?device=12` — показать и подсветить. */
+  const focusDeviceId = searchParams.get('device');
+  useEffect(() => {
+    if (!focusDeviceId) return;
+    setFocusedId(focusDeviceId);
+    // Параметр одноразовый: иначе схему дёргало бы на это устройство при
+    // каждом обновлении данных.
+    const rest = new URLSearchParams(searchParams);
+    rest.delete('device');
+    setSearchParams(rest, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusDeviceId]);
+
+  useEffect(() => {
+    if (!focusedId || nodes.length === 0) return;
+    // Небольшая отсрочка: узлы только что переданы в React Flow пропсами, и
+    // в его внутреннем хранилище (откуда fitView берёт размеры) они
+    // появляются на следующем кадре.
+    const timer = setTimeout(() => {
+      const flow = flowRef.current;
+      if (flow?.getNode(focusedId)) {
+        flow.fitView({ nodes: [{ id: focusedId }], duration: 600, maxZoom: 1.4, padding: 0.6 });
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedId, nodes.length]);
 
   function handleNodeDragStop(_event: unknown, node: Node) {
     if (node.type !== 'device') return;
@@ -206,8 +276,16 @@ export function TopologyPage() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeDragStop={handleNodeDragStop}
+            onConnect={handleConnect}
+            onInit={(instance) => { flowRef.current = instance; }}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            // Кабель тянут «к устройству», а не «в точку на его краю»:
+            // радиус захвата примерно с половину узла, поэтому достаточно
+            // отпустить мышь над нужным узлом. loose — потому что связь
+            // симметрична, и какой конец считать источником, неважно.
+            connectionMode={ConnectionMode.Loose}
+            connectionRadius={95}
             fitView
             minZoom={0.2}
             maxZoom={3}
@@ -219,11 +297,18 @@ export function TopologyPage() {
         )}
       </Paper>
       <Text c="dimmed" size="sm">
-        Узлы можно перетаскивать — позиция сохраняется, при следующем открытии не пересчитывается. Подписи на
-        связях — с какого порта на какой; цвет и стиль линии — из шаблона связи. Пунктирная рамка — группа
-        (задаётся отдельно от тегов, кнопка «Группы»).
+        Чтобы соединить устройства, наведите на узел и потяните за точку на его краю до другого узла — останется
+        выбрать порты. Узлы можно перетаскивать, позиция сохраняется. Подписи на связях — с какого порта на
+        какой; цвет и стиль линии — из шаблона связи. Пунктирная рамка — группа (кнопка «Группы»).
       </Text>
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
+      {connecting && (
+        <ConnectPortsModal
+          sourceId={connecting.sourceId}
+          targetId={connecting.targetId}
+          onClose={() => setConnecting(null)}
+        />
+      )}
     </Stack>
   );
 }

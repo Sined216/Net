@@ -15,3 +15,15 @@ html, body, #root {
   margin-right: 6px;
   vertical-align: middle;
 }
+
+/* Точки подключения на узлах схемы: не мозолят глаза, но остаются
+   доступными — появляются при наведении на узел и во время протягивания
+   связи (React Flow вешает .connecting на обёртку). */
+.topology-device-node .react-flow__handle {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.topology-device-node:hover .react-flow__handle,
+.react-flow.connecting .topology-device-node .react-flow__handle {
+  opacity: 1;
+}
