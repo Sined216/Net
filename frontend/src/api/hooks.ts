@@ -21,6 +21,7 @@ export const useTags = () => useQuery({ queryKey: ['tags'], queryFn: api.listTag
 export const useDeviceTypes = () => useQuery({ queryKey: ['deviceTypes'], queryFn: api.listDeviceTypes });
 export const useConnectorTypes = () => useQuery({ queryKey: ['connectorTypes'], queryFn: api.listConnectorTypes });
 export const useModules = () => useQuery({ queryKey: ['modules'], queryFn: api.listModules });
+export const useImportRows = () => useQuery({ queryKey: ['importRows'], queryFn: api.listImportRows });
 export const useVlans = () => useQuery({ queryKey: ['vlans'], queryFn: api.listVlans });
 export const useDeviceTemplates = () => useQuery({ queryKey: ['deviceTemplates'], queryFn: api.listDeviceTemplates });
 export const useDevices = () => useQuery({ queryKey: ['devices'], queryFn: api.listDevices });
@@ -130,6 +131,37 @@ export function useDeleteModule() {
   return useMutation({
     mutationFn: (id: number) => api.deleteModule(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
+  });
+}
+
+// ---------- Импорт устройств из файла ----------
+export function useUploadImportFile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.uploadImportFile(file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importRows'] }),
+  });
+}
+export function useMoveImportRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, body }: { rowId: number; body: DeviceCreate }) => api.moveImportRow(rowId, body),
+    // Появилось устройство — списки и схема устарели, строка сменила статус.
+    onSuccess: () => invalidateAll(qc, ['importRows', 'devices']),
+  });
+}
+export function useDeleteImportRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rowId: number) => api.deleteImportRow(rowId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importRows'] }),
+  });
+}
+export function useClearImportRows() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (status?: 'new' | 'moved') => api.clearImportRows(status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importRows'] }),
   });
 }
 

@@ -350,6 +350,46 @@ class Link(Base):
     template = relationship("LinkTemplate")
 
 
+class ImportRow(Base):
+    """Строка из загруженного файла — до того, как стала устройством.
+
+    Файл не заводит устройства сам: в нём бывают опечатки, неизвестные
+    модели и наполовину пустые строки, а код устройства раздаётся системой.
+    Поэтому строки сначала ложатся сюда, а человек переносит их по одной,
+    видя в обычном окне устройства всё, что удалось разобрать. Пока строку
+    не перенесли, в спецификации оборудования её нет.
+
+    Значения хранятся как есть, текстом: в файле написано «Cisco 2960», а
+    есть ли такая модель в справочнике — выясняется при переносе.
+    """
+    __tablename__ = "import_rows"
+    id = Column(Integer, primary_key=True)
+    source_file = Column(Text, nullable=False)
+    row_number = Column(Integer, nullable=False)  # номер строки в файле, для сверки с оригиналом
+
+    name = Column(Text)
+    template_name = Column(Text)
+    type_name = Column(Text)
+    management_ip = Column(Text)
+    location = Column(Text)
+    notes = Column(Text)
+    group_name = Column(Text)
+    tags_text = Column(Text)
+    # Колонки, которым не нашлось места в модели: серийники, инвентарные
+    # номера и прочее. Не выбрасываем — человек видит их при переносе.
+    extra = Column(JSON)
+
+    # 'new' — ждёт переноса, 'moved' — стала устройством.
+    status = Column(Text, nullable=False, server_default="new", index=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"))
+    imported_at = Column(DateTime(timezone=True), server_default=func.now())
+    imported_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (CheckConstraint("status IN ('new','moved')"),)
+
+    device = relationship("Device")
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id = Column(BigInteger, primary_key=True)

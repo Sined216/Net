@@ -32,6 +32,9 @@ interface RequestOptions {
   auth?: boolean;
   /** тело — form-urlencoded (только для /auth/login) */
   form?: URLSearchParams;
+  /** файл (импорт устройств): multipart собирает браузер, свой
+   * Content-Type ставить нельзя — потеряется граница частей. */
+  upload?: FormData;
   query?: Record<string, string | number | undefined | null>;
 }
 
@@ -72,7 +75,7 @@ function formatDetail(detail: unknown): string {
 }
 
 export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true, form, query } = opts;
+  const { method = 'GET', body, auth = true, form, upload, query } = opts;
   const headers: Record<string, string> = {};
   if (auth) {
     const token = getToken();
@@ -80,7 +83,9 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
   }
 
   let payload: BodyInit | undefined;
-  if (form) {
+  if (upload) {
+    payload = upload;
+  } else if (form) {
     payload = form;
   } else if (body !== undefined) {
     headers['Content-Type'] = 'application/json';

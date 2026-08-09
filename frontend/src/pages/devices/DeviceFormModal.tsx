@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Button, Checkbox, Group, Modal, ScrollArea, Select, Stack, Text, TextInput, Textarea } from '@mantine/core';
-import { useCreateDevice, useDeviceTemplates, useSetDeviceTags, useTags, useTopologyGroups, useUpdateDevice } from '../../api/hooks';
+import {
+  useCreateDevice, useDeviceTemplates, useMoveImportRow, useSetDeviceTags, useTags, useTopologyGroups,
+  useUpdateDevice,
+} from '../../api/hooks';
 import { flattenTagsOrdered, nn } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import type { DeviceOut, DeviceRole } from '../../api/types';
@@ -11,32 +14,60 @@ const ROLES: { value: DeviceRole; label: string }[] = [
   { value: 'access', label: 'access' },
 ];
 
-export function DeviceFormModal({ device, onClose, onCreated }: {
+/** Заготовка для нового устройства — например разобранная строка файла.
+ * Всё необязательно: чего нет, человек заполнит руками. */
+export interface DeviceDraft {
+  template_id?: number | null;
+  name?: string | null;
+  management_ip?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  topology_group_id?: number | null;
+  tag_ids?: number[];
+}
+
+export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId }: {
   device: DeviceOut | null;
   onClose: () => void;
   /** Позволяет вызвавшей странице доделать своё — например схеме поставить
    * новый узел туда, куда человек смотрит. */
   onCreated?: (deviceId: number) => void;
+  /** Чем заполнить поля нового устройства. */
+  draft?: DeviceDraft;
+  /** Строка импорта, из которой заводится устройство: тогда создание идёт
+   * через неё, и строка одной операцией помечается перенесённой. Иначе
+   * пометка могла бы не доехать — и строка осталась бы «не разобранной»
+   * при уже заведённом устройстве. */
+  importRowId?: number;
 }) {
   const isEdit = !!device;
   const { data: templates = [] } = useDeviceTemplates();
   const { data: tags = [] } = useTags();
   const { data: topologyGroups = [] } = useTopologyGroups();
-  const [templateId, setTemplateId] = useState<string | null>(null);
-  const [name, setName] = useState(device?.name ?? '');
-  const [mgmtIp, setMgmtIp] = useState(device?.management_ip ?? '');
+  const [templateId, setTemplateId] = useState<string | null>(
+    draft?.template_id != null ? String(draft.template_id) : null,
+  );
+  const [name, setName] = useState(device?.name ?? draft?.name ?? '');
+  const [mgmtIp, setMgmtIp] = useState(device?.management_ip ?? draft?.management_ip ?? '');
   const [role, setRole] = useState<string | null>(device?.role ?? null);
-  const [location, setLocation] = useState(device?.location ?? '');
-  const [notes, setNotes] = useState(device?.notes ?? '');
-  const [groupId, setGroupId] = useState<string | null>(device?.topology_group_id ? String(device.topology_group_id) : null);
-  const [tagIds, setTagIds] = useState<Set<number>>(new Set((device?.tags ?? []).map((t) => t.id)));
+  const [location, setLocation] = useState(device?.location ?? draft?.location ?? '');
+  const [notes, setNotes] = useState(device?.notes ?? draft?.notes ?? '');
+  const [groupId, setGroupId] = useState<string | null>(
+    device?.topology_group_id != null ? String(device.topology_group_id)
+      : draft?.topology_group_id != null ? String(draft.topology_group_id) : null,
+  );
+  const [tagIds, setTagIds] = useState<Set<number>>(
+    new Set(device ? (device.tags ?? []).map((t) => t.id) : (draft?.tag_ids ?? [])),
+  );
 
   const createDevice = useCreateDevice();
+  const moveImportRow = useMoveImportRow();
   const updateDevice = useUpdateDevice();
   const setDeviceTags = useSetDeviceTags();
 
   const template = isEdit ? templates.find((t) => t.id === device!.template_id) : null;
-  const pending = createDevice.isPending || updateDevice.isPending || setDeviceTags.isPending;
+  const pending = createDevice.isPending || updateDevice.isPending || setDeviceTags.isPending
+    || moveImportRow.isPending;
 
   function toggleTag(id: number) {
     setTagIds((prev) => {
@@ -72,17 +103,17 @@ export function DeviceFormModal({ device, onClose, onCreated }: {
       );
     } else {
       if (!templateId) { notifyError(new Error('Выберите шаблон устройства')); return; }
-      createDevice.mutate(
-        { ...body, template_id: parseInt(templateId, 10), tag_ids: [...tagIds] },
-        {
-          onSuccess: (created) => {
-            onCreated?.(created.id);
-            notifySuccess('Устройство создано');
-            onClose();
-          },
-          onError: notifyError,
+      const created = { ...body, template_id: parseInt(templateId, 10), tag_ids: [...tagIds] };
+      const handlers = {
+        onSuccess: (device: DeviceOut) => {
+          onCreated?.(device.id);
+          notifySuccess(importRowId ? `Устройство ${device.code} заведено` : 'Устройство создано');
+          onClose();
         },
-      );
+        onError: notifyError,
+      };
+      if (importRowId) moveImportRow.mutate({ rowId: importRowId, body: created }, handlers);
+      else createDevice.mutate(created, handlers);
     }
   }
 

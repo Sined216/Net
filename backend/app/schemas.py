@@ -140,6 +140,42 @@ class TopologyGroupOut(BaseModel):
     height: Optional[float] = None
 
 
+# ---------- Импорт устройств из файла ----------
+class ImportRowOut(BaseModel):
+    """Строка из файла и то, что удалось по ней опознать.
+
+    Подсказки (`suggested_*`) — это найденные по названию записи
+    справочников. Ничего не решают: человек видит их подставленными в окне
+    устройства и правит, если файл врёт."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    source_file: str
+    row_number: int
+    name: Optional[str] = None
+    template_name: Optional[str] = None
+    type_name: Optional[str] = None
+    management_ip: Optional[str] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+    group_name: Optional[str] = None
+    tags_text: Optional[str] = None
+    extra: Optional[dict] = None
+    status: str
+    device_id: Optional[int] = None
+    imported_at: Optional[datetime] = None
+
+    suggested_template_id: Optional[int] = None
+    suggested_group_id: Optional[int] = None
+    suggested_tag_ids: List[int] = []
+
+
+class ImportSummary(BaseModel):
+    """Что вышло из загрузки файла."""
+    file: str
+    added: int
+    skipped_empty: int
+
+
 # ---------- Device type (категория устройства) ----------
 class DeviceTypeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)

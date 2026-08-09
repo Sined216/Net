@@ -94,6 +94,38 @@ export interface TopologyGroupBox {
   height: number;
 }
 
+// ---------- Импорт устройств из файла ----------
+/** Строка из файла до переноса в спецификацию. Подсказки (`suggested_*`) —
+ * найденные по названию записи справочников; интерфейс подставляет их в окно
+ * устройства, но решает человек. */
+export interface ImportRowOut {
+  id: number;
+  source_file: string;
+  row_number: number;
+  name: string | null;
+  template_name: string | null;
+  type_name: string | null;
+  management_ip: string | null;
+  location: string | null;
+  notes: string | null;
+  group_name: string | null;
+  tags_text: string | null;
+  /** Колонки файла, которым не нашлось места в модели. */
+  extra: Record<string, string> | null;
+  status: 'new' | 'moved';
+  device_id: number | null;
+  imported_at: string | null;
+  suggested_template_id: number | null;
+  suggested_group_id: number | null;
+  suggested_tag_ids: number[];
+}
+
+export interface ImportSummary {
+  file: string;
+  added: number;
+  skipped_empty: number;
+}
+
 // ---------- Разъёмы и модули ----------
 export type ConnectorMedia = 'copper' | 'fiber' | 'other';
 

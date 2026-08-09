@@ -13,7 +13,7 @@ import type {
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
   TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox,
-  SearchResult, DatabaseSchema,
+  SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
 } from './types';
 
 // ---------- Auth ----------
@@ -66,6 +66,19 @@ export const addTemplateInterfacesBulk = (templateId: number, body: PortsBulkCre
 export const addInterfacesBulk = (deviceId: number, body: PortsBulkCreate) =>
   apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces/bulk`, { method: 'POST', body });
 export const copyDeviceTemplate = (id: number) => apiFetch<DeviceTemplateOut>(`/device-templates/${id}/copy`, { method: 'POST' });
+
+// ---------- Импорт ----------
+export const uploadImportFile = (file: File) => {
+  const upload = new FormData();
+  upload.append('file', file);
+  return apiFetch<ImportSummary>('/import/devices', { method: 'POST', upload });
+};
+export const listImportRows = () => apiFetch<ImportRowOut[]>('/import/rows');
+export const moveImportRow = (rowId: number, body: DeviceCreate) =>
+  apiFetch<DeviceOut>(`/import/rows/${rowId}/move`, { method: 'POST', body });
+export const deleteImportRow = (rowId: number) => apiFetch<void>(`/import/rows/${rowId}`, { method: 'DELETE' });
+export const clearImportRows = (status?: 'new' | 'moved') =>
+  apiFetch<void>('/import/rows', { method: 'DELETE', query: { status } });
 
 export const listVlans = () => apiFetch<VlanOut[]>('/vlans');
 export const createVlan = (body: VlanCreate) => apiFetch<VlanOut>('/vlans', { method: 'POST', body });
