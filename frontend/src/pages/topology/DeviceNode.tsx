@@ -1,6 +1,6 @@
 import { Handle, NodeToolbar, Position, type NodeProps, type Node } from '@xyflow/react';
 import { ActionIcon, Group, Paper, Text, Tooltip } from '@mantine/core';
-import { IconCopy, IconPencil, IconTrash } from '@tabler/icons-react';
+import { IconCopy, IconPencil, IconTrash, IconUsersGroup } from '@tabler/icons-react';
 import { useTopologyActions } from './actions';
 
 export interface DeviceNodeData extends Record<string, unknown> {
@@ -71,6 +71,11 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
                   <IconCopy size={15} />
                 </ActionIcon>
               </Tooltip>
+              <Tooltip label="В группу — или из неё">
+                <ActionIcon variant="subtle" size="sm" onClick={() => actions.regroup(deviceId)}>
+                  <IconUsersGroup size={15} />
+                </ActionIcon>
+              </Tooltip>
               <Tooltip label="Удалить">
                 <ActionIcon variant="subtle" size="sm" color="red" onClick={() => actions.remove(deviceId)}>
                   <IconTrash size={15} />
@@ -93,36 +98,35 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
         type="target" position={Position.Left} id="tgt"
         style={{ width: 9, height: 9, background: accent, border: '2px solid var(--mantine-color-body)' }}
       />
-      {/* Пока узел выделен, над ним висит панель действий — подсказка
-          перекрыла бы её собой. */}
-      <Tooltip label={`${data.code} — ${data.subtitle} (${data.typeLabel})`} disabled={selected}>
-        <div
-          style={{
-            borderRadius: 8.5,
-            background: 'var(--mantine-color-body)',
-            padding: '7px 9px',
-            height: '100%',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span
-              style={{
-                width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                background: accent,
-              }}
-            />
-            <Text size="sm" fw={700} truncate style={{ flex: 1, minWidth: 0 }}>
-              {data.code}
-            </Text>
-            <Text size="xs" c={connected ? 'teal' : 'dimmed'} fw={600} style={{ flexShrink: 0 }}>
-              {data.portsConnected}/{data.portsTotal}
-            </Text>
-          </div>
-          <Text size="xs" c="dimmed" truncate mt={2}>
-            {data.subtitle}
+      {/* Подсказки при наведении здесь нет намеренно: она всплывала над
+          узлом ровно там, где появляется панель действий, и перекрывала её.
+          Всё, что подсказка сообщала, и так написано на карточке. */}
+      <div
+        style={{
+          borderRadius: 8.5,
+          background: 'var(--mantine-color-body)',
+          padding: '7px 9px',
+          height: '100%',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span
+            style={{
+              width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+              background: accent,
+            }}
+          />
+          <Text size="sm" fw={700} truncate style={{ flex: 1, minWidth: 0 }}>
+            {data.code}
+          </Text>
+          <Text size="xs" c={connected ? 'teal' : 'dimmed'} fw={600} style={{ flexShrink: 0 }}>
+            {data.portsConnected}/{data.portsTotal}
           </Text>
         </div>
-      </Tooltip>
+        <Text size="xs" c="dimmed" truncate mt={2}>
+          {data.subtitle}
+        </Text>
+      </div>
     </div>
   );
 }

@@ -6,6 +6,63 @@ from app import models, schemas, auth
 
 router = APIRouter(prefix="/topology-groups", tags=["topology-groups"])
 
+# Глубже трёх уровней (цех — участок — линия) рамка внутри рамки внутри
+# рамки уже нечитаема, а раскладка начинает съедать место под заголовки.
+MAX_DEPTH = 3
+
+
+def _depth(db: Session, group_id: int | None) -> int:
+    """Сколько групп над этой, считая её саму."""
+    depth = 0
+    node = db.query(models.TopologyGroup).filter(models.TopologyGroup.id == group_id).first() if group_id else None
+    while node is not None:
+        depth += 1
+        node = (
+            db.query(models.TopologyGroup).filter(models.TopologyGroup.id == node.parent_id).first()
+            if node.parent_id else None
+        )
+    return depth
+
+
+def _is_descendant(db: Session, group_id: int, maybe_ancestor_id: int) -> bool:
+    """Не станет ли группа сама себе (пра)родителем."""
+    node = db.query(models.TopologyGroup).filter(models.TopologyGroup.id == maybe_ancestor_id).first()
+    while node is not None:
+        if node.id == group_id:
+            return True
+        node = (
+            db.query(models.TopologyGroup).filter(models.TopologyGroup.id == node.parent_id).first()
+            if node.parent_id else None
+        )
+    return False
+
+
+def _subtree_depth(db: Session, group_id: int) -> int:
+    """Насколько глубоко уходят подгруппы под этой (сама группа — 1)."""
+    children = db.query(models.TopologyGroup).filter(models.TopologyGroup.parent_id == group_id).all()
+    if not children:
+        return 1
+    return 1 + max(_subtree_depth(db, child.id) for child in children)
+
+
+def _check_parent(db: Session, parent_id: int | None, group_id: int | None = None) -> None:
+    if parent_id is None:
+        return
+    if not db.query(models.TopologyGroup).filter(models.TopologyGroup.id == parent_id).first():
+        raise HTTPException(status_code=404, detail="Родительская группа не найдена")
+    if group_id is not None:
+        if parent_id == group_id:
+            raise HTTPException(status_code=400, detail="Группа не может быть вложена сама в себя")
+        if _is_descendant(db, group_id, parent_id):
+            raise HTTPException(status_code=400, detail="Нельзя вложить группу в собственную подгруппу")
+    # Перенос тащит за собой все подгруппы, поэтому считается высота поддерева.
+    height = _subtree_depth(db, group_id) if group_id is not None else 1
+    if _depth(db, parent_id) + height > MAX_DEPTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Глубже {MAX_DEPTH} уровней вложенности группы не читаются на схеме",
+        )
+
 
 @router.get("", response_model=list[schemas.TopologyGroupOut])
 def list_topology_groups(db: Session = Depends(get_db)):
@@ -17,6 +74,7 @@ def create_topology_group(payload: schemas.TopologyGroupCreate, db: Session = De
                            _: models.User = Depends(auth.can_edit)):
     if db.query(models.TopologyGroup).filter(models.TopologyGroup.name == payload.name).first():
         raise HTTPException(status_code=409, detail="Группа с таким названием уже существует")
+    _check_parent(db, payload.parent_id)
     group = models.TopologyGroup(**payload.model_dump())
     db.add(group)
     db.commit()
@@ -30,7 +88,16 @@ def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, d
     group = db.query(models.TopologyGroup).filter(models.TopologyGroup.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+
+    data = payload.model_dump(exclude_unset=True)
+    if "parent_id" in data:
+        _check_parent(db, data["parent_id"], group_id)
+    if "name" in data and db.query(models.TopologyGroup).filter(
+        models.TopologyGroup.name == data["name"], models.TopologyGroup.id != group_id
+    ).first():
+        raise HTTPException(status_code=409, detail="Группа с таким названием уже существует")
+
+    for field, value in data.items():
         setattr(group, field, value)
     db.commit()
     db.refresh(group)
@@ -43,6 +110,7 @@ def delete_topology_group(group_id: int, db: Session = Depends(get_db),
     group = db.query(models.TopologyGroup).filter(models.TopologyGroup.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
-    # у устройств этой группы topology_group_id просто станет NULL (ON DELETE SET NULL)
+    # У устройств этой группы topology_group_id станет NULL, а подгруппы
+    # всплывут на уровень выше (обе связи — ON DELETE SET NULL).
     db.delete(group)
     db.commit()

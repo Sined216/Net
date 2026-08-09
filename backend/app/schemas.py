@@ -95,17 +95,20 @@ class TagOut(TagBase):
     id: int
 
 
-# ---------- Topology group (отдельный от тегов параметр: одна группа
-# на устройство, без вложенности — только для визуальной кластеризации
-# на топологии) ----------
+# ---------- Topology group (отдельный от тегов параметр: одна группа на
+# устройство — только для визуальной кластеризации на топологии; группы
+# вкладываются друг в друга: цех — участок — линия) ----------
 class TopologyGroupCreate(BaseModel):
     name: str
     color: Optional[str] = None
+    # Группа внутри группы: цех — участок — линия.
+    parent_id: Optional[int] = None
 
 
 class TopologyGroupUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
+    parent_id: Optional[int] = None
 
 
 class TopologyGroupOut(BaseModel):
@@ -113,6 +116,7 @@ class TopologyGroupOut(BaseModel):
     id: int
     name: str
     color: Optional[str] = None
+    parent_id: Optional[int] = None
 
 
 # ---------- Device type (категория устройства) ----------

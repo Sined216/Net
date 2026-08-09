@@ -96,10 +96,14 @@ CREATE TABLE device_template_interfaces (
 -- и для жёсткой визуальной кластеризации не годятся (неясно, в какую рамку
 -- класть устройство с двумя тегами) — это узкое поле только под схему.
 CREATE TABLE topology_groups (
-    id     SERIAL PRIMARY KEY,
-    name   TEXT UNIQUE NOT NULL,
-    color  TEXT
+    id        SERIAL PRIMARY KEY,
+    name      TEXT UNIQUE NOT NULL,
+    color     TEXT,
+    -- Группа внутри группы: цех — участок — линия. SET NULL, а не CASCADE:
+    -- удаление цеха не уносит с собой участки вместе с их устройствами.
+    parent_id INTEGER REFERENCES topology_groups(id) ON DELETE SET NULL
 );
+CREATE INDEX ix_topology_groups_parent_id ON topology_groups(parent_id);
 
 -- Устройство в спецификации оборудования — экземпляр конкретного шаблона.
 -- code генерируется автоматически (см. code_sequences), не вводится руками.

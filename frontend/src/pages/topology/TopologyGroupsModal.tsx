@@ -1,66 +1,88 @@
 import { useState } from 'react';
-import { ActionIcon, Button, ColorInput, Group, Modal, Table, Text, TextInput } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
-import { useCreateTopologyGroup, useDeleteTopologyGroup, useTopologyGroups } from '../../api/hooks';
+import { ActionIcon, Button, Group, Modal, Stack, Table, Text } from '@mantine/core';
+import { IconFolderPlus, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { useDeleteTopologyGroup, useDevices, useTopologyGroups } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { GroupEditModal } from './GroupEditModal';
+import { orderedGroups } from './groups';
+import type { TopologyGroupOut } from '../../api/types';
 
+/** Список групп деревом: цех — участок — линия.
+ *
+ * Здесь заводят группы, которых на схеме ещё не видно: пока в группе нет ни
+ * одного устройства, рамки не существует, и панель действий на ней открыть
+ * негде.
+ */
 export function TopologyGroupsModal({ onClose }: { onClose: () => void }) {
   const { data: groups = [] } = useTopologyGroups();
-  const [name, setName] = useState('');
-  const [color, setColor] = useState('#94a3b8');
-  const createGroup = useCreateTopologyGroup();
+  const { data: devices = [] } = useDevices();
   const deleteGroup = useDeleteTopologyGroup();
+  const [editing, setEditing] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
 
-  function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    createGroup.mutate(
-      { name: name.trim(), color },
-      {
-        onSuccess: () => { notifySuccess('Группа создана'); setName(''); },
-        onError: notifyError,
-      },
-    );
+  function handleDelete(group: TopologyGroupOut) {
+    if (!confirm(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`)) return;
+    deleteGroup.mutate(group.id, { onSuccess: () => notifySuccess('Группа удалена'), onError: notifyError });
   }
 
-  function handleDelete(id: number, groupName: string) {
-    if (!confirm(`Удалить группу «${groupName}»? У устройств этой группы она просто снимется.`)) return;
-    deleteGroup.mutate(id, { onSuccess: () => notifySuccess('Группа удалена'), onError: notifyError });
-  }
+  const rows = orderedGroups(groups);
 
   return (
-    <Modal opened onClose={onClose} title="Группы на топологии">
-      <Text size="sm" c="dimmed" mb="sm">
-        Отдельный от тегов параметр — ровно одна группа на устройство. Используется только для визуальной
-        кластеризации на схеме связей (рамка вокруг устройств одной группы).
-      </Text>
-      <Table withTableBorder verticalSpacing="xs" mb="sm">
-        <Table.Tbody>
-          {groups.map((g) => (
-            <Table.Tr key={g.id}>
-              <Table.Td>
-                <span className="tag-badge-dot" style={{ background: g.color ?? '#94a3b8' }} />
-                {g.name}
-              </Table.Td>
-              <Table.Td w={40}>
-                <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(g.id, g.name)}>
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Table.Td>
-            </Table.Tr>
-          ))}
-          {groups.length === 0 && (
-            <Table.Tr><Table.Td colSpan={2}><Text c="dimmed">Групп ещё нет</Text></Table.Td></Table.Tr>
-          )}
-        </Table.Tbody>
-      </Table>
-      <form onSubmit={handleAdd}>
-        <Group align="flex-end">
-          <TextInput label="Новая группа" placeholder="напр. Цех 1" value={name} onChange={(e) => setName(e.currentTarget.value)} style={{ flex: 1 }} />
-          <ColorInput label="Цвет" value={color} onChange={setColor} w={110} />
-          <Button type="submit" leftSection={<IconPlus size={16} />} loading={createGroup.isPending}>Добавить</Button>
+    <Modal opened onClose={onClose} title="Группы на топологии" size="lg">
+      <Stack>
+        <Text size="sm" c="dimmed">
+          Отдельный от тегов параметр — ровно одна группа на устройство, самая внутренняя. Группы вкладываются
+          друг в друга: цех — участок — линия. Рамка появляется на схеме, когда в группе есть хотя бы одно
+          устройство.
+        </Text>
+
+        <Table withTableBorder verticalSpacing="xs">
+          <Table.Tbody>
+            {rows.map(({ group, depth }) => {
+              const count = devices.filter((d) => d.topology_group_id === group.id).length;
+              return (
+                <Table.Tr key={group.id}>
+                  <Table.Td>
+                    <Group gap={6} wrap="nowrap" style={{ paddingLeft: depth * 22 }}>
+                      <span className="tag-badge-dot" style={{ background: group.color ?? '#94a3b8' }} />
+                      <Text size="sm">{group.name}</Text>
+                      <Text size="xs" c="dimmed">{count} уст.</Text>
+                    </Group>
+                  </Table.Td>
+                  <Table.Td w={110}>
+                    <Group gap={2} justify="flex-end" wrap="nowrap">
+                      <ActionIcon variant="subtle" size="sm" title="Правка и состав"
+                        onClick={() => setEditing({ group, parentId: null })}>
+                        <IconPencil size={15} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" size="sm" title="Добавить подгруппу"
+                        onClick={() => setEditing({ group: null, parentId: group.id })}>
+                        <IconFolderPlus size={15} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" size="sm" color="red" title="Удалить"
+                        onClick={() => handleDelete(group)}>
+                        <IconTrash size={15} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <Table.Tr><Table.Td colSpan={2}><Text c="dimmed">Групп ещё нет</Text></Table.Td></Table.Tr>
+            )}
+          </Table.Tbody>
+        </Table>
+
+        <Group justify="flex-end">
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing({ group: null, parentId: null })}>
+            Группа
+          </Button>
         </Group>
-      </form>
+      </Stack>
+
+      {editing && (
+        <GroupEditModal group={editing.group} parentId={editing.parentId} onClose={() => setEditing(null)} />
+      )}
     </Modal>
   );
 }

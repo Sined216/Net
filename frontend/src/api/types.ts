@@ -62,10 +62,13 @@ export interface TagOut {
 }
 
 // ---------- Topology group (отдельный от тегов параметр: одна группа на
-// устройство, без вложенности — только для визуальной кластеризации) ----------
+// устройство — только для визуальной кластеризации; группы вкладываются
+// друг в друга: цех — участок — линия) ----------
 export interface TopologyGroupCreate {
   name: string;
   color?: string | null;
+  /** Группа, внутри которой лежит эта. Пусто — рамка верхнего уровня. */
+  parent_id?: number | null;
 }
 export type TopologyGroupUpdate = Partial<TopologyGroupCreate>;
 
@@ -73,6 +76,7 @@ export interface TopologyGroupOut {
   id: number;
   name: string;
   color: string | null;
+  parent_id: number | null;
 }
 
 // ---------- Device type ----------

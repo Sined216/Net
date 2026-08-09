@@ -9,18 +9,22 @@ import { useSearchParams } from 'react-router-dom';
 import {
   useDeviceTemplates, useDeviceTypes, useDevices, useLinkTemplates, useLinks, useTags,
   useTopologyGroups, useUpdateDevicePosition, useDeleteDevice, useDeleteLink, useCreateDevice,
+  useUpdateDevice, useDeleteTopologyGroup,
 } from '../api/hooks';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
 import { AttachEndModal } from './topology/AttachEndModal';
+import { GroupEditModal } from './topology/GroupEditModal';
+import { DeviceGroupModal } from './topology/DeviceGroupModal';
+import { groupDepth } from './topology/groups';
 import { TopologyActionsContext, type TopologyActions } from './topology/actions';
 import { LinkFormModal } from './links/LinkFormModal';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
-import type { DeviceOut, LinkOut } from '../api/types';
+import type { DeviceOut, LinkOut, TopologyGroupOut } from '../api/types';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { DeviceNode, DEVICE_NODE_WIDTH, DEVICE_NODE_HEIGHT, type DeviceNodeType } from './topology/DeviceNode';
-import { GroupNode, type GroupNodeType } from './topology/GroupNode';
+import { GroupNode, GROUP_HEADER_HEIGHT, type GroupNodeType } from './topology/GroupNode';
 import { DanglingNode, DANGLING_NODE_SIZE, type DanglingNodeType } from './topology/DanglingNode';
 import { FloatingEdge, type FloatingEdgeType } from './topology/FloatingEdge';
 import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
@@ -32,7 +36,7 @@ const GROUP_PADDING = 30;
 /** Узел-заглушка свободного конца: `dangling-<id связи>`. Префикс отличает
  * его от узла устройства, id которого — просто число. */
 const DANGLING_PREFIX = 'dangling-';
-const GROUP_HEADER = 26;
+const GROUP_HEADER = GROUP_HEADER_HEIGHT;
 
 /** Общая заглушка для ещё не загруженных запросов.
  *
@@ -66,12 +70,18 @@ export function TopologyPage() {
   const deleteDevice = useDeleteDevice();
   const deleteLink = useDeleteLink();
   const createDevice = useCreateDevice();
+  const updateDevice = useUpdateDevice();
+  const deleteGroup = useDeleteTopologyGroup();
   const [editingLink, setEditingLink] = useState<LinkOut | null>(null);
   const [editingDevice, setEditingDevice] = useState<DeviceOut | null>(null);
   const [addingDevice, setAddingDevice] = useState(false);
   const [connecting, setConnecting] = useState<{ sourceId: number; targetId: number } | null>(null);
   /** Повисший конец, который перетащили на устройство: осталось выбрать порт. */
   const [attaching, setAttaching] = useState<{ linkId: number; deviceId: number } | null>(null);
+  /** Открытая правка группы: сама группа либо создание новой подгруппы. */
+  const [editingGroup, setEditingGroup] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
+  /** Устройство, которому выбирают группу через панель действий. */
+  const [regrouping, setRegrouping] = useState<number | null>(null);
   /** Устройство, на которое пришли по ссылке со своей страницы. Живёт в
    * состоянии, а не только в адресе: иначе подсветку затирало бы первой же
    * перестройкой узлов. */
@@ -87,6 +97,10 @@ export function TopologyPage() {
    * вычисленное положение считается таким же закреплённым, как сохранённое
    * в базе: двигаются только устройства, которых на схеме ещё не было. */
   const placed = useRef(new Map<number, { x: number; y: number }>());
+
+  /** Абсолютные рамки групп из последней раскладки: по ним определяется, в
+   * какую группу человек бросил устройство, перетащив его мышью. */
+  const groupBoxes = useRef(new Map<number, { minX: number; minY: number; maxX: number; maxY: number }>());
 
   const filteredDevices = useMemo(
     () => (tagFilter ? devices.filter((d) => d.tags.some((t) => String(t.id) === tagFilter)) : devices),
@@ -178,34 +192,103 @@ export function TopologyPage() {
       });
     }
 
-    // Рамки групп — постфактум вокруг уже сложившегося кластера, координаты
-    // детей пересчитываются в относительные (требование React Flow для
-    // parentId), а сохранённая позиция при этом остаётся абсолютной.
-    const groupNodes: GroupNodeType[] = [];
+    // Рамки групп — постфактум вокруг уже сложившегося кластера. Группы
+    // вкладываются друг в друга (цех — участок — линия), поэтому рамка
+    // считается снизу вверх: сначала внутренние, затем внешняя охватывает
+    // их вместе со своими собственными устройствами.
+    //
+    // React Flow требует, чтобы координаты вложенного узла были заданы
+    // относительно родителя, поэтому сначала считаются абсолютные рамки, и
+    // только потом всё пересчитывается в относительные — иначе смещение
+    // родителя пришлось бы вычитать дважды.
+    const childGroups = new Map<number | null, typeof topologyGroups>();
     for (const group of topologyGroups) {
-      const members = filteredDevices.filter((d) => d.topology_group_id === group.id);
-      if (members.length === 0) continue;
-      const positions = members.map((d) => deviceNodesById.get(d.id)!.position);
-      const minX = Math.min(...positions.map((p) => p.x)) - GROUP_PADDING;
-      const minY = Math.min(...positions.map((p) => p.y)) - GROUP_PADDING - GROUP_HEADER;
-      const maxX = Math.max(...positions.map((p) => p.x + DEVICE_NODE_WIDTH)) + GROUP_PADDING;
-      const maxY = Math.max(...positions.map((p) => p.y + DEVICE_NODE_HEIGHT)) + GROUP_PADDING;
-      const groupNodeId = `group-${group.id}`;
+      const key = group.parent_id ?? null;
+      if (!childGroups.has(key)) childGroups.set(key, []);
+      childGroups.get(key)!.push(group);
+    }
+
+    type Box = { minX: number; minY: number; maxX: number; maxY: number };
+    const groupBox = new Map<number, Box>();
+    const groupDevices = new Map<number, number>();  // сколько устройств внутри, с подгруппами
+
+    const measure = (group: (typeof topologyGroups)[number], visited: Set<number>): Box | null => {
+      // Кольцо во вложенности сервер не пропускает, но данные могут прийти
+      // и из другой сессии — обрываем на всякий случай.
+      if (visited.has(group.id)) return null;
+      visited.add(group.id);
+
+      const parts: Box[] = [];
+      let count = 0;
+      for (const d of filteredDevices) {
+        if (d.topology_group_id !== group.id) continue;
+        const { x, y } = deviceNodesById.get(d.id)!.position;
+        parts.push({ minX: x, minY: y, maxX: x + DEVICE_NODE_WIDTH, maxY: y + DEVICE_NODE_HEIGHT });
+        count += 1;
+      }
+      for (const child of childGroups.get(group.id) ?? []) {
+        const box = measure(child, visited);
+        if (box) {
+          parts.push(box);
+          count += groupDevices.get(child.id) ?? 0;
+        }
+      }
+      // Пустая группа рамкой не рисуется: пустой прямоугольник на схеме
+      // только мешает, а сама группа никуда не делась — она в списке.
+      if (parts.length === 0) return null;
+
+      const box: Box = {
+        minX: Math.min(...parts.map((p) => p.minX)) - GROUP_PADDING,
+        minY: Math.min(...parts.map((p) => p.minY)) - GROUP_PADDING - GROUP_HEADER,
+        maxX: Math.max(...parts.map((p) => p.maxX)) + GROUP_PADDING,
+        maxY: Math.max(...parts.map((p) => p.maxY)) + GROUP_PADDING,
+      };
+      groupBox.set(group.id, box);
+      groupDevices.set(group.id, count);
+      return box;
+    };
+    for (const group of childGroups.get(null) ?? []) measure(group, new Set());
+
+    const depthOf = (group: (typeof topologyGroups)[number]) => groupDepth(topologyGroups, group.id);
+
+    const groupNodes: GroupNodeType[] = [];
+    for (const group of [...topologyGroups].sort((a, b) => depthOf(a) - depthOf(b))) {
+      const box = groupBox.get(group.id);
+      if (!box) continue;
+      const parentBox = group.parent_id != null ? groupBox.get(group.parent_id) : undefined;
       groupNodes.push({
-        id: groupNodeId,
+        id: `group-${group.id}`,
         type: 'group',
-        position: { x: minX, y: minY },
-        style: { width: maxX - minX, height: maxY - minY },
-        data: { name: group.name, color: group.color ?? '#94a3b8' },
-        selectable: false,
+        // Родитель уже в списке — он выше по глубине, а React Flow требует
+        // объявлять родителя раньше ребёнка.
+        parentId: parentBox ? `group-${group.parent_id}` : undefined,
+        position: parentBox
+          ? { x: box.minX - parentBox.minX, y: box.minY - parentBox.minY }
+          : { x: box.minX, y: box.minY },
+        style: { width: box.maxX - box.minX, height: box.maxY - box.minY },
+        data: {
+          name: group.name,
+          color: group.color ?? '#94a3b8',
+          depth: depthOf(group),
+          deviceCount: groupDevices.get(group.id) ?? 0,
+        },
+        // Рамку двигать нельзя (она считается по содержимому), но выделить
+        // нужно — иначе панель действий над ней не появится.
         draggable: false,
       });
-      for (const d of members) {
-        const node = deviceNodesById.get(d.id)!;
-        node.parentId = groupNodeId;
-        node.position = { x: node.position.x - minX, y: node.position.y - minY };
-      }
     }
+
+    for (const d of filteredDevices) {
+      const box = d.topology_group_id != null ? groupBox.get(d.topology_group_id) : undefined;
+      if (!box) continue;
+      const node = deviceNodesById.get(d.id)!;
+      node.parentId = `group-${d.topology_group_id}`;
+      node.position = { x: node.position.x - box.minX, y: node.position.y - box.minY };
+    }
+
+    // Рамки нужны и снаружи эффекта: по ним определяется, в какую группу
+    // человек бросил устройство мышью.
+    groupBoxes.current = groupBox;
 
     // Подвешенные кабели: второй конец рисуется заглушкой рядом с живым
     // устройством. Иначе снятая сетевая карта просто стирала кабель со
@@ -347,8 +430,24 @@ export function TopologyPage() {
       if (!confirm(`Удалить устройство «${device.code}» вместе с портами и связями?`)) return;
       deleteDevice.mutate(deviceId, { onError: notifyError });
     },
+    regroup: (deviceId) => setRegrouping(deviceId),
+
+    editGroup: (groupId) => {
+      const group = topologyGroups.find((g) => g.id === groupId);
+      if (group) setEditingGroup({ group, parentId: null });
+    },
+    addSubgroup: (groupId) => setEditingGroup({ group: null, parentId: groupId }),
+    removeGroup: (groupId) => {
+      const group = topologyGroups.find((g) => g.id === groupId);
+      if (!group) return;
+      if (!confirm(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`)) return;
+      deleteGroup.mutate(groupId, {
+        onSuccess: () => notifySuccess('Группа удалена'),
+        onError: notifyError,
+      });
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [devices]);
+  }), [devices, topologyGroups]);
 
   /** Переход со страницы устройства: `?device=12` — показать и подсветить. */
   const focusDeviceId = searchParams.get('device');
@@ -397,20 +496,23 @@ export function TopologyPage() {
     edges: { id: string }[];
   }) => {
     const devices = doomedNodes.filter((n) => n.type === 'device');
-    if (devices.length === 0 && doomedEdges.length === 0) return false;
+    const groups = doomedNodes.filter((n) => n.type === 'group');
+    if (devices.length === 0 && groups.length === 0 && doomedEdges.length === 0) return false;
 
     const what = [
       devices.length > 0 && `устройств: ${devices.length} (вместе с портами и связями)`,
+      groups.length > 0 && `групп: ${groups.length} (устройства останутся)`,
       doomedEdges.length > 0 && `связей: ${doomedEdges.length}`,
     ].filter(Boolean).join(', ');
     if (!confirm(`Удалить ${what}?`)) return false;
 
     await Promise.all([
       ...devices.map((n) => deleteDevice.mutateAsync(parseInt(n.id, 10))),
+      ...groups.map((n) => deleteGroup.mutateAsync(parseInt(n.id.replace('group-', ''), 10))),
       ...doomedEdges.map((e) => deleteLink.mutateAsync(parseInt(e.id, 10))),
     ]).catch(notifyError);
     return true;
-  }, [deleteDevice, deleteLink]);
+  }, [deleteDevice, deleteLink, deleteGroup]);
 
   /** Новое устройство появляется там, куда человек смотрит, а не за краем
    * экрана: берём центр видимой области. */
@@ -428,10 +530,42 @@ export function TopologyPage() {
     if (node.type !== 'device') return;
     let x = node.position.x, y = node.position.y;
     if (node.parentId) {
-      const parent = nodes.find((n) => n.id === node.parentId);
-      if (parent) { x += parent.position.x; y += parent.position.y; }
+      // Позиция вложенного узла задана относительно рамки — возвращаем её в
+      // общие координаты схемы, в которых она и хранится в базе.
+      const parentBox = groupBoxes.current.get(parseInt(node.parentId.replace('group-', ''), 10));
+      if (parentBox) { x += parentBox.minX; y += parentBox.minY; }
     }
-    updatePosition.mutate({ id: parseInt(node.id, 10), body: { x: x + DEVICE_NODE_WIDTH / 2, y: y + DEVICE_NODE_HEIGHT / 2 } });
+    const deviceId = parseInt(node.id, 10);
+    const center = { x: x + DEVICE_NODE_WIDTH / 2, y: y + DEVICE_NODE_HEIGHT / 2 };
+    updatePosition.mutate({ id: deviceId, body: center });
+
+    // Куда бросили, туда и положили: перетаскивание в рамку — самый прямой
+    // способ сменить группу, а тащить в список из нескольких десятков
+    // устройств — долго. Из всех рамок под курсором берётся самая глубокая:
+    // рамка участка всегда лежит внутри рамки цеха.
+    const device = devices.find((d) => d.id === deviceId);
+    if (!device) return;
+    let dropped: number | null = null;
+    let deepest = -1;
+    for (const [groupId, box] of groupBoxes.current) {
+      const inside = center.x >= box.minX && center.x <= box.maxX && center.y >= box.minY && center.y <= box.maxY;
+      if (!inside) continue;
+      const depth = groupDepth(topologyGroups, groupId);
+      if (depth > deepest) { deepest = depth; dropped = groupId; }
+    }
+    if (dropped === (device.topology_group_id ?? null)) return;
+
+    updateDevice.mutate(
+      { id: deviceId, body: { topology_group_id: dropped } },
+      {
+        onSuccess: () => notifySuccess(
+          dropped == null
+            ? `${device.code} вынесено из группы`
+            : `${device.code} — в группе «${topologyGroups.find((g) => g.id === dropped)?.name ?? ''}»`,
+        ),
+        onError: notifyError,
+      },
+    );
   }
 
   return (
@@ -490,7 +624,8 @@ export function TopologyPage() {
       </Paper>
       <Text c="dimmed" size="sm">
         Соединить устройства — потяните за точку на краю узла до другого узла и выберите порты. Клик по узлу
-        открывает панель: править, копировать, удалить. Клик по линии открывает правку связи. Оранжевый кружок
+        открывает панель: править, копировать, в группу, удалить; клик по рамке группы — свою: правка, подгруппа,
+        удаление. Устройство переносится в группу перетаскиванием в её рамку. Клик по линии открывает правку связи. Оранжевый кружок
         с «?» — свободный конец кабеля: потяните его на устройство, чтобы воткнуть в порт. Клавиша Delete
         удаляет выделенный узел или линию. Узлы можно перетаскивать, позиция сохраняется. Цвет узла берётся из
         модели техники, цвет линии — из шаблона связи. Пунктирная рамка — группа (кнопка «Группы»).
@@ -522,6 +657,16 @@ export function TopologyPage() {
       )}
       {editingDevice && (
         <DeviceFormModal device={editingDevice} onClose={() => setEditingDevice(null)} />
+      )}
+      {editingGroup && (
+        <GroupEditModal
+          group={editingGroup.group}
+          parentId={editingGroup.parentId}
+          onClose={() => setEditingGroup(null)}
+        />
+      )}
+      {regrouping != null && (
+        <DeviceGroupModal deviceId={regrouping} onClose={() => setRegrouping(null)} />
       )}
     </Stack>
     </TopologyActionsContext.Provider>
