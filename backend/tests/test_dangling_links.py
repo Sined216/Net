@@ -202,3 +202,15 @@ def test_cable_disappears_when_its_last_end_is_removed(client, headers, pc_templ
     assert client.delete(f"/interfaces/{b['interfaces'][0]['id']}", headers=headers["editor"]).status_code == 204
     links = client.get("/links", headers=headers["viewer"]).json()
     assert link["id"] not in [item["id"] for item in links]
+
+
+def test_topology_endpoint_survives_dangling_links(client, headers, linked_pair):
+    """Кабель с подвешенным концом ронял /topology: у отсутствующего порта
+    спрашивали устройство. Парой устройств такой кабель не описывается,
+    поэтому в этой выдаче он просто не участвует."""
+    assert client.delete(f"/interfaces/{linked_pair['pc_port']}", headers=headers["editor"]).status_code == 204
+
+    response = client.get("/topology", headers=headers["viewer"])
+    assert response.status_code == 200
+    assert response.json()["edges"] == []
+    assert len(response.json()["nodes"]) >= 1

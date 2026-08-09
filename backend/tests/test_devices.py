@@ -142,3 +142,18 @@ def test_position_is_saved(client, headers, make_device):
     )
     assert response.status_code == 200
     assert (response.json()["topology_x"], response.json()["topology_y"]) == (120.5, -40.0)
+
+
+def test_search_treats_wildcards_as_text(client, headers, make_device, db):
+    """% и _ — шаблоны ILIKE, а не символы. Запрос «%» возвращал вообще всё,
+    хотя человек ищет текст, а не пишет шаблон."""
+    from app import models
+
+    device = make_device()
+    iface = db.query(models.Interface).filter(models.Interface.device_id == device["id"]).first()
+    iface.ip = "10.10.1.5"
+    db.commit()
+
+    assert client.get("/search", params={"query": "10.10"}, headers=headers["viewer"]).json(), "обычный поиск работает"
+    assert client.get("/search", params={"query": "%"}, headers=headers["viewer"]).json() == []
+    assert client.get("/search", params={"query": "10_10"}, headers=headers["viewer"]).json() == []

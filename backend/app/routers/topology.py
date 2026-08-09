@@ -43,6 +43,13 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db)):
 
     edges = []
     for link in links:
+        # Кабель с подвешенным концом парой устройств не описывается: второго
+        # устройства просто нет. Раньше на таком запрос падал пятисоткой —
+        # обращение к device_id у отсутствующего порта. Схема сети, которую
+        # рисует интерфейс, собирается из /devices и /links и такие кабели
+        # показывает заглушкой; здесь они пропускаются.
+        if link.interface_a is None or link.interface_b is None:
+            continue
         dev_a = link.interface_a.device_id
         dev_b = link.interface_b.device_id
         if tag_id is not None and (dev_a not in device_ids or dev_b not in device_ids):

@@ -84,7 +84,11 @@ def search(query: str, db: Session = Depends(get_db)):
     MAC при сохранении нормализуется к виду aa:bb:cc:dd:ee:ff, так что
     искать по нему стоит в этой же записи.
     """
-    like = f"%{query}%"
+    # % и _ в ILIKE — шаблоны, а не символы: запрос «%» возвращал вообще всё,
+    # а «10_10» находил и «10.10», и «10x10». Человек ищет текст, а не пишет
+    # шаблон, поэтому спецсимволы экранируются.
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = f"%{escaped}%"
     rows = (
         db.query(models.Interface, models.Device)
         .join(models.Device, models.Device.id == models.Interface.device_id)
