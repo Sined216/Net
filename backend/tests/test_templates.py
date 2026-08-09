@@ -154,3 +154,29 @@ def test_template_port_lands_before_hand_made_ports(client, headers, template, m
     assert [(i["port_number"], i["label"]) for i in refreshed["interfaces"]] == [
         (1, "Порт 1"), (2, "Порт 2"), (3, "SFP1"), (4, "Своя карта"),
     ]
+
+
+def test_bulk_ports_are_all_created(client, headers, template):
+    """Двадцать четыре порта одним запросом.
+
+    Раньше интерфейс слал их по одному и параллельно: все запросы читали
+    один и тот же «следующий номер», и из восьми портов доезжали два."""
+    before = len(client.get(f"/device-templates/{template.id}", headers=headers["viewer"]).json()["interfaces"])
+
+    response = client.post(
+        f"/device-templates/{template.id}/interfaces/bulk", json={"count": 24}, headers=headers["editor"],
+    )
+    assert response.status_code == 201
+    assert len(response.json()) == 24
+
+    ports = client.get(f"/device-templates/{template.id}", headers=headers["viewer"]).json()["interfaces"]
+    numbers = sorted(p["port_number"] for p in ports)
+    assert numbers == list(range(1, before + 24 + 1)), "ряд номеров остаётся сплошным"
+
+
+def test_bulk_ports_reach_devices(client, headers, template, make_device):
+    device = make_device()
+    client.post(f"/device-templates/{template.id}/interfaces/bulk", json={"count": 5}, headers=headers["editor"])
+
+    refreshed = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert [i["port_number"] for i in refreshed["interfaces"]] == list(range(1, 8))

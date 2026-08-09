@@ -3,7 +3,7 @@ import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core'
 import { useCreateLink, useDevices, useLinkTemplates } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { nnInt } from '../../lib/utils';
-import type { DeviceOut } from '../../api/types';
+import type { DeviceOut, InterfaceOut } from '../../api/types';
 
 /** Что именно соединять, схема не знает: линия тянется между устройствами, а
  * связь в модели — между конкретными портами. Поэтому после перетаскивания
@@ -88,6 +88,14 @@ export function ConnectPortsModal({
   );
 }
 
+/** Порт в выпадающем списке: номер, подпись и то, что реально торчит
+ * наружу — у клетки с модулем это разъём модуля. */
+export function portLabel(iface: InterfaceOut): string {
+  const connector = iface.connector_effective?.name
+    ?? (iface.empty_cage ? `${iface.connector?.name ?? 'клетка'} — пусто` : null);
+  return connector ? `№${iface.port_number} · ${iface.label} · ${connector}` : `№${iface.port_number} · ${iface.label}`;
+}
+
 function deviceLabel(device: DeviceOut | undefined): string {
   if (!device) return 'устройства';
   return device.name ? `${device.code} — ${device.name}` : device.code;
@@ -105,6 +113,8 @@ function useFreePorts(device: DeviceOut | undefined) {
     return device.interfaces
       .filter((i) => !i.link_id)
       .sort((a, b) => a.port_number - b.port_number)
-      .map((i) => ({ value: String(i.id), label: `№${i.port_number} · ${i.label}` }));
+      // Разъём в подписи: выбирать порт под кабель, не зная, RJ45 там или
+      // оптика, — значит выбирать наугад.
+      .map((i) => ({ value: String(i.id), label: portLabel(i) }));
   }, [device]);
 }

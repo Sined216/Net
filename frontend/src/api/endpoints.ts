@@ -7,7 +7,7 @@ import type {
   TransceiverModuleOut, TransceiverModuleCreate, TransceiverModuleUpdate,
   VlanOut, VlanCreate,
   DeviceTemplateOut, DeviceTemplateCreate, DeviceTemplateUpdate,
-  InterfaceTemplateOut, InterfaceTemplateCreate, InterfaceTemplateUpdate,
+  InterfaceTemplateOut, InterfaceTemplateCreate, InterfaceTemplateUpdate, PortsBulkCreate,
   DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
@@ -61,6 +61,10 @@ export const updateDeviceType = (id: number, body: DeviceTypeUpdate) => apiFetch
 
 export const updateTemplateInterface = (templateId: number, ifaceId: number, body: InterfaceTemplateUpdate) =>
   apiFetch<InterfaceTemplateOut>(`/device-templates/${templateId}/interfaces/${ifaceId}`, { method: 'PATCH', body });
+export const addTemplateInterfacesBulk = (templateId: number, body: PortsBulkCreate) =>
+  apiFetch<InterfaceTemplateOut[]>(`/device-templates/${templateId}/interfaces/bulk`, { method: 'POST', body });
+export const addInterfacesBulk = (deviceId: number, body: PortsBulkCreate) =>
+  apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces/bulk`, { method: 'POST', body });
 export const copyDeviceTemplate = (id: number) => apiFetch<DeviceTemplateOut>(`/device-templates/${id}/copy`, { method: 'POST' });
 
 export const listVlans = () => apiFetch<VlanOut[]>('/vlans');

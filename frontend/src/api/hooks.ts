@@ -5,7 +5,7 @@ import type {
   DeviceTypeCreate, DeviceTypeUpdate,
   ConnectorTypeCreate, ConnectorTypeUpdate,
   TransceiverModuleCreate, TransceiverModuleUpdate,
-  InterfaceTemplateUpdate,
+  InterfaceTemplateUpdate, PortsBulkCreate,
   VlanCreate,
   DeviceTemplateCreate, DeviceTemplateUpdate, InterfaceTemplateCreate,
   DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
@@ -188,6 +188,22 @@ export function useUpdateTemplateInterface() {
       api.updateTemplateInterface(templateId, ifaceId, body),
     // Правка порта модели доезжает до всех её устройств.
     onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices']),
+  });
+}
+export function useAddTemplateInterfacesBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ templateId, body }: { templateId: number; body: PortsBulkCreate }) =>
+      api.addTemplateInterfacesBulk(templateId, body),
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links']),
+  });
+}
+export function useAddInterfacesBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ deviceId, body }: { deviceId: number; body: PortsBulkCreate }) =>
+      api.addInterfacesBulk(deviceId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
   });
 }
 export function useCopyDeviceTemplate() {

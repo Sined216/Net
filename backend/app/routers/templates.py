@@ -100,7 +100,12 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     сплошной, и своего номера у порта в модели и в устройстве быть не
     может — он один и тот же.
     """
-    template = db.query(models.DeviceTemplate).filter(models.DeviceTemplate.id == template_id).first()
+    # Строка модели блокируется до конца транзакции: без этого два
+    # одновременных добавления вычисляют один и тот же следующий номер, и
+    # второе отбивается уникальным индексом.
+    template = db.query(models.DeviceTemplate).filter(
+        models.DeviceTemplate.id == template_id
+    ).with_for_update().first()
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
 
@@ -126,6 +131,50 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     db.commit()
     db.refresh(iface)
     return iface
+
+
+@router.post("/{template_id}/interfaces/bulk", response_model=list[schemas.InterfaceTemplateOut], status_code=201)
+def add_template_interfaces_bulk(template_id: int, payload: schemas.PortsBulkCreate,
+                                  db: Session = Depends(get_db), user: models.User = Depends(auth.can_edit)):
+    """Добавить сразу N портов модели — и всем её устройствам.
+
+    Одним запросом и одной транзакцией: двадцать четыре параллельных
+    добавления читают один и тот же «следующий номер», и до базы доезжают
+    два-три порта из двадцати четырёх.
+    """
+    template = db.query(models.DeviceTemplate).filter(
+        models.DeviceTemplate.id == template_id
+    ).with_for_update().first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
+    if payload.connector_id is not None and not db.get(models.ConnectorType, payload.connector_id):
+        raise HTTPException(status_code=404, detail="Разъём не найден")
+
+    start = ports.next_number(db, models.InterfaceTemplate, "template_id", template_id)
+    devices = db.query(models.Device).filter(models.Device.template_id == template_id).all()
+
+    created = []
+    for offset in range(payload.count):
+        number = start + offset
+        label = f"Порт {number}"
+        iface = models.InterfaceTemplate(
+            template_id=template_id, port_number=number, label=label, connector_id=payload.connector_id,
+        )
+        db.add(iface)
+        created.append(iface)
+        for device in devices:
+            ports.make_room(db, models.Interface, "device_id", device.id, number)
+            db.add(models.Interface(
+                device_id=device.id, port_number=number, label=label, connector_id=payload.connector_id,
+            ))
+            ports.renumber(db, models.Interface, "device_id", device.id)
+
+    log_change(db, user.id, "update", "device_template", template_id,
+               old=None, new={"добавлено портов": payload.count, "устройств затронуто": len(devices)})
+    db.commit()
+    for iface in created:
+        db.refresh(iface)
+    return created
 
 
 @router.patch("/{template_id}/interfaces/{iface_id}", response_model=schemas.InterfaceTemplateOut)

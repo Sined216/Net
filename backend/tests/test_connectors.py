@@ -130,3 +130,24 @@ def test_template_copy_repeats_ports(client, headers, template):
         [(p["port_number"], p["label"]) for p in copy.json()["interfaces"]]
         == [(p["port_number"], p["label"]) for p in original["interfaces"]]
     )
+
+
+def test_renamed_device_type_survives_restart(client, headers, db):
+    """Приложение сидирует типы при каждом старте. Переименованный тип по
+    имени не находится, и раньше повторная вставка упиралась в занятый
+    префикс — бэкенд не поднимался вовсе."""
+    from app import models
+    from app.main import on_startup
+
+    db.add(models.DeviceType(name="Коммутатор", code_prefix="SW"))
+    db.commit()
+
+    renamed = client.get("/device-types", headers=headers["viewer"]).json()[0]
+    client.patch(f"/device-types/{renamed['id']}", json={"name": "Коммутатор доступа"}, headers=headers["editor"])
+
+    on_startup()  # то же, что делает контейнер при запуске
+
+    types = client.get("/device-types", headers=headers["viewer"]).json()
+    prefixes = [t["code_prefix"] for t in types]
+    assert len(prefixes) == len(set(prefixes)), "префиксы остаются уникальными"
+    assert "Коммутатор доступа" in [t["name"] for t in types]

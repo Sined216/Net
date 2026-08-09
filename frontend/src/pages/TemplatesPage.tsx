@@ -1,13 +1,13 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActionIcon, Badge, Button, Group, Modal, NumberInput, Select, Stack,
   Table, Text, TextInput, Textarea, Title, Card, Collapse, ColorInput, Switch, Alert, UnstyledButton,
 } from '@mantine/core';
 import {
-  IconChevronDown, IconChevronRight, IconCopy, IconEdit, IconPencil, IconPlus, IconTrash,
+  IconChevronDown, IconChevronRight, IconCopy, IconEdit, IconPlus, IconTrash,
 } from '@tabler/icons-react';
 import {
-  useAddTemplateInterface, useConnectorTypes, useCopyDeviceTemplate, useCreateDeviceTemplate, useTemplateImpact,
+  useAddTemplateInterface, useAddTemplateInterfacesBulk, useConnectorTypes, useCopyDeviceTemplate, useCreateDeviceTemplate, useTemplateImpact,
   useDeleteDeviceTemplate, useDeleteTemplateInterface, useDeviceTemplates, useDeviceTypes,
   useUpdateDeviceTemplate, useUpdateTemplateInterface,
 } from '../api/hooks';
@@ -153,13 +153,14 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   // Разъём по умолчанию — RJ45: на заводе это подавляющее большинство портов.
   const defaultConnectorId = connectors.find((c) => c.name === 'RJ45')?.id ?? connectors[0]?.id ?? null;
   const [portConnector, setPortConnector] = useState<string | null>(null);
-  const [editingPort, setEditingPort] = useState<InterfaceTemplateOut | null>(null);
   const [genCount, setGenCount] = useState<number | ''>(24);
 
   const createTemplate = useCreateDeviceTemplate();
   const updateTemplate = useUpdateDeviceTemplate();
   const addPort = useAddTemplateInterface();
+  const addPortsBulk = useAddTemplateInterfacesBulk();
   const removePort = useDeleteTemplateInterface();
+  const updatePort = useUpdateTemplateInterface();
 
   // Порты берём из свежих данных, а не из пропса: пропс — это снимок,
   // сделанный при открытии модалки, и добавленный порт в нём не появлялся —
@@ -189,9 +190,12 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
     if (n <= 0) return;
     const start = currentPorts.length;
     if (isEdit) {
-      for (let i = 1; i <= n; i++) {
-        addPort.mutate({ templateId: template!.id, body: { label: `Порт ${start + i}` } });
-      }
+      // Одним запросом: по одному и параллельно они читают один и тот же
+      // «следующий номер», и из восьми портов доезжали два.
+      addPortsBulk.mutate(
+        { templateId: template!.id, body: { count: n, connector_id: defaultConnectorId } },
+        { onError: notifyError },
+      );
     } else {
       const newPorts: DraftPort[] = [];
       for (let i = 1; i <= n; i++) {
@@ -202,6 +206,20 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
         });
       }
       setDraftPorts((prev) => [...prev, ...newPorts]);
+    }
+  }
+
+  /** Правка порта прямо в строке: у черновика — в состоянии формы, у
+   * сохранённой модели — запросом, который доезжает до всех её устройств. */
+  function changePort(port: InterfaceTemplateOut | DraftPort, patch: { label?: string; connector_id?: number | null }) {
+    if (isEdit) {
+      updatePort.mutate(
+        { templateId: template!.id, ifaceId: (port as InterfaceTemplateOut).id, body: patch },
+        { onError: notifyError },
+      );
+    } else {
+      const key = (port as DraftPort)._key;
+      setDraftPorts((prev) => prev.map((p) => (p._key === key ? { ...p, ...patch } : p)));
     }
   }
 
@@ -283,36 +301,18 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
                 <Table.Th w={60}>№</Table.Th>
                 <Table.Th>Название</Table.Th>
                 <Table.Th>Разъём</Table.Th>
-                <Table.Th w={70} />
+                <Table.Th w={44} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {[...currentPorts].sort((a, b) => a.port_number - b.port_number).map((p) => (
-                <Table.Tr key={isEdit ? (p as InterfaceTemplateOut).id : (p as DraftPort)._key}>
-                  <Table.Td fw={600}>{p.port_number}</Table.Td>
-                  <Table.Td>{p.label}</Table.Td>
-                  <Table.Td>{connectors.find((c) => c.id === p.connector_id)?.name ?? '—'}</Table.Td>
-                  <Table.Td>
-                    <Group gap={2} wrap="nowrap" justify="flex-end">
-                    {isEdit && (
-                      <ActionIcon
-                        variant="subtle" size="sm" title="Название и разъём"
-                        onClick={() => setEditingPort(p as InterfaceTemplateOut)}
-                      >
-                        <IconPencil size={14} />
-                      </ActionIcon>
-                    )}
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      size="sm"
-                      onClick={() => removePortNow(isEdit ? (p as InterfaceTemplateOut).id : (p as DraftPort)._key)}
-                    >
-                      <IconTrash size={14} />
-                    </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
+                <PortRow
+                  key={isEdit ? (p as InterfaceTemplateOut).id : (p as DraftPort)._key}
+                  port={p}
+                  connectors={connectors}
+                  onChange={(patch) => changePort(p, patch)}
+                  onRemove={() => removePortNow(isEdit ? (p as InterfaceTemplateOut).id : (p as DraftPort)._key)}
+                />
               ))}
               {currentPorts.length === 0 && (
                 <Table.Tr>
@@ -349,9 +349,6 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
           </Group>
         </Stack>
       </form>
-      {editingPort && (
-        <PortEditModal templateId={template!.id} port={editingPort} onClose={() => setEditingPort(null)} />
-      )}
     </Modal>
   );
 }
@@ -362,52 +359,63 @@ function connectorName(connectors: ConnectorTypeOut[], id: number | null | undef
   return connectors.find((c) => c.id === id)?.name ?? '—';
 }
 
-/** Правка порта модели: название и разъём.
- *
- * Правка доезжает до всех устройств этой модели — порт устройства это копия
- * порта модели, и расхождение подписей развело бы одинаковые железки. */
-function PortEditModal({ templateId, port, onClose }: {
-  templateId: number;
-  port: InterfaceTemplateOut;
-  onClose: () => void;
-}) {
-  const { data: connectors = [] } = useConnectorTypes();
-  const updatePort = useUpdateTemplateInterface();
-  const [label, setLabel] = useState(port.label);
-  const [connector, setConnector] = useState<string | null>(
-    port.connector_id != null ? String(port.connector_id) : null,
-  );
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!label.trim()) return;
-    updatePort.mutate(
-      {
-        templateId, ifaceId: port.id,
-        body: { label: label.trim(), connector_id: connector ? parseInt(connector, 10) : null },
-      },
-      { onSuccess: () => { notifySuccess('Порт сохранён'); onClose(); }, onError: notifyError },
-    );
+/** Строка порта в шаблоне: название и разъём правятся прямо здесь.
+ *
+ * Название сохраняется по уходу из поля, а не на каждую букву: у
+ * сохранённой модели каждая правка — запрос, который доезжает до всех её
+ * устройств, и слать его на каждое нажатие клавиши незачем.
+ */
+function PortRow({ port, connectors, onChange, onRemove }: {
+  port: InterfaceTemplateOut | DraftPort;
+  connectors: ConnectorTypeOut[];
+  onChange: (patch: { label?: string; connector_id?: number | null }) => void;
+  onRemove: () => void;
+}) {
+  const [label, setLabel] = useState(port.label);
+
+  // Название могло измениться снаружи — например правкой из другой вкладки.
+  useEffect(() => { setLabel(port.label); }, [port.label]);
+
+  function commitLabel() {
+    const next = label.trim();
+    if (!next || next === port.label) { setLabel(port.label); return; }
+    onChange({ label: next });
   }
 
   return (
-    <Modal opened onClose={onClose} title={`Порт №${port.port_number}`} size="sm">
-      <form onSubmit={handleSubmit}>
-        <Stack>
-          <TextInput label="Название" description="просто подпись, может повторяться" required
-            value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
-          <Select label="Разъём" placeholder="— не указан —" clearable searchable
-            data={connectors.map((c) => ({ value: String(c.id), label: c.name }))}
-            value={connector} onChange={setConnector} />
-          <Text size="xs" c="dimmed">
-            Правка применится ко всем устройствам этой модели: порт устройства — копия порта модели.
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="subtle" onClick={onClose}>Отмена</Button>
-            <Button type="submit" loading={updatePort.isPending}>Сохранить</Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
+    <Table.Tr>
+      <Table.Td fw={600}>{port.port_number}</Table.Td>
+      <Table.Td>
+        <TextInput
+          size="xs" value={label}
+          onChange={(e) => setLabel(e.currentTarget.value)}
+          onBlur={commitLabel}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+            if (e.key === 'Escape') setLabel(port.label);
+          }}
+        />
+      </Table.Td>
+      <Table.Td>
+        <Select
+          size="xs" placeholder="— не указан —" clearable searchable
+          // Повторный клик по уже выбранному разъёму не должен его снимать:
+          // это выглядит как случайная потеря значения. Для очистки есть
+          // крестик.
+          allowDeselect={false}
+          data={connectors.map((c) => ({ value: String(c.id), label: c.name }))}
+          value={port.connector_id != null ? String(port.connector_id) : null}
+          onChange={(value) => onChange({ connector_id: value ? parseInt(value, 10) : null })}
+        />
+      </Table.Td>
+      <Table.Td>
+        <Group gap={2} wrap="nowrap" justify="flex-end">
+          <ActionIcon variant="subtle" color="red" size="sm" onClick={onRemove} title="Убрать порт">
+            <IconTrash size={14} />
+          </ActionIcon>
+        </Group>
+      </Table.Td>
+    </Table.Tr>
   );
 }

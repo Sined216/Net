@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActionIcon, Badge, Button, Card, Collapse, Group, NumberInput, Table, Text, UnstyledButton } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconEdit, IconExternalLink, IconPlus, IconTrash } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
-import { useAddInterface, useDeleteDevice } from '../../api/hooks';
+import { useAddInterface, useAddInterfacesBulk, useDeleteDevice } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { InterfaceRow, type FreeEntry } from './InterfaceRow';
 import type { DeviceOut, DeviceTemplateOut, DeviceTypeOut, VlanOut } from '../../api/types';
@@ -21,6 +21,7 @@ export function DeviceCard({
   const [bulkCount, setBulkCount] = useState<number | ''>(24);
   const deleteDevice = useDeleteDevice();
   const addInterface = useAddInterface();
+  const addPortsBulk = useAddInterfacesBulk();
 
   const portsEditable = template?.ports_editable_on_device ?? false;
 
@@ -41,10 +42,7 @@ export function DeviceCard({
     const n = typeof bulkCount === 'number' ? bulkCount : 0;
     if (n <= 0) return;
     if (!confirm(`Создать ${n} портов ("Порт 1".."Порт ${n}")?`)) return;
-    const start = device.interfaces.length + 1;
-    for (let i = start; i < start + n; i++) {
-      addInterface.mutate({ deviceId: device.id, body: { label: `Порт ${i}` } });
-    }
+    addPortsBulk.mutate({ deviceId: device.id, body: { count: n } }, { onError: notifyError });
   }
 
   return (

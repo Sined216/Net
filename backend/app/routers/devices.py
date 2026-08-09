@@ -208,7 +208,9 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
 
     Разрешено только моделям с изменяемым составом портов — например ПК,
     в который доставили сетевую карту."""
-    device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    # Блокировка строки устройства: одновременные добавления иначе читают
+    # один и тот же следующий номер и мешают друг другу.
+    device = db.query(models.Device).filter(models.Device.id == device_id).with_for_update().first()
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     _require_editable_ports(db, device)
@@ -220,3 +222,33 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
     db.commit()
     db.refresh(iface)
     return serialize.serialize_interface(iface, {})
+
+
+@router.post("/{device_id}/interfaces/bulk", response_model=list[schemas.InterfaceOut], status_code=201)
+def add_interfaces_bulk(device_id: int, payload: schemas.PortsBulkCreate, db: Session = Depends(get_db),
+                         user: models.User = Depends(auth.can_edit)):
+    """Добавить устройству сразу N портов — одной транзакцией."""
+    device = db.query(models.Device).filter(models.Device.id == device_id).with_for_update().first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Устройство не найдено")
+    _require_editable_ports(db, device)
+    if payload.connector_id is not None and not db.get(models.ConnectorType, payload.connector_id):
+        raise HTTPException(status_code=404, detail="Разъём не найден")
+
+    start = ports.next_number(db, models.Interface, "device_id", device_id)
+    created = []
+    for offset in range(payload.count):
+        number = start + offset
+        iface = models.Interface(
+            device_id=device_id, port_number=number, label=f"Порт {number}",
+            connector_id=payload.connector_id,
+        )
+        db.add(iface)
+        created.append(iface)
+
+    log_change(db, user.id, "create", "interface", None, old=None,
+               new={"добавлено портов": payload.count})
+    db.commit()
+    for iface in created:
+        db.refresh(iface)
+    return [serialize.serialize_interface(iface, {}) for iface in created]

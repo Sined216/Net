@@ -4,7 +4,9 @@ import {
 } from '@mantine/core';
 import { IconArrowLeft, IconPlus, IconTopologyStar, IconTrash } from '@tabler/icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useAddInterface, useDeleteDevice, useDeviceTemplates, useDeviceTypes, useDevices, useVlans } from '../api/hooks';
+import {
+  useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDeviceTemplates, useDeviceTypes, useDevices, useVlans,
+} from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { InterfaceRow, type FreeEntry } from './devices/InterfaceRow';
 import { useState } from 'react';
@@ -24,6 +26,7 @@ export function DevicePage() {
   const { data: types = EMPTY } = useDeviceTypes();
   const { data: vlans = EMPTY } = useVlans();
   const addInterface = useAddInterface();
+  const addPortsBulk = useAddInterfacesBulk();
   const deleteDevice = useDeleteDevice();
   const [bulkCount, setBulkCount] = useState<number | ''>(24);
 
@@ -69,10 +72,9 @@ export function DevicePage() {
     const n = typeof bulkCount === 'number' ? bulkCount : 0;
     if (n <= 0) return;
     if (!confirm(`Создать ${n} портов?`)) return;
-    const start = device!.interfaces.length + 1;
-    for (let i = start; i < start + n; i++) {
-      addInterface.mutate({ deviceId: device!.id, body: { label: `Порт ${i}` } });
-    }
+    // Одним запросом: параллельные добавления читают один и тот же
+    // «следующий номер» и мешают друг другу.
+    addPortsBulk.mutate({ deviceId: device!.id, body: { count: n } }, { onError: notifyError });
   }
 
   function handleDelete() {

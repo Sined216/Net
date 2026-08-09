@@ -167,6 +167,13 @@ export interface InterfaceTemplateCreate {
 
 export type InterfaceTemplateUpdate = Partial<InterfaceTemplateCreate>;
 
+/** Пачка портов одним запросом: по одному и параллельно они мешают друг
+ * другу — номер вычисляется от текущего максимума. */
+export interface PortsBulkCreate {
+  count: number;
+  connector_id?: number | null;
+}
+
 export interface InterfaceTemplateOut extends InterfaceTemplateCreate {
   id: number;
   /** Место порта в ряду гнёзд, 1..N без пропусков. Назначает сервер. */

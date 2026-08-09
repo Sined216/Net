@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
 import { useAttachLinkEnd, useDevices } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { portLabel } from './ConnectPortsModal';
 
 /** Куда воткнуть повисший конец кабеля.
  *
@@ -27,7 +28,7 @@ export function AttachEndModal({
     () => (device?.interfaces ?? [])
       .filter((i) => !i.link_id)
       .sort((a, b) => a.port_number - b.port_number)
-      .map((i) => ({ value: String(i.id), label: `№${i.port_number} · ${i.label}` })),
+      .map((i) => ({ value: String(i.id), label: portLabel(i) })),
     [device],
   );
 

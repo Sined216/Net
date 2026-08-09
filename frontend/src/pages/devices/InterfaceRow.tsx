@@ -6,6 +6,7 @@ import {
 } from '../../api/hooks';
 import { nn, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { portLabel } from '../topology/ConnectPortsModal';
 import type { DeviceOut, InterfaceOut, PortMode, VlanOut } from '../../api/types';
 
 // Режим — настройка конкретной железки; в модели техники его нет.
@@ -118,7 +119,7 @@ export function InterfaceRow({
         {isCage ? (
           <Group gap={4} wrap="nowrap">
             <Select
-              size="xs" w={140} clearable searchable
+              size="xs" w={140} clearable searchable allowDeselect={false}
               placeholder={`${iface.connector?.name ?? 'клетка'} — пусто`}
               data={moduleOptions} value={moduleId} onChange={setModuleId}
             />
@@ -193,7 +194,8 @@ function groupFreeEntries(entries: FreeEntry[], excludeIfaceId: number) {
   for (const e of entries) {
     if (e.iface.id === excludeIfaceId) continue;
     if (!byDevice.has(e.device.id)) byDevice.set(e.device.id, { device: e.device, items: [] });
-    byDevice.get(e.device.id)!.items.push({ value: String(e.iface.id), label: e.iface.label });
+    // С разъёмом: подключать порт, не зная, RJ45 там или оптика, — гадание.
+    byDevice.get(e.device.id)!.items.push({ value: String(e.iface.id), label: portLabel(e.iface) });
   }
   return [...byDevice.values()]
     .sort((a, b) => a.device.code.localeCompare(b.device.code))

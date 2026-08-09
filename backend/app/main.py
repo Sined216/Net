@@ -56,11 +56,19 @@ def on_startup():
     только досоздавать таблицы и не замечал изменений в существующих."""
     db = SessionLocal()
     try:
-        # справочник типов устройств
-        existing = {dt.name for dt in db.query(models.DeviceType).all()}
+        # Справочник типов устройств. Сверяемся и по названию, и по префиксу:
+        # тип можно переименовать, и тогда «Коммутатор» по имени не найдётся,
+        # а вставка нового с префиксом SW упрётся в уникальный индекс — до
+        # этой проверки приложение просто не поднималось после переименования.
+        rows = db.query(models.DeviceType).all()
+        taken_names = {dt.name for dt in rows}
+        taken_prefixes = {dt.code_prefix for dt in rows}
         for name, prefix in DEFAULT_DEVICE_TYPES:
-            if name not in existing:
-                db.add(models.DeviceType(name=name, code_prefix=prefix))
+            if name in taken_names or prefix in taken_prefixes:
+                continue
+            db.add(models.DeviceType(name=name, code_prefix=prefix))
+            taken_names.add(name)
+            taken_prefixes.add(prefix)
         db.commit()
 
         # первый администратор, если пользователей ещё нет
