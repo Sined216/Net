@@ -234,3 +234,42 @@ def test_template_port_removal_takes_its_own_copies(client, headers, device_type
 
     ports = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()["interfaces"]
     assert [p["label"] for p in ports] == ["eth1"]
+
+
+def test_bulk_ports_do_not_scale_with_device_count(client, headers, device_type, db):
+    """Порты добавляются пачкой на все устройства сразу, а не по одному.
+
+    Раньше на каждый порт и каждое устройство шёл свой сдвиг с
+    перенумерацией: двадцать четыре порта на полсотни станков занимали
+    четырнадцать секунд, а на тысяче — минуты."""
+    from sqlalchemy import event
+
+    def statements_for(device_count: int) -> int:
+        template = client.post(
+            "/device-templates",
+            json={"name": f"Модель на {device_count}", "device_type_id": device_type.id, "interfaces": []},
+            headers=headers["editor"],
+        ).json()
+        for _ in range(device_count):
+            client.post("/devices", json={"template_id": template["id"]}, headers=headers["editor"])
+
+        counter = 0
+
+        def count(*_args, **_kwargs):
+            nonlocal counter
+            counter += 1
+
+        event.listen(db.get_bind(), "before_cursor_execute", count)
+        try:
+            response = client.post(
+                f"/device-templates/{template['id']}/interfaces/bulk", json={"count": 12},
+                headers=headers["editor"],
+            )
+            assert response.status_code == 201
+        finally:
+            event.remove(db.get_bind(), "before_cursor_execute", count)
+        return counter
+
+    few = statements_for(2)
+    many = statements_for(12)
+    assert many <= few + 10, f"запросов к базе: {few} на двух устройствах, {many} на двенадцати"

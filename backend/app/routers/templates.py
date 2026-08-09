@@ -121,22 +121,23 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     db.add(iface)
     db.flush()  # нужен id порта модели: устройства ссылаются именно на него
 
-    devices = db.query(models.Device).filter(models.Device.template_id == template_id).all()
-    for device in devices:
-        # У устройства со съёмными портами к портам модели могут быть
-        # добавлены свои; порт модели встаёт сразу за портами модели, а
-        # самодельные сдвигаются дальше.
-        ports.make_room(db, models.Interface, "device_id", device.id, number)
+    device_ids = [d.id for d in db.query(models.Device).filter(models.Device.template_id == template_id).all()]
+    # У устройства со съёмными портами к портам модели могут быть добавлены
+    # свои; порт модели встаёт сразу за портами модели, а самодельные
+    # сдвигаются дальше. Считается сразу по всем устройствам: поштучно на
+    # тысяче станков это складывалось в минуты.
+    ports.make_room(db, models.Interface, "device_id", device_ids, number)
+    for device_id in device_ids:
         db.add(models.Interface(
-            device_id=device.id, port_number=number,
+            device_id=device_id, port_number=number,
             label=payload.label, connector_id=payload.connector_id,
             template_interface_id=iface.id,
         ))
-        ports.renumber(db, models.Interface, "device_id", device.id)
+    ports.renumber(db, models.Interface, "device_id", device_ids)
 
     log_change(db, user.id, "update", "device_template", template_id,
                old=None, new={"добавлен порт": f"№{number} {payload.label}",
-                              "устройств затронуто": len(devices)})
+                              "устройств затронуто": len(device_ids)})
     db.commit()
     db.refresh(iface)
     return iface
@@ -160,7 +161,12 @@ def add_template_interfaces_bulk(template_id: int, payload: schemas.PortsBulkCre
         raise HTTPException(status_code=404, detail="Разъём не найден")
 
     start = ports.next_number(db, models.InterfaceTemplate, "template_id", template_id)
-    devices = db.query(models.Device).filter(models.Device.template_id == template_id).all()
+    device_ids = [d.id for d in db.query(models.Device).filter(models.Device.template_id == template_id).all()]
+
+    # Место под всю пачку освобождается один раз, а не под каждый порт: у
+    # модели с полусотней устройств поштучный сдвиг с перенумерацией
+    # занимал секунды на каждый порт.
+    ports.make_room(db, models.Interface, "device_id", device_ids, start)
 
     created = []
     for offset in range(payload.count):
@@ -172,16 +178,15 @@ def add_template_interfaces_bulk(template_id: int, payload: schemas.PortsBulkCre
         db.add(iface)
         db.flush()
         created.append(iface)
-        for device in devices:
-            ports.make_room(db, models.Interface, "device_id", device.id, number)
+        for device_id in device_ids:
             db.add(models.Interface(
-                device_id=device.id, port_number=number, label=label, connector_id=payload.connector_id,
+                device_id=device_id, port_number=number, label=label, connector_id=payload.connector_id,
                 template_interface_id=iface.id,
             ))
-            ports.renumber(db, models.Interface, "device_id", device.id)
+    ports.renumber(db, models.Interface, "device_id", device_ids)
 
     log_change(db, user.id, "update", "device_template", template_id,
-               old=None, new={"добавлено портов": payload.count, "устройств затронуто": len(devices)})
+               old=None, new={"добавлено портов": payload.count, "устройств затронуто": len(device_ids)})
     db.commit()
     for iface in created:
         db.refresh(iface)
@@ -317,8 +322,7 @@ def delete_template_interface(template_id: int, iface_id: int, db: Session = Dep
                old={"убран порт": f"№{iface.port_number} {iface.label}", "устройств затронуто": removed}, new=None)
     db.delete(iface)
     ports.renumber(db, models.InterfaceTemplate, "template_id", template_id)
-    for device_id in device_ids:
-        ports.renumber(db, models.Interface, "device_id", device_id)
+    ports.renumber(db, models.Interface, "device_id", device_ids)
     db.commit()
 
 
