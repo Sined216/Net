@@ -76,6 +76,30 @@ class LoginRequest(BaseModel):
     password: str
 
 
+# ---------- Площадка (фабрика) ----------
+class SiteCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class SiteUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class SiteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    notes: Optional[str] = None
+
+
+class SiteAccessUpdate(BaseModel):
+    """Кому доступна площадка. Список целиком, а не по одному: так видно, кто
+    останется, и не нужен отдельный маршрут на отзыв."""
+    user_ids: list[int]
+
+
 # ---------- Tag (вложенный, вместо площадок) ----------
 class TagBase(BaseModel):
     """Общая часть. Ограничения длины живут в схемах ввода, а не здесь:

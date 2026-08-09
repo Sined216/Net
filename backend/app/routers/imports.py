@@ -13,7 +13,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app import auth, importer, models, schemas, serialize
+from app import auth, importer, models, schemas, serialize, sites
 from app.audit import log_change
 from app.codegen import next_device_code
 from app.database import get_db
@@ -28,7 +28,8 @@ MAX_BYTES = 16 * 1024 * 1024
 
 @router.post("/devices", response_model=schemas.ImportSummary, status_code=201)
 async def upload_devices(file: UploadFile = File(...), db: Session = Depends(get_db),
-                          user: models.User = Depends(auth.can_edit)):
+                          user: models.User = Depends(auth.can_edit),
+                          site_id: int = Depends(sites.current_site_id)):
     """Прочитать файл и сложить строки в промежуточную таблицу."""
     content = await file.read()
     if len(content) > MAX_BYTES:
@@ -47,6 +48,7 @@ async def upload_devices(file: UploadFile = File(...), db: Session = Depends(get
 
     for row in parsed:
         db.add(models.ImportRow(
+            site_id=site_id,
             source_file=file.filename or "файл",
             row_number=row.row_number,
             extra=row.extra or None,
@@ -61,9 +63,10 @@ async def upload_devices(file: UploadFile = File(...), db: Session = Depends(get
 
 
 @router.get("/rows", response_model=list[schemas.ImportRowOut])
-def list_rows(status: str | None = None, db: Session = Depends(get_db)):
+def list_rows(status: str | None = None, db: Session = Depends(get_db),
+               site_id: int = Depends(sites.current_site_id)):
     """Строки импорта вместе с подсказками из справочников."""
-    q = db.query(models.ImportRow)
+    q = db.query(models.ImportRow).filter(models.ImportRow.site_id == site_id)
     if status:
         q = q.filter(models.ImportRow.status == status)
     rows = q.order_by(models.ImportRow.source_file, models.ImportRow.row_number).all()
@@ -71,8 +74,14 @@ def list_rows(status: str | None = None, db: Session = Depends(get_db)):
     # Справочники читаются один раз на весь список, а не на каждую строку:
     # тысяча строк — тысяча лишних запросов.
     templates = {_key(t.name): t.id for t in db.query(models.DeviceTemplate).all()}
-    groups = {_key(g.name): g.id for g in db.query(models.TopologyGroup).all()}
-    tags = {_key(t.name): t.id for t in db.query(models.Tag).all()}
+    groups = {
+        _key(g.name): g.id
+        for g in db.query(models.TopologyGroup).filter(models.TopologyGroup.site_id == site_id)
+    }
+    tags = {
+        _key(t.name): t.id
+        for t in db.query(models.Tag).filter(models.Tag.site_id == site_id)
+    }
 
     result = []
     for row in rows:
@@ -88,7 +97,8 @@ def list_rows(status: str | None = None, db: Session = Depends(get_db)):
 
 @router.post("/rows/{row_id}/move", response_model=schemas.DeviceOut, status_code=201)
 def move_row(row_id: int, payload: schemas.DeviceCreate, db: Session = Depends(get_db),
-              user: models.User = Depends(auth.can_edit)):
+              user: models.User = Depends(auth.can_edit),
+              site_id: int = Depends(sites.current_site_id)):
     """Перенести строку в спецификацию: завести устройство и пометить строку.
 
     Данные приходят из окна устройства, а не из строки: человек мог их
@@ -96,7 +106,9 @@ def move_row(row_id: int, payload: schemas.DeviceCreate, db: Session = Depends(g
     остаётся видна со ссылкой на заведённое устройство — чтобы было понятно,
     что из файла уже разобрано.
     """
-    row = db.query(models.ImportRow).filter(models.ImportRow.id == row_id).first()
+    row = db.query(models.ImportRow).filter(
+        models.ImportRow.id == row_id, models.ImportRow.site_id == site_id
+    ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Строка импорта не найдена")
     if row.status == "moved":
@@ -108,19 +120,22 @@ def move_row(row_id: int, payload: schemas.DeviceCreate, db: Session = Depends(g
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
     if payload.topology_group_id is not None and not db.query(models.TopologyGroup).filter(
-        models.TopologyGroup.id == payload.topology_group_id
+        models.TopologyGroup.id == payload.topology_group_id,
+        models.TopologyGroup.site_id == site_id,
     ).first():
         raise HTTPException(status_code=404, detail="Группа топологии не найдена")
 
     tags = []
     if payload.tag_ids:
-        tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
+        tags = db.query(models.Tag).filter(
+            models.Tag.id.in_(payload.tag_ids), models.Tag.site_id == site_id,
+        ).all()
         if len(tags) != len(set(payload.tag_ids)):
             raise HTTPException(status_code=404, detail="Один из тегов не найден")
 
     data = payload.model_dump(exclude={"template_id", "tag_ids"})
     device = models.Device(
-        template_id=template.id,
+        template_id=template.id, site_id=site_id,
         code=next_device_code(db, template.device_type.code_prefix),
         created_by=user.id, tags=tags, **data,
     )
@@ -129,7 +144,7 @@ def move_row(row_id: int, payload: schemas.DeviceCreate, db: Session = Depends(g
 
     for tpl_iface in template.interfaces:
         db.add(models.Interface(
-            device_id=device.id, port_number=tpl_iface.port_number,
+            device_id=device.id, site_id=site_id, port_number=tpl_iface.port_number,
             label=tpl_iface.label, connector_id=tpl_iface.connector_id,
             template_interface_id=tpl_iface.id,
         ))
@@ -144,10 +159,13 @@ def move_row(row_id: int, payload: schemas.DeviceCreate, db: Session = Depends(g
 
 
 @router.delete("/rows/{row_id}", status_code=204)
-def delete_row(row_id: int, db: Session = Depends(get_db), _: models.User = Depends(auth.can_edit)):
+def delete_row(row_id: int, db: Session = Depends(get_db), _: models.User = Depends(auth.can_edit),
+                site_id: int = Depends(sites.current_site_id)):
     """Убрать строку из промежуточной таблицы. Заведённое по ней устройство
     остаётся: это уже спецификация, а не импорт."""
-    row = db.query(models.ImportRow).filter(models.ImportRow.id == row_id).first()
+    row = db.query(models.ImportRow).filter(
+        models.ImportRow.id == row_id, models.ImportRow.site_id == site_id
+    ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Строка импорта не найдена")
     db.delete(row)
@@ -156,9 +174,10 @@ def delete_row(row_id: int, db: Session = Depends(get_db), _: models.User = Depe
 
 @router.delete("/rows", status_code=204)
 def clear_rows(status: str | None = None, db: Session = Depends(get_db),
-                _: models.User = Depends(auth.can_edit)):
+                _: models.User = Depends(auth.can_edit),
+                site_id: int = Depends(sites.current_site_id)):
     """Очистить промежуточную таблицу целиком или только разобранное."""
-    q = db.query(models.ImportRow)
+    q = db.query(models.ImportRow).filter(models.ImportRow.site_id == site_id)
     if status:
         q = q.filter(models.ImportRow.status == status)
     q.delete(synchronize_session=False)

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Text, cast, or_
 
 from app.database import get_db
-from app import cables, models, ports, schemas, auth, serialize
+from app import cables, models, ports, schemas, auth, serialize, sites
 from app.audit import log_change
 from app.routers.devices import _require_editable_ports
 
@@ -12,13 +12,18 @@ router = APIRouter(tags=["interfaces"])
 
 @router.patch("/interfaces/{interface_id}", response_model=schemas.InterfaceOut)
 def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Session = Depends(get_db),
-                      user: models.User = Depends(auth.can_edit)):
-    iface = db.query(models.Interface).filter(models.Interface.id == interface_id).first()
+                      user: models.User = Depends(auth.can_edit),
+                      site_id: int = Depends(sites.current_site_id)):
+    iface = db.query(models.Interface).filter(
+        models.Interface.id == interface_id, models.Interface.site_id == site_id
+    ).first()
     if not iface:
         raise HTTPException(status_code=404, detail="Интерфейс не найден")
 
     data = payload.model_dump(exclude_unset=True)
-    if data.get("vlan_id") is not None and not db.get(models.Vlan, data["vlan_id"]):
+    if data.get("vlan_id") is not None and not db.query(models.Vlan).filter(
+        models.Vlan.id == data["vlan_id"], models.Vlan.site_id == site_id
+    ).first():
         raise HTTPException(status_code=404, detail="VLAN не найден")
     if data.get("module_id") is not None:
         module = db.get(models.TransceiverModule, data["module_id"])
@@ -48,13 +53,16 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
 
 @router.delete("/interfaces/{interface_id}", status_code=204)
 def delete_interface(interface_id: int, db: Session = Depends(get_db),
-                      user: models.User = Depends(auth.can_edit)):
+                      user: models.User = Depends(auth.can_edit),
+                      site_id: int = Depends(sites.current_site_id)):
     """Убрать порт у конкретного устройства (сняли сетевую карту).
 
     Связь при этом не удаляется: кабель остался проложен, у него повисает
     конец — подключить его заново можно к другому порту.
     Разрешено только моделям с изменяемым составом портов."""
-    iface = db.query(models.Interface).filter(models.Interface.id == interface_id).first()
+    iface = db.query(models.Interface).filter(
+        models.Interface.id == interface_id, models.Interface.site_id == site_id
+    ).first()
     if not iface:
         raise HTTPException(status_code=404, detail="Интерфейс не найден")
 
@@ -76,7 +84,8 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db),
 
 
 @router.get("/search", response_model=list[schemas.SearchResult])
-def search(query: str, db: Session = Depends(get_db)):
+def search(query: str, db: Session = Depends(get_db),
+            site_id: int = Depends(sites.current_site_id)):
     """Найти по IP, MAC или имени/коду устройства.
 
     ip и mac приводятся к тексту: подстрочный поиск нужен, чтобы «10.10.»
@@ -93,6 +102,9 @@ def search(query: str, db: Session = Depends(get_db)):
         db.query(models.Interface, models.Device)
         .join(models.Device, models.Device.id == models.Interface.device_id)
         .filter(
+            # Поиск не должен обходить изоляцию: чужая железка не находится
+            # ни по IP, ни по коду.
+            models.Device.site_id == site_id,
             or_(
                 cast(models.Interface.ip, Text).ilike(like),
                 cast(models.Interface.mac, Text).ilike(like),

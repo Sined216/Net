@@ -128,6 +128,45 @@ def test_existing_database_is_stamped_and_upgraded(legacy_database):
     assert row[4] == "a4:bb:6d:11:22:33"
 
 
+def test_existing_data_lands_on_one_site(legacy_database):
+    """Накат площадок на уже наполненную базу.
+
+    Устройства, порты, кабели, теги и VLAN обязаны уехать на одну общую
+    площадку — иначе после обновления система встретит человека пустыми
+    списками, и разбирать, что где, придётся руками. Доступ к ней получают
+    все заведённые люди: до обновления они видели всё.
+    """
+    engine = legacy_database
+    _run([sys.executable, "-m", "alembic", "upgrade", "0001_baseline"], LEGACY_DB)
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE alembic_version"))
+        conn.execute(text("INSERT INTO device_types(name, code_prefix) VALUES ('Коммутатор','SW')"))
+        conn.execute(text("INSERT INTO device_templates(name, device_type_id) VALUES ('Тестовый', 1)"))
+        conn.execute(text("INSERT INTO devices(template_id, code) VALUES (1,'SW-0001')"))
+        conn.execute(text("INSERT INTO interfaces(device_id, label) VALUES (1,'Порт 1')"))
+        conn.execute(text("INSERT INTO vlans(vlan_number) VALUES (10)"))
+        conn.execute(text("INSERT INTO tags(name) VALUES ('Цех 1')"))
+        conn.execute(text(
+            "INSERT INTO users(full_name, username, password_hash, role) "
+            "VALUES ('Мастер','master','x','editor')"
+        ))
+
+    _run([sys.executable, "-m", "app.db_upgrade"], LEGACY_DB)
+
+    with engine.connect() as conn:
+        sites = conn.execute(text("SELECT id, name FROM sites")).all()
+        assert len(sites) == 1, "площадка должна быть ровно одна"
+        site_id = sites[0][0]
+        for table in ("devices", "interfaces", "vlans", "tags"):
+            rows = conn.execute(text(f"SELECT count(*) FROM {table} WHERE site_id = :s"),
+                                {"s": site_id}).scalar_one()
+            assert rows == 1, f"{table}: данные не уехали на площадку"
+        granted = conn.execute(text(
+            "SELECT count(*) FROM user_sites u JOIN users x ON x.id = u.user_id WHERE x.username = 'master'"
+        )).scalar_one()
+        assert granted == 1, "у заведённого человека должен остаться доступ"
+
+
 def test_duplicate_port_numbers_are_resolved(legacy_database):
     """Номера портов до этой ревизии ничего не значили: их можно было не
     ставить вовсе и можно было поставить один и тот же дважды. Накат на

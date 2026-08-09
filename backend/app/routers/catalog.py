@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth
+from app import models, schemas, auth, sites
 
 router = APIRouter(tags=["catalog"])
 
@@ -211,16 +211,24 @@ def delete_module(module_id: int, db: Session = Depends(get_db),
 
 
 @router.get("/vlans", response_model=list[schemas.VlanOut])
-def list_vlans(db: Session = Depends(get_db)):
-    return db.query(models.Vlan).order_by(models.Vlan.vlan_number).all()
+def list_vlans(db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
+    return (
+        db.query(models.Vlan)
+        .filter(models.Vlan.site_id == site_id)
+        .order_by(models.Vlan.vlan_number)
+        .all()
+    )
 
 
 @router.post("/vlans", response_model=schemas.VlanOut, status_code=201)
 def create_vlan(payload: schemas.VlanCreate, db: Session = Depends(get_db),
-                 _: models.User = Depends(auth.can_edit)):
-    if db.query(models.Vlan).filter(models.Vlan.vlan_number == payload.vlan_number).first():
+                 _: models.User = Depends(auth.can_edit),
+                 site_id: int = Depends(sites.current_site_id)):
+    if db.query(models.Vlan).filter(
+        models.Vlan.vlan_number == payload.vlan_number, models.Vlan.site_id == site_id
+    ).first():
         raise HTTPException(status_code=409, detail="VLAN с таким номером уже существует")
-    vlan = models.Vlan(**payload.model_dump())
+    vlan = models.Vlan(site_id=site_id, **payload.model_dump())
     db.add(vlan)
     db.commit()
     db.refresh(vlan)
@@ -229,8 +237,11 @@ def create_vlan(payload: schemas.VlanCreate, db: Session = Depends(get_db),
 
 @router.delete("/vlans/{vlan_id}", status_code=204)
 def delete_vlan(vlan_id: int, db: Session = Depends(get_db),
-                 _: models.User = Depends(auth.can_edit)):
-    vlan = db.query(models.Vlan).get(vlan_id)
+                 _: models.User = Depends(auth.can_edit),
+                 site_id: int = Depends(sites.current_site_id)):
+    vlan = db.query(models.Vlan).filter(
+        models.Vlan.id == vlan_id, models.Vlan.site_id == site_id
+    ).first()
     if not vlan:
         raise HTTPException(status_code=404, detail="VLAN не найден")
     db.delete(vlan)

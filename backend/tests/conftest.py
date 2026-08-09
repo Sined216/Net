@@ -70,6 +70,27 @@ def _clean_tables():
     yield
 
 
+@pytest.fixture(autouse=True)
+def site(_clean_tables):
+    """Площадка, в которой живут данные теста.
+
+    В обычной жизни её заводит миграция, но `_clean_tables` вычищает и её —
+    иначе площадка накапливала бы данные между тестами. Одна площадка на
+    тест: тогда заголовок X-Site-Id можно не слать, и все старые тесты
+    продолжают работать как раньше. Изоляция проверяется отдельно, в
+    test_sites.py, где площадок заводится две.
+    """
+    session = SessionLocal()
+    try:
+        row = models.Site(name="Тестовая площадка")
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return row
+    finally:
+        session.close()
+
+
 @pytest.fixture
 def db():
     session = SessionLocal()
@@ -88,7 +109,7 @@ def client():
 
 
 @pytest.fixture
-def users(db):
+def users(db, site):
     created = {}
     for role in ("admin", "editor", "viewer"):
         user = models.User(
@@ -100,6 +121,10 @@ def users(db):
     db.commit()
     for user in created.values():
         db.refresh(user)
+        # Админу площадки не назначают — он видит все по роли.
+        if user.role != "admin":
+            db.execute(models.user_sites.insert().values(user_id=user.id, site_id=site.id))
+    db.commit()
     return created
 
 

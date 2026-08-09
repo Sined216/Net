@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.database import get_db
-from app import models, schemas, auth
+from app import models, schemas, auth, sites
 from app.audit import log_change
 
 router = APIRouter(prefix="/links", tags=["links"])
@@ -24,21 +24,29 @@ def _busy(db: Session, interface_ids: list[int], exclude_link_id: int | None = N
 
 
 @router.get("", response_model=list[schemas.LinkOut])
-def list_links(db: Session = Depends(get_db)):
-    return db.query(models.Link).order_by(models.Link.id).all()
+def list_links(db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
+    return db.query(models.Link).filter(models.Link.site_id == site_id).order_by(models.Link.id).all()
 
 
 @router.post("", response_model=schemas.LinkOut, status_code=201)
 def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.can_edit)):
+                 user: models.User = Depends(auth.can_edit),
+                 site_id: int = Depends(sites.current_site_id)):
     a_id, b_id = payload.interface_a_id, payload.interface_b_id
     if a_id == b_id:
         raise HTTPException(status_code=400, detail="Нельзя соединить интерфейс сам с собой")
     if a_id > b_id:
         a_id, b_id = b_id, a_id
 
-    iface_a = db.query(models.Interface).filter(models.Interface.id == a_id).first()
-    iface_b = db.query(models.Interface).filter(models.Interface.id == b_id).first()
+    # Порт чужой площадки для этого запроса просто не существует. База такую
+    # связь и так не запишет (составной ключ), но отвечать невнятной 500 на
+    # ошибку в клиенте незачем.
+    iface_a = db.query(models.Interface).filter(
+        models.Interface.id == a_id, models.Interface.site_id == site_id
+    ).first()
+    iface_b = db.query(models.Interface).filter(
+        models.Interface.id == b_id, models.Interface.site_id == site_id
+    ).first()
     if not iface_a or not iface_b:
         raise HTTPException(status_code=404, detail="Один из интерфейсов не найден")
 
@@ -54,7 +62,7 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
     data["interface_b_id"] = b_id
     # source/confirmed выставляет сервер, а не клиент: связь, заведённая
     # через API руками, — всегда ручная и сразу подтверждённая.
-    link = models.Link(**data, source="manual", confirmed=True, updated_by=user.id)
+    link = models.Link(**data, site_id=site_id, source="manual", confirmed=True, updated_by=user.id)
     db.add(link)
 
     log_change(db, user.id, "create", "link", None, old=None, new=link)
@@ -65,8 +73,11 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
 
 @router.patch("/{link_id}", response_model=schemas.LinkOut)
 def update_link(link_id: int, payload: schemas.LinkUpdate, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.can_edit)):
-    link = db.query(models.Link).filter(models.Link.id == link_id).first()
+                 user: models.User = Depends(auth.can_edit),
+                 site_id: int = Depends(sites.current_site_id)):
+    link = db.query(models.Link).filter(
+        models.Link.id == link_id, models.Link.site_id == site_id
+    ).first()
     if not link:
         raise HTTPException(status_code=404, detail="Связь не найдена")
 
@@ -88,20 +99,25 @@ def update_link(link_id: int, payload: schemas.LinkUpdate, db: Session = Depends
 
 @router.post("/{link_id}/attach", response_model=schemas.LinkOut)
 def attach_link_end(link_id: int, payload: schemas.LinkAttach, db: Session = Depends(get_db),
-                    user: models.User = Depends(auth.can_edit)):
+                    user: models.User = Depends(auth.can_edit),
+                    site_id: int = Depends(sites.current_site_id)):
     """Подключить подвешенный конец связи к порту.
 
     Сценарий: с ПК сняли сетевую карту — порт исчез, кабель остался и повис.
     Поставили новую карту, завели порт — тем же кабелем подключаемся в него,
     не заводя связь заново и не теряя её длину, разъём и заметки.
     """
-    link = db.query(models.Link).filter(models.Link.id == link_id).first()
+    link = db.query(models.Link).filter(
+        models.Link.id == link_id, models.Link.site_id == site_id
+    ).first()
     if not link:
         raise HTTPException(status_code=404, detail="Связь не найдена")
     if link.interface_a_id is not None and link.interface_b_id is not None:
         raise HTTPException(status_code=409, detail="У этой связи оба конца уже подключены")
 
-    iface = db.query(models.Interface).filter(models.Interface.id == payload.interface_id).first()
+    iface = db.query(models.Interface).filter(
+        models.Interface.id == payload.interface_id, models.Interface.site_id == site_id
+    ).first()
     if not iface:
         raise HTTPException(status_code=404, detail="Интерфейс не найден")
 
@@ -124,8 +140,11 @@ def attach_link_end(link_id: int, payload: schemas.LinkAttach, db: Session = Dep
 
 @router.delete("/{link_id}", status_code=204)
 def delete_link(link_id: int, db: Session = Depends(get_db),
-                 user: models.User = Depends(auth.can_edit)):
-    link = db.query(models.Link).filter(models.Link.id == link_id).first()
+                 user: models.User = Depends(auth.can_edit),
+                 site_id: int = Depends(sites.current_site_id)):
+    link = db.query(models.Link).filter(
+        models.Link.id == link_id, models.Link.site_id == site_id
+    ).first()
     if not link:
         raise HTTPException(status_code=404, detail="Связь не найдена")
 

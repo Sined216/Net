@@ -14,6 +14,8 @@ import { UsersPage } from './pages/UsersPage';
 import { SchemaPage } from './pages/SchemaPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { ImportPage } from './pages/ImportPage';
+import { SitesPage } from './pages/SitesPage';
+import { SiteProvider } from './sites/SiteContext';
 
 export function App() {
   return (
@@ -22,7 +24,9 @@ export function App() {
       <Route
         element={
           <RequireAuth>
-            <AppLayout />
+            <SiteProvider>
+              <AppLayout />
+            </SiteProvider>
           </RequireAuth>
         }
       >
@@ -43,6 +47,14 @@ export function App() {
           element={
             <RequireAdmin>
               <UsersPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/sites"
+          element={
+            <RequireAdmin>
+              <SitesPage />
             </RequireAdmin>
           }
         />

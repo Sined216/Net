@@ -14,6 +14,7 @@ import type {
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
   TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox,
   SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
+  SiteOut, SiteCreate, SiteUpdate,
 } from './types';
 
 // ---------- Auth ----------
@@ -135,3 +136,12 @@ export const search = (query: string) => apiFetch<SearchResult[]>('/search', { q
 
 // ---------- Структура БД ----------
 export const getDatabaseSchema = () => apiFetch<DatabaseSchema>('/schema');
+
+// ---------- Площадки ----------
+export const listSites = () => apiFetch<SiteOut[]>('/sites');
+export const createSite = (body: SiteCreate) => apiFetch<SiteOut>('/sites', { method: 'POST', body });
+export const updateSite = (id: number, body: SiteUpdate) => apiFetch<SiteOut>(`/sites/${id}`, { method: 'PATCH', body });
+export const deleteSite = (id: number) => apiFetch<void>(`/sites/${id}`, { method: 'DELETE' });
+export const listSiteAccess = (id: number) => apiFetch<number[]>(`/sites/${id}/access`);
+export const setSiteAccess = (id: number, userIds: number[]) =>
+  apiFetch<number[]>(`/sites/${id}/access`, { method: 'PUT', body: { user_ids: userIds } });

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth
+from app import models, schemas, auth, sites
 
 router = APIRouter(prefix="/topology-groups", tags=["topology-groups"])
 
@@ -45,10 +45,14 @@ def _subtree_depth(db: Session, group_id: int) -> int:
     return 1 + max(_subtree_depth(db, child.id) for child in children)
 
 
-def _check_parent(db: Session, parent_id: int | None, group_id: int | None = None) -> None:
+def _check_parent(db: Session, site_id: int, parent_id: int | None, group_id: int | None = None) -> None:
     if parent_id is None:
         return
-    if not db.query(models.TopologyGroup).filter(models.TopologyGroup.id == parent_id).first():
+    # Родитель — только своей площадки: рамка цеха одной фабрики не может
+    # оказаться внутри рамки другой.
+    if not db.query(models.TopologyGroup).filter(
+        models.TopologyGroup.id == parent_id, models.TopologyGroup.site_id == site_id
+    ).first():
         raise HTTPException(status_code=404, detail="Родительская группа не найдена")
     if group_id is not None:
         if parent_id == group_id:
@@ -65,17 +69,26 @@ def _check_parent(db: Session, parent_id: int | None, group_id: int | None = Non
 
 
 @router.get("", response_model=list[schemas.TopologyGroupOut])
-def list_topology_groups(db: Session = Depends(get_db)):
-    return db.query(models.TopologyGroup).order_by(models.TopologyGroup.name).all()
+def list_topology_groups(db: Session = Depends(get_db),
+                          site_id: int = Depends(sites.current_site_id)):
+    return (
+        db.query(models.TopologyGroup)
+        .filter(models.TopologyGroup.site_id == site_id)
+        .order_by(models.TopologyGroup.name)
+        .all()
+    )
 
 
 @router.post("", response_model=schemas.TopologyGroupOut, status_code=201)
 def create_topology_group(payload: schemas.TopologyGroupCreate, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit)):
-    if db.query(models.TopologyGroup).filter(models.TopologyGroup.name == payload.name).first():
+                           _: models.User = Depends(auth.can_edit),
+                           site_id: int = Depends(sites.current_site_id)):
+    if db.query(models.TopologyGroup).filter(
+        models.TopologyGroup.name == payload.name, models.TopologyGroup.site_id == site_id
+    ).first():
         raise HTTPException(status_code=409, detail="Группа с таким названием уже существует")
-    _check_parent(db, payload.parent_id)
-    group = models.TopologyGroup(**payload.model_dump())
+    _check_parent(db, site_id, payload.parent_id)
+    group = models.TopologyGroup(site_id=site_id, **payload.model_dump())
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -84,16 +97,20 @@ def create_topology_group(payload: schemas.TopologyGroupCreate, db: Session = De
 
 @router.patch("/{group_id}", response_model=schemas.TopologyGroupOut)
 def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit)):
-    group = db.query(models.TopologyGroup).filter(models.TopologyGroup.id == group_id).first()
+                           _: models.User = Depends(auth.can_edit),
+                           site_id: int = Depends(sites.current_site_id)):
+    group = db.query(models.TopologyGroup).filter(
+        models.TopologyGroup.id == group_id, models.TopologyGroup.site_id == site_id
+    ).first()
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
 
     data = payload.model_dump(exclude_unset=True)
     if "parent_id" in data:
-        _check_parent(db, data["parent_id"], group_id)
+        _check_parent(db, site_id, data["parent_id"], group_id)
     if "name" in data and db.query(models.TopologyGroup).filter(
-        models.TopologyGroup.name == data["name"], models.TopologyGroup.id != group_id
+        models.TopologyGroup.name == data["name"], models.TopologyGroup.id != group_id,
+        models.TopologyGroup.site_id == site_id,
     ).first():
         raise HTTPException(status_code=409, detail="Группа с таким названием уже существует")
 
@@ -106,14 +123,17 @@ def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, d
 
 @router.patch("/{group_id}/box", response_model=schemas.TopologyGroupOut)
 def set_topology_group_box(group_id: int, payload: schemas.TopologyGroupBox, db: Session = Depends(get_db),
-                            _: models.User = Depends(auth.can_edit)):
+                            _: models.User = Depends(auth.can_edit),
+                            site_id: int = Depends(sites.current_site_id)):
     """Куда сдвинули и до какого размера растянули рамку.
 
     Отдельно от общей правки: рамку двигают мышью часто, и в журнал
     изменений такие движения не пишутся — это оформление схемы, а не данные
     об оборудовании.
     """
-    group = db.query(models.TopologyGroup).filter(models.TopologyGroup.id == group_id).first()
+    group = db.query(models.TopologyGroup).filter(
+        models.TopologyGroup.id == group_id, models.TopologyGroup.site_id == site_id
+    ).first()
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
     group.x, group.y = payload.x, payload.y
@@ -125,8 +145,11 @@ def set_topology_group_box(group_id: int, payload: schemas.TopologyGroupBox, db:
 
 @router.delete("/{group_id}", status_code=204)
 def delete_topology_group(group_id: int, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit)):
-    group = db.query(models.TopologyGroup).filter(models.TopologyGroup.id == group_id).first()
+                           _: models.User = Depends(auth.can_edit),
+                           site_id: int = Depends(sites.current_site_id)):
+    group = db.query(models.TopologyGroup).filter(
+        models.TopologyGroup.id == group_id, models.TopologyGroup.site_id == site_id
+    ).first()
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
     # У устройств этой группы topology_group_id станет NULL, а подгруппы

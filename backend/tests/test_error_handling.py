@@ -70,7 +70,7 @@ def test_empty_template_name_is_rejected(client, headers, device_type):
     assert response.status_code == 422
 
 
-def test_old_rows_stay_readable(client, headers, db):
+def test_old_rows_stay_readable(client, headers, db, site):
     """Ограничения на ввод не должны мешать читать уже лежащее в базе.
 
     Записи, заведённые до появления ограничения (пустое название, VLAN вне
@@ -79,9 +79,9 @@ def test_old_rows_stay_readable(client, headers, db):
     from app import models
 
     db.add_all([
-        models.Tag(name=""),
-        models.Vlan(vlan_number=0, name=""),
-        models.Vlan(vlan_number=4095),
+        models.Tag(name="", site_id=site.id),
+        models.Vlan(vlan_number=0, name="", site_id=site.id),
+        models.Vlan(vlan_number=4095, site_id=site.id),
         models.LinkTemplate(name="", media_type="copper"),
         models.ConnectorType(name="", media="copper"),
         models.TransceiverModule(name=""),

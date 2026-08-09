@@ -450,3 +450,18 @@ export interface SchemaTable {
 export interface DatabaseSchema {
   tables: SchemaTable[];
 }
+
+// ---------- Площадки (фабрики) ----------
+export interface SiteOut {
+  id: number;
+  name: string;
+  notes: string | null;
+}
+export interface SiteCreate {
+  name: string;
+  notes?: string | null;
+}
+export interface SiteUpdate {
+  name?: string;
+  notes?: string | null;
+}

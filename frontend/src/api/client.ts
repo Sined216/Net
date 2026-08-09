@@ -5,6 +5,7 @@ export class ApiError extends Error {}
 
 const BASE_URL_KEY = 'netdoc.baseUrl';
 const TOKEN_KEY = 'netdoc.token';
+const SITE_KEY = 'netdoc.siteId';
 
 /** Адрес API по умолчанию. В сборке для Docker подставляется `/api` — там
  * фронтенд и бэкенд за одним nginx, и запросы идут на тот же origin (ни
@@ -24,6 +25,19 @@ export function getToken(): string | null {
 export function setToken(token: string | null) {
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Выбранная площадка. Она относится ко всему, что человек сейчас делает —
+ * как язык или часовой пояс, — поэтому едет заголовком на каждый запрос, а
+ * не параметром в каждом вызове. */
+export function getSiteId(): number | null {
+  const raw = localStorage.getItem(SITE_KEY);
+  const value = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(value) ? value : null;
+}
+export function setSiteId(siteId: number | null) {
+  if (siteId == null) localStorage.removeItem(SITE_KEY);
+  else localStorage.setItem(SITE_KEY, String(siteId));
 }
 
 interface RequestOptions {
@@ -80,6 +94,9 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
   if (auth) {
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    // Когда площадка одна, сервер подставит её сам — заголовок не нужен.
+    const siteId = getSiteId();
+    if (siteId != null) headers['X-Site-Id'] = String(siteId);
   }
 
   let payload: BodyInit | undefined;

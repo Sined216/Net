@@ -10,7 +10,7 @@ from app.database import SessionLocal
 from app import models, auth
 from app.routers import (
     auth_router, tags, catalog, templates, devices, interfaces, links, link_templates,
-    topology, topology_groups, schema, imports,
+    topology, topology_groups, schema, imports, sites,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +37,7 @@ app.add_middleware(
 authenticated = [Depends(auth.get_current_user)]
 
 app.include_router(auth_router.router)
-for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
+for module in (sites, tags, catalog, templates, devices, interfaces, links, link_templates,
                topology, topology_groups, schema, imports):
     app.include_router(module.router, dependencies=authenticated)
 
@@ -103,6 +103,13 @@ def on_startup():
             taken_names.add(name)
             taken_prefixes.add(prefix)
         db.commit()
+
+        # Хотя бы одна площадка нужна всегда: без неё приложению не с чем
+        # работать. Обычно её заводит миграция 0012; здесь — страховка на
+        # случай, когда единственную площадку удалили руками из базы.
+        if db.query(models.Site).count() == 0:
+            db.add(models.Site(name="Основная площадка"))
+            db.commit()
 
         # первый администратор, если пользователей ещё нет
         if db.query(models.User).count() == 0:

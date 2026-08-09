@@ -3,7 +3,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, ports, schemas, auth, serialize
+from app import models, ports, schemas, auth, serialize, sites
 from app.audit import log_change
 from app.codegen import next_device_code
 
@@ -13,8 +13,12 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 @router.get("", response_model=list[schemas.DeviceOut])
 def list_devices(tag_id: int | None = None, template_id: int | None = None,
                   device_type_id: int | None = None, topology_group_id: int | None = None,
-                  db: Session = Depends(get_db)):
-    q = db.query(models.Device).options(joinedload(models.Device.interfaces), joinedload(models.Device.tags))
+                  db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
+    q = (
+        db.query(models.Device)
+        .options(joinedload(models.Device.interfaces), joinedload(models.Device.tags))
+        .filter(models.Device.site_id == site_id)
+    )
     if tag_id is not None:
         q = q.filter(models.Device.tags.any(models.Tag.id == tag_id))
     if topology_group_id is not None:
@@ -30,11 +34,12 @@ def list_devices(tag_id: int | None = None, template_id: int | None = None,
 
 
 @router.get("/{device_id}", response_model=schemas.DeviceOut)
-def get_device(device_id: int, db: Session = Depends(get_db)):
+def get_device(device_id: int, db: Session = Depends(get_db),
+                site_id: int = Depends(sites.current_site_id)):
     device = (
         db.query(models.Device)
         .options(joinedload(models.Device.interfaces), joinedload(models.Device.tags))
-        .filter(models.Device.id == device_id)
+        .filter(models.Device.id == device_id, models.Device.site_id == site_id)
         .first()
     )
     if not device:
@@ -44,7 +49,8 @@ def get_device(device_id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=schemas.DeviceOut, status_code=201)
 def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.can_edit)):
+                   user: models.User = Depends(auth.can_edit),
+                   site_id: int = Depends(sites.current_site_id)):
     template = (
         db.query(models.DeviceTemplate)
         .options(joinedload(models.DeviceTemplate.interfaces), joinedload(models.DeviceTemplate.device_type))
@@ -54,25 +60,33 @@ def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db),
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
     if payload.topology_group_id is not None:
-        if not db.query(models.TopologyGroup).filter(models.TopologyGroup.id == payload.topology_group_id).first():
+        if not db.query(models.TopologyGroup).filter(
+            models.TopologyGroup.id == payload.topology_group_id,
+            models.TopologyGroup.site_id == site_id,
+        ).first():
             raise HTTPException(status_code=404, detail="Группа топологии не найдена")
 
     data = payload.model_dump(exclude={"template_id", "tag_ids"})
     if payload.tag_ids:
-        tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
+        # Теги — только своей площадки: чужой тег на устройстве вытащил бы
+        # железку в чужой список.
+        tags = db.query(models.Tag).filter(
+            models.Tag.id.in_(payload.tag_ids), models.Tag.site_id == site_id,
+        ).all()
         if len(tags) != len(set(payload.tag_ids)):
             raise HTTPException(status_code=404, detail="Один из тегов не найден")
     else:
         tags = []
 
     code = next_device_code(db, template.device_type.code_prefix)
-    device = models.Device(template_id=template.id, code=code, created_by=user.id, tags=tags, **data)
+    device = models.Device(template_id=template.id, code=code, created_by=user.id, tags=tags,
+                           site_id=site_id, **data)
     db.add(device)
     db.flush()  # получить device.id
 
     for tpl_iface in template.interfaces:
         db.add(models.Interface(
-            device_id=device.id, port_number=tpl_iface.port_number,
+            device_id=device.id, site_id=site_id, port_number=tpl_iface.port_number,
             label=tpl_iface.label, connector_id=tpl_iface.connector_id,
             template_interface_id=tpl_iface.id,
         ))
@@ -85,14 +99,17 @@ def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db),
 
 @router.put("/{device_id}/tags", response_model=schemas.DeviceOut)
 def set_device_tags(device_id: int, payload: schemas.DeviceTagsUpdate, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.can_edit)):
+                     user: models.User = Depends(auth.can_edit),
+                     site_id: int = Depends(sites.current_site_id)):
     device = db.query(models.Device).options(joinedload(models.Device.tags)).filter(
-        models.Device.id == device_id
+        models.Device.id == device_id, models.Device.site_id == site_id
     ).first()
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
 
-    tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
+    tags = db.query(models.Tag).filter(
+        models.Tag.id.in_(payload.tag_ids), models.Tag.site_id == site_id,
+    ).all()
     if len(tags) != len(set(payload.tag_ids)):
         raise HTTPException(status_code=404, detail="Один из тегов не найден")
 
@@ -106,14 +123,20 @@ def set_device_tags(device_id: int, payload: schemas.DeviceTagsUpdate, db: Sessi
 
 @router.patch("/{device_id}", response_model=schemas.DeviceOut)
 def update_device(device_id: int, payload: schemas.DeviceUpdate, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.can_edit)):
-    device = db.query(models.Device).filter(models.Device.id == device_id).first()
+                   user: models.User = Depends(auth.can_edit),
+                   site_id: int = Depends(sites.current_site_id)):
+    device = db.query(models.Device).filter(
+        models.Device.id == device_id, models.Device.site_id == site_id
+    ).first()
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
 
     data = payload.model_dump(exclude_unset=True)
     if data.get("topology_group_id") is not None:
-        if not db.query(models.TopologyGroup).filter(models.TopologyGroup.id == data["topology_group_id"]).first():
+        if not db.query(models.TopologyGroup).filter(
+            models.TopologyGroup.id == data["topology_group_id"],
+            models.TopologyGroup.site_id == site_id,
+        ).first():
             raise HTTPException(status_code=404, detail="Группа топологии не найдена")
 
     old_snapshot = {c.name: getattr(device, c.name) for c in device.__table__.columns}
@@ -128,11 +151,14 @@ def update_device(device_id: int, payload: schemas.DeviceUpdate, db: Session = D
 
 @router.patch("/{device_id}/position", response_model=schemas.DeviceOut)
 def update_device_position(device_id: int, payload: schemas.DevicePositionUpdate, db: Session = Depends(get_db),
-                            _: models.User = Depends(auth.can_edit)):
+                            _: models.User = Depends(auth.can_edit),
+                            site_id: int = Depends(sites.current_site_id)):
     """Позиция узла на топологии — отдельная от общей формы редактирования,
     вызывается при отпускании перетаскиваемого узла. Без записи в audit_log:
     это UI-состояние диаграммы, а не содержательное изменение устройства."""
-    device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    device = db.query(models.Device).filter(
+        models.Device.id == device_id, models.Device.site_id == site_id
+    ).first()
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     device.topology_x = payload.x
@@ -144,7 +170,8 @@ def update_device_position(device_id: int, payload: schemas.DevicePositionUpdate
 
 @router.delete("/{device_id}", status_code=204)
 def delete_device(device_id: int, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.can_edit)):
+                   user: models.User = Depends(auth.can_edit),
+                   site_id: int = Depends(sites.current_site_id)):
     """Удалить устройство вместе с его портами и связями.
 
     Связи удаляются целиком, а не повисают: устройства больше нет в
@@ -152,7 +179,9 @@ def delete_device(device_id: int, db: Session = Depends(get_db),
     конец — история про снятый порт у живого устройства, где кабель
     действительно остался проложен.
     """
-    device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    device = db.query(models.Device).filter(
+        models.Device.id == device_id, models.Device.site_id == site_id
+    ).first()
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
 
@@ -173,8 +202,11 @@ def delete_device(device_id: int, db: Session = Depends(get_db),
 
 # ---------- Интерфейсы конкретного устройства ----------
 @router.get("/{device_id}/interfaces", response_model=list[schemas.InterfaceOut])
-def list_interfaces(device_id: int, db: Session = Depends(get_db)):
-    ifaces = db.query(models.Interface).filter(models.Interface.device_id == device_id).order_by(
+def list_interfaces(device_id: int, db: Session = Depends(get_db),
+                     site_id: int = Depends(sites.current_site_id)):
+    ifaces = db.query(models.Interface).filter(
+        models.Interface.device_id == device_id, models.Interface.site_id == site_id,
+    ).order_by(
         models.Interface.port_number
     ).all()
     return serialize.serialize_interfaces(db, ifaces)
@@ -204,24 +236,30 @@ def _require_editable_ports(db: Session, device: models.Device) -> None:
 
 @router.post("/{device_id}/interfaces", response_model=schemas.InterfaceOut, status_code=201)
 def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.can_edit)):
+                   user: models.User = Depends(auth.can_edit),
+                   site_id: int = Depends(sites.current_site_id)):
     """Добавить порт конкретному устройству.
 
     Разрешено только моделям с изменяемым составом портов — например ПК,
     в который доставили сетевую карту."""
     # Блокировка строки устройства: одновременные добавления иначе читают
     # один и тот же следующий номер и мешают друг другу.
-    device = db.query(models.Device).filter(models.Device.id == device_id).with_for_update().first()
+    device = db.query(models.Device).filter(
+        models.Device.id == device_id, models.Device.site_id == site_id
+    ).with_for_update().first()
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     _require_editable_ports(db, device)
     if payload.connector_id is not None and not db.get(models.ConnectorType, payload.connector_id):
         raise HTTPException(status_code=404, detail="Разъём не найден")
-    if payload.vlan_id is not None and not db.get(models.Vlan, payload.vlan_id):
+    if payload.vlan_id is not None and not db.query(models.Vlan).filter(
+        models.Vlan.id == payload.vlan_id, models.Vlan.site_id == site_id
+    ).first():
         raise HTTPException(status_code=404, detail="VLAN не найден")
 
     number = ports.next_number(db, models.Interface, "device_id", device_id)
-    iface = models.Interface(device_id=device_id, port_number=number, **payload.model_dump())
+    iface = models.Interface(device_id=device_id, site_id=site_id, port_number=number,
+                             **payload.model_dump())
     db.add(iface)
     log_change(db, user.id, "create", "interface", None, old=None, new=iface)
     db.commit()
@@ -231,9 +269,12 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
 
 @router.post("/{device_id}/interfaces/bulk", response_model=list[schemas.InterfaceOut], status_code=201)
 def add_interfaces_bulk(device_id: int, payload: schemas.PortsBulkCreate, db: Session = Depends(get_db),
-                         user: models.User = Depends(auth.can_edit)):
+                         user: models.User = Depends(auth.can_edit),
+                         site_id: int = Depends(sites.current_site_id)):
     """Добавить устройству сразу N портов — одной транзакцией."""
-    device = db.query(models.Device).filter(models.Device.id == device_id).with_for_update().first()
+    device = db.query(models.Device).filter(
+        models.Device.id == device_id, models.Device.site_id == site_id
+    ).with_for_update().first()
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     _require_editable_ports(db, device)
@@ -245,7 +286,7 @@ def add_interfaces_bulk(device_id: int, payload: schemas.PortsBulkCreate, db: Se
     for offset in range(payload.count):
         number = start + offset
         iface = models.Interface(
-            device_id=device_id, port_number=number, label=f"Порт {number}",
+            device_id=device_id, site_id=site_id, port_number=number, label=f"Порт {number}",
             connector_id=payload.connector_id,
         )
         db.add(iface)

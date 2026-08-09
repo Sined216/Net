@@ -121,7 +121,13 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     db.add(iface)
     db.flush()  # нужен id порта модели: устройства ссылаются именно на него
 
-    device_ids = [d.id for d in db.query(models.Device).filter(models.Device.template_id == template_id).all()]
+    # Модель техники общая для всех площадок, поэтому новый порт доезжает до
+    # её устройств на каждой из них — вместе с площадкой самого устройства.
+    device_sites = dict(
+        db.query(models.Device.id, models.Device.site_id)
+        .filter(models.Device.template_id == template_id).all()
+    )
+    device_ids = list(device_sites)
     # У устройства со съёмными портами к портам модели могут быть добавлены
     # свои; порт модели встаёт сразу за портами модели, а самодельные
     # сдвигаются дальше. Считается сразу по всем устройствам: поштучно на
@@ -129,7 +135,7 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     ports.make_room(db, models.Interface, "device_id", device_ids, number)
     for device_id in device_ids:
         db.add(models.Interface(
-            device_id=device_id, port_number=number,
+            device_id=device_id, site_id=device_sites[device_id], port_number=number,
             label=payload.label, connector_id=payload.connector_id,
             template_interface_id=iface.id,
         ))
@@ -161,7 +167,11 @@ def add_template_interfaces_bulk(template_id: int, payload: schemas.PortsBulkCre
         raise HTTPException(status_code=404, detail="Разъём не найден")
 
     start = ports.next_number(db, models.InterfaceTemplate, "template_id", template_id)
-    device_ids = [d.id for d in db.query(models.Device).filter(models.Device.template_id == template_id).all()]
+    device_sites = dict(
+        db.query(models.Device.id, models.Device.site_id)
+        .filter(models.Device.template_id == template_id).all()
+    )
+    device_ids = list(device_sites)
 
     # Место под всю пачку освобождается один раз, а не под каждый порт: у
     # модели с полусотней устройств поштучный сдвиг с перенумерацией
@@ -182,7 +192,8 @@ def add_template_interfaces_bulk(template_id: int, payload: schemas.PortsBulkCre
         created.append(iface)
         for device_id in device_ids:
             db.add(models.Interface(
-                device_id=device_id, port_number=number, label=label, connector_id=payload.connector_id,
+                device_id=device_id, site_id=device_sites[device_id], port_number=number,
+                label=label, connector_id=payload.connector_id,
                 template_interface_id=iface.id,
             ))
     ports.renumber(db, models.Interface, "device_id", device_ids)

@@ -14,6 +14,7 @@ import type {
   LinkCreate, LinkUpdate,
   TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
   UserCreate, UserUpdate, PasswordReset,
+  SiteCreate, SiteUpdate,
 } from './types';
 
 // ---------- Queries ----------
@@ -438,5 +439,39 @@ export function useResetUserPassword() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: PasswordReset }) => api.resetUserPassword(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+// ---------- Площадки ----------
+export const useSites = () => useQuery({ queryKey: ['sites'], queryFn: api.listSites });
+export const useSiteAccess = (id: number | null) =>
+  useQuery({ queryKey: ['siteAccess', id], queryFn: () => api.listSiteAccess(id!), enabled: id != null });
+
+export function useCreateSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SiteCreate) => api.createSite(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sites'] }),
+  });
+}
+export function useUpdateSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: SiteUpdate }) => api.updateSite(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sites'] }),
+  });
+}
+export function useDeleteSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteSite(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sites'] }),
+  });
+}
+export function useSetSiteAccess() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, userIds }: { id: number; userIds: number[] }) => api.setSiteAccess(id, userIds),
+    onSuccess: (_data, { id }) => qc.invalidateQueries({ queryKey: ['siteAccess', id] }),
   });
 }

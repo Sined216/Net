@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { AppShell, Group, NavLink as MantineNavLink, ScrollArea, Text, Button, Stack, Box } from '@mantine/core';
+import { AppShell, Group, NavLink as MantineNavLink, ScrollArea, Select, Text, Button, Stack, Box } from '@mantine/core';
 import {
   IconDeviceDesktop, IconTemplate, IconPlugConnected, IconTopologyStar,
   IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase, IconBook,
-  IconFileImport,
+  IconFileImport, IconBuildingFactory2,
 } from '@tabler/icons-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
+import { useSite } from '../sites/SiteContext';
 
 const NAV_ITEMS = [
   { to: '/devices', label: 'Устройства', icon: IconDeviceDesktop },
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
 
 export function AppLayout() {
   const { user, signOut } = useAuth();
+  const { sites, siteId, selectSite } = useSite();
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   // Пароль назначен не владельцем — до смены работать нельзя. Модалка без
@@ -33,9 +35,21 @@ export function AppLayout() {
   return (
     <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="md">
       <AppShell.Navbar p="sm">
-        <Text fw={700} size="lg" px="xs" mb="sm">
+        <Text fw={700} size="lg" px="xs" mb={6}>
           NetDoc
         </Text>
+        {/* Площадка — контекст всего, что видно ниже, поэтому стоит над
+            меню, а не теряется в настройках. Одна площадка — выбирать не из
+            чего, и переключатель только занимал бы место. */}
+        {sites.length > 1 && (
+          <Select
+            size="xs" mb="sm" allowDeselect={false} comboboxProps={{ withinPortal: true }}
+            leftSection={<IconBuildingFactory2 size={14} />}
+            data={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+            value={siteId != null ? String(siteId) : null}
+            onChange={(value) => value && selectSite(parseInt(value, 10))}
+          />
+        )}
         <ScrollArea style={{ flex: 1 }}>
           <Stack gap={2}>
             {NAV_ITEMS.map((item) => (
@@ -48,7 +62,10 @@ export function AppLayout() {
               />
             ))}
             {user?.role === 'admin' && (
-              <MantineNavLink component={NavLink} to="/users" label="Пользователи" leftSection={<IconUsers size={18} />} />
+              <>
+                <MantineNavLink component={NavLink} to="/sites" label="Площадки" leftSection={<IconBuildingFactory2 size={18} />} />
+                <MantineNavLink component={NavLink} to="/users" label="Пользователи" leftSection={<IconUsers size={18} />} />
+              </>
             )}
           </Stack>
         </ScrollArea>

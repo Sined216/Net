@@ -2,17 +2,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, schemas
+from app import models, schemas, sites
 
 router = APIRouter(tags=["topology"])
 
 
 @router.get("/topology", response_model=schemas.TopologyOut)
-def get_topology(tag_id: int | None = None, db: Session = Depends(get_db)):
+def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
+                  site_id: int = Depends(sites.current_site_id)):
     q = db.query(models.Device).options(
         joinedload(models.Device.template).joinedload(models.DeviceTemplate.device_type),
         joinedload(models.Device.tags),
-    )
+    ).filter(models.Device.site_id == site_id)
     if tag_id is not None:
         q = q.filter(models.Device.tags.any(models.Tag.id == tag_id))
     devices = q.all()
@@ -38,6 +39,7 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db)):
             joinedload(models.Link.interface_b),
             joinedload(models.Link.template),
         )
+        .filter(models.Link.site_id == site_id)
         .all()
     )
 
