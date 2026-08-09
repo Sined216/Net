@@ -166,7 +166,9 @@ def add_template_interfaces_bulk(template_id: int, payload: schemas.PortsBulkCre
     # Место под всю пачку освобождается один раз, а не под каждый порт: у
     # модели с полусотней устройств поштучный сдвиг с перенумерацией
     # занимал секунды на каждый порт.
-    ports.make_room(db, models.Interface, "device_id", device_ids, start)
+    # Сдвиг с запасом на всю пачку: иначе вставляемые номера налетают на
+    # только что сдвинутые.
+    ports.make_room(db, models.Interface, "device_id", device_ids, start, reserve=payload.count)
 
     created = []
     for offset in range(payload.count):

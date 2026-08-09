@@ -273,3 +273,31 @@ def test_bulk_ports_do_not_scale_with_device_count(client, headers, device_type,
     few = statements_for(2)
     many = statements_for(12)
     assert many <= few + 10, f"запросов к базе: {few} на двух устройствах, {many} на двенадцати"
+
+
+def test_bulk_ports_fit_around_hand_made_ports(client, headers, device_type):
+    """Пачка портов модели не должна налетать на самодельные порты.
+
+    У устройства со съёмными портами свои порты сдвигаются, чтобы порты
+    модели встали сразу за портами модели. Сдвиг обязан быть больше всей
+    вставляемой пачки — иначе номера пересекались и база отбивала всё."""
+    template = client.post(
+        "/device-templates",
+        json={"name": "Модель с одним портом", "device_type_id": device_type.id,
+              "ports_editable_on_device": True, "interfaces": [{"label": "p1"}]},
+        headers=headers["editor"],
+    ).json()
+    device = client.post("/devices", json={"template_id": template["id"]}, headers=headers["editor"]).json()
+    for i in range(3):
+        client.post(f"/devices/{device['id']}/interfaces", json={"label": f"своя{i}"}, headers=headers["editor"])
+
+    response = client.post(
+        f"/device-templates/{template['id']}/interfaces/bulk", json={"count": 24}, headers=headers["editor"],
+    )
+    assert response.status_code == 201, response.text[:200]
+
+    ports = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()["interfaces"]
+    numbers = sorted(p["port_number"] for p in ports)
+    assert numbers == list(range(1, 29)), "1 порт модели + 24 новых + 3 самодельных, номера сплошные"
+    # Порты модели идут первыми, самодельные — в конце ряда.
+    assert [p["label"] for p in ports][-3:] == ["своя0", "своя1", "своя2"]

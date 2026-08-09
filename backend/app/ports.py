@@ -38,20 +38,27 @@ def next_number(db: Session, model, owner_column: str, owner_id: int) -> int:
     return _max_number(db, model, owner_column, [owner_id]) + 1
 
 
-def make_room(db: Session, model, owner_column: str, owner_ids: int | Iterable[int], number: int) -> None:
-    """Освободить номер: порты с этого места и дальше уводятся вверх.
+def make_room(db: Session, model, owner_column: str, owner_ids: int | Iterable[int], number: int,
+              reserve: int = 1) -> None:
+    """Освободить номера начиная с этого места: занятые уводятся вверх.
 
     Нужно, когда порт вставляется не в конец — например модели дописали
     порт, а у устройства к её портам добавлены свои: порт модели должен
     встать сразу за портами модели, а не за самодельными.
     Ряд после этого разреженный — вызывающий обязан закончить `renumber`.
+
+    `reserve` — сколько подряд идущих номеров освобождается. Сдвиг обязан
+    быть больше самого большого вставляемого номера, иначе пачка портов
+    налетает на только что сдвинутые: у устройства с четырьмя портами сдвиг
+    на четыре, а вставляем двадцать четыре — номера пересекаются, и база
+    отбивает всю операцию.
     """
     ids = _as_list(owner_ids)
     if not ids:
         return
     db.flush()
-    offset = _max_number(db, model, owner_column, ids)
-    if offset == 0:
+    offset = _max_number(db, model, owner_column, ids) + max(reserve, 1)
+    if offset <= 1:
         return
     db.execute(
         text(
