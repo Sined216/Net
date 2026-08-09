@@ -460,8 +460,11 @@ class LinkCreate(BaseModel):
     interface_b_id: int
     template_id: Optional[int] = None
     connector_type: Optional[str] = None
-    length_m: Optional[float] = None
-    speed_mbps: Optional[int] = None
+    # NUMERIC(6,1) в базе: больше 99999.9 не влезает, а отрицательной длины
+    # кабеля не бывает. Без этого слишком большое число доезжало до базы и
+    # возвращалось пятисоткой.
+    length_m: Optional[float] = Field(default=None, ge=0, le=99999.9)
+    speed_mbps: Optional[int] = Field(default=None, ge=0, le=1_000_000)
     notes: Optional[str] = None
     # source и confirmed клиент не задаёт: связь, созданную руками, сервер
     # всегда помечает manual/подтверждена. Поля существуют под будущий
@@ -472,8 +475,11 @@ class LinkCreate(BaseModel):
 class LinkUpdate(BaseModel):
     template_id: Optional[int] = None
     connector_type: Optional[str] = None
-    length_m: Optional[float] = None
-    speed_mbps: Optional[int] = None
+    # NUMERIC(6,1) в базе: больше 99999.9 не влезает, а отрицательной длины
+    # кабеля не бывает. Без этого слишком большое число доезжало до базы и
+    # возвращалось пятисоткой.
+    length_m: Optional[float] = Field(default=None, ge=0, le=99999.9)
+    speed_mbps: Optional[int] = Field(default=None, ge=0, le=1_000_000)
     confirmed: Optional[bool] = None
     notes: Optional[str] = None
 

@@ -3,7 +3,7 @@ import logging
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 
 from app.config import settings
 from app.database import SessionLocal
@@ -56,6 +56,20 @@ def on_integrity_error(request: Request, exc: IntegrityError):
         status_code=409,
         content={"detail": "Запись ссылается на то, чего нет, либо нарушает уникальность. "
                            "Обновите страницу — данные могли измениться в другой вкладке."},
+    )
+
+
+@app.exception_handler(DataError)
+def on_data_error(request: Request, exc: DataError):
+    """Значение не влезло в колонку — это тоже ошибка запроса.
+
+    Слишком длинное число или строка не должны выглядеть как поломка
+    сервера: клиенту нужно понять, что именно он прислал не так.
+    """
+    log.warning("значение не принято базой на %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Значение не подходит по типу или размеру — проверьте введённые числа и строки."},
     )
 
 

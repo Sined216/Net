@@ -110,3 +110,22 @@ def test_absurdly_long_device_name_is_rejected(client, headers, template):
     ok = client.post("/devices", json={"template_id": template.id, "name": "Станок №5 (линия 3)"},
                      headers=headers["editor"])
     assert ok.status_code == 201
+
+
+@pytest.mark.parametrize("body", [
+    {"length_m": -5},
+    {"length_m": 10 ** 9},
+    {"speed_mbps": -1},
+])
+def test_impossible_cable_numbers_are_rejected(client, headers, make_device, body):
+    """Отрицательной длины кабеля не бывает, а слишком большое число не
+    влезало в колонку и возвращалось пятисоткой."""
+    a, b = make_device(), make_device()
+    link = client.post(
+        "/links",
+        json={"interface_a_id": a["interfaces"][0]["id"], "interface_b_id": b["interfaces"][0]["id"]},
+        headers=headers["editor"],
+    ).json()
+
+    response = client.patch(f"/links/{link['id']}", json=body, headers=headers["editor"])
+    assert response.status_code == 422, response.text[:200]
