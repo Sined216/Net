@@ -2,6 +2,7 @@ import { NodeResizer, NodeToolbar, Position, type Node, type NodeProps } from '@
 import { ActionIcon, Group, Paper, Text, Tooltip } from '@mantine/core';
 import { IconFolderPlus, IconPencil, IconTrash } from '@tabler/icons-react';
 import { useTopologyActions } from './actions';
+import { tint, useAppearance } from './appearance';
 
 export interface GroupNodeData extends Record<string, unknown> {
   name: string;
@@ -25,22 +26,31 @@ export const GROUP_MIN_SIZE = { width: 240, height: 130 };
  * рамки цеха — это обычный вложенный узел React Flow (parentId), поэтому
  * дети двигаются вместе с родителем.
  *
- * Вложенные рамки заливаются слабее внешних: иначе на третьем уровне фон
+ * Вложенные рамки бледнее внешних: иначе на третьем уровне заливка
  * складывается втрое и устройства тонут в цвете.
+ *
+ * Как именно выглядит рамка — контур, заливка, скругление, место подписи —
+ * решает человек в настройках вида (см. appearance.ts); здесь только
+ * умолчания и правила вложенности.
  */
 export function GroupNode({ id, data, selected }: NodeProps<GroupNodeType>) {
   const actions = useTopologyActions();
+  const look = useAppearance();
   const groupId = parseInt(id.replace('group-', ''), 10);
-  const fill = data.depth === 0 ? '14' : '0d';
+
+  // Чем глубже рамка, тем слабее и заливка, и контур.
+  const fade = [1, 0.6, 0.4][Math.min(data.depth, 2)];
 
   return (
     <div
       style={{
         width: '100%',
         height: '100%',
-        border: `1.5px ${data.depth === 0 ? 'dashed' : 'dotted'} ${data.color}`,
-        borderRadius: 10,
-        background: `${data.color}${fill}`,
+        border: look.groupBorder === 'none'
+          ? undefined
+          : `${look.groupBorderWidth}px ${look.groupBorder} ${tint(data.color, 100 * fade)}`,
+        borderRadius: look.groupRadius,
+        background: look.groupFill > 0 ? tint(data.color, look.groupFill * fade) : undefined,
         outline: selected ? `2px solid ${data.color}` : undefined,
         outlineOffset: 2,
       }}
@@ -80,10 +90,27 @@ export function GroupNode({ id, data, selected }: NodeProps<GroupNodeType>) {
         </NodeToolbar>
       )}
 
-      <Group gap={6} wrap="nowrap" style={{ padding: '4px 8px', height: GROUP_HEADER_HEIGHT }}>
-        <Text size="xs" fw={600} style={{ color: data.color }} truncate>{data.name}</Text>
-        <Text size="10px" c="dimmed" style={{ flexShrink: 0 }}>{data.deviceCount}</Text>
-      </Group>
+      {look.groupTitle !== 'hidden' && (
+        // «Врезкой» — подпись сидит верхом на контуре, как надпись на
+        // чертеже: она не отъедает место внутри рамки и не наезжает на
+        // устройства, стоящие вплотную к верхнему краю.
+        <Group
+          gap={6}
+          wrap="nowrap"
+          style={look.groupTitle === 'onFrame'
+            ? {
+              position: 'absolute', top: 0, left: 12, transform: 'translateY(-50%)',
+              maxWidth: 'calc(100% - 24px)', padding: '0 6px', borderRadius: 6,
+              background: 'var(--mantine-color-body)',
+            }
+            : { padding: '4px 8px', height: GROUP_HEADER_HEIGHT }}
+        >
+          <Text size="xs" fw={600} style={{ color: data.color }} truncate>{data.name}</Text>
+          {look.groupCount && (
+            <Text size="10px" c="dimmed" style={{ flexShrink: 0 }}>{data.deviceCount}</Text>
+          )}
+        </Group>
+      )}
     </div>
   );
 }

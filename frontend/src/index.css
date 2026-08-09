@@ -27,3 +27,20 @@ html, body, #root {
 .react-flow.connecting .topology-device-node .react-flow__handle {
   opacity: 1;
 }
+
+/* Собственное оформление React Flow для узлов типа `group`: тёмная рамка,
+   серая заливка, скругление 3px и внутренний отступ 10px. Наш тип узла
+   называется так же и получал всё это в нагрузку: к каждой группе прилипал
+   ещё один прямоугольник — чуть больше нашего и почти чёрный, — а сама
+   рамка из-за отступа рисовалась на 10px внутрь от своей настоящей
+   границы, и подпись «врезкой» садилась мимо линии. Рисуем рамку сами
+   (см. GroupNode.tsx и настройки вида), обёртке оформление не нужно. */
+.react-flow__node-group {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font-size: inherit;
+}

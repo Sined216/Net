@@ -1,4 +1,5 @@
 import { BaseEdge, EdgeLabelRenderer, getStraightPath, useInternalNode, type EdgeProps, type Edge, type InternalNode, type Node } from '@xyflow/react';
+import { useAppearance } from './appearance';
 
 export interface FloatingEdgeData extends Record<string, unknown> {
   sourceLabel: string;
@@ -40,6 +41,7 @@ function getNodeIntersection(intersectionNode: InternalNode<Node>, targetNode: I
 export function FloatingEdge({ id, source, target, data }: EdgeProps<FloatingEdgeType>) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
+  const look = useAppearance();
   if (!sourceNode || !targetNode || !data) return null;
 
   const s = getNodeIntersection(sourceNode, targetNode);
@@ -58,12 +60,17 @@ export function FloatingEdge({ id, source, target, data }: EdgeProps<FloatingEdg
       <BaseEdge
         id={id}
         path={path}
-        style={{ stroke: data.color, strokeWidth: 2, strokeDasharray: data.dashArray, opacity: data.confirmed ? 0.9 : 0.45 }}
+        style={{
+          stroke: data.color, strokeWidth: look.edgeWidth,
+          strokeDasharray: data.dashArray, opacity: data.confirmed ? 0.9 : 0.45,
+        }}
       />
-      <EdgeLabelRenderer>
-        <PortLabel x={sLabel.x} y={sLabel.y} text={data.sourceLabel} />
-        <PortLabel x={tLabel.x} y={tLabel.y} text={data.targetLabel} />
-      </EdgeLabelRenderer>
+      {look.edgeLabels && (
+        <EdgeLabelRenderer>
+          <PortLabel x={sLabel.x} y={sLabel.y} text={data.sourceLabel} />
+          <PortLabel x={tLabel.x} y={tLabel.y} text={data.targetLabel} />
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }

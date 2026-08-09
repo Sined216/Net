@@ -2,6 +2,7 @@ import { Handle, NodeToolbar, Position, type NodeProps, type Node } from '@xyflo
 import { ActionIcon, Group, Paper, Text, Tooltip } from '@mantine/core';
 import { IconCopy, IconPencil, IconTrash, IconUsersGroup } from '@tabler/icons-react';
 import { useTopologyActions } from './actions';
+import { useAppearance } from './appearance';
 
 export interface DeviceNodeData extends Record<string, unknown> {
   code: string;
@@ -39,6 +40,7 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
   const accent = data.color || NEUTRAL;
   const connected = data.portsConnected > 0;
   const actions = useTopologyActions();
+  const look = useAppearance();
   const deviceId = parseInt(id, 10);
 
   return (
@@ -52,7 +54,7 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
         // страницы — так рамка получается цветной без второго элемента.
         padding: 1.5,
         background: `linear-gradient(140deg, ${accent}, color-mix(in srgb, ${accent} 25%, transparent))`,
-        boxShadow: `0 1px 10px color-mix(in srgb, ${accent} 22%, transparent)`,
+        boxShadow: look.deviceGlow ? `0 1px 10px color-mix(in srgb, ${accent} 22%, transparent)` : undefined,
       }}
     >
       {/* Панель действий над выделенным узлом: править, скопировать,
@@ -119,13 +121,17 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
           <Text size="sm" fw={700} truncate style={{ flex: 1, minWidth: 0 }}>
             {data.code}
           </Text>
-          <Text size="xs" c={connected ? 'teal' : 'dimmed'} fw={600} style={{ flexShrink: 0 }}>
-            {data.portsConnected}/{data.portsTotal}
-          </Text>
+          {look.devicePorts && (
+            <Text size="xs" c={connected ? 'teal' : 'dimmed'} fw={600} style={{ flexShrink: 0 }}>
+              {data.portsConnected}/{data.portsTotal}
+            </Text>
+          )}
         </div>
-        <Text size="xs" c="dimmed" truncate mt={2}>
-          {data.subtitle}
-        </Text>
+        {look.deviceSubtitle && (
+          <Text size="xs" c="dimmed" truncate mt={2}>
+            {data.subtitle}
+          </Text>
+        )}
       </div>
     </div>
   );

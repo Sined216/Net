@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ReactFlow, Background, Controls, MiniMap, ConnectionMode, useNodesState, useEdgesState,
+  ReactFlow, Background, BackgroundVariant, Controls, MiniMap, ConnectionMode,
+  useNodesState, useEdgesState,
   type Connection, type Node, type ReactFlowInstance,
 } from '@xyflow/react';
 import { Button, Group, Paper, Select, Stack, Text, Title } from '@mantine/core';
@@ -28,6 +29,10 @@ import { GroupNode, GROUP_HEADER_HEIGHT, type GroupNodeType } from './topology/G
 import { DanglingNode, DANGLING_NODE_SIZE, type DanglingNodeType } from './topology/DanglingNode';
 import { FloatingEdge, type FloatingEdgeType } from './topology/FloatingEdge';
 import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
+import { AppearanceMenu } from './topology/AppearanceMenu';
+import {
+  TopologyAppearanceContext, loadAppearance, saveAppearance, type TopologyAppearance,
+} from './topology/appearance';
 
 const nodeTypes = { device: DeviceNode, group: GroupNode, dangling: DanglingNode };
 const edgeTypes = { floating: FloatingEdge };
@@ -85,6 +90,14 @@ export function TopologyPage() {
   const { data: topologyGroups = EMPTY } = useTopologyGroups();
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
+  /** Внешний вид схемы. Настройка личная и живёт в браузере — читается один
+   * раз при первом рендере, а не на каждый. */
+  const [look, setLook] = useState<TopologyAppearance>(loadAppearance);
+
+  function changeLook(next: TopologyAppearance) {
+    setLook(next);
+    saveAppearance(next);
+  }
 
   const [nodes, setNodes, onNodesChange] = useNodesState<DeviceNodeType | GroupNodeType | DanglingNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FloatingEdgeType>([]);
@@ -680,6 +693,7 @@ export function TopologyPage() {
 
   return (
     <TopologyActionsContext.Provider value={actions}>
+    <TopologyAppearanceContext.Provider value={look}>
     <Stack h="100%" gap="sm">
       <Group justify="space-between">
         <Title order={2}>Схема связей</Title>
@@ -692,6 +706,7 @@ export function TopologyPage() {
           <Button variant="light" leftSection={<IconUsersGroup size={16} />} onClick={() => setGroupsModalOpen(true)}>
             Группы
           </Button>
+          <AppearanceMenu value={look} onChange={changeLook} />
           <Button leftSection={<IconPlus size={16} />} onClick={() => setAddingDevice(true)}>
             Устройство
           </Button>
@@ -726,9 +741,11 @@ export function TopologyPage() {
             minZoom={0.2}
             maxZoom={3}
           >
-            <Background />
+            {look.background !== 'none' && (
+              <Background variant={look.background as BackgroundVariant} />
+            )}
             <Controls />
-            <MiniMap pannable zoomable />
+            {look.minimap && <MiniMap pannable zoomable />}
           </ReactFlow>
         )}
       </Paper>
@@ -739,7 +756,9 @@ export function TopologyPage() {
         за рамку, группу не покидает и за её границу не выходит. Клик по линии открывает правку связи. Оранжевый кружок
         с «?» — свободный конец кабеля: потяните его на устройство, чтобы воткнуть в порт. Клавиша Delete
         удаляет выделенный узел или линию. Узлы можно перетаскивать, позиция сохраняется. Цвет узла берётся из
-        модели техники, цвет линии — из шаблона связи. Пунктирная рамка — группа (кнопка «Группы»).
+        модели техники, цвет линии — из шаблона связи, цвет рамки — из группы (кнопка «Группы»). Кнопка «Вид»
+        настраивает оформление схемы: контур и заливку рамок, подписи, толщину линий, фон — настройки личные и
+        запоминаются в этом браузере.
       </Text>
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
       {editingLink && (
@@ -780,6 +799,7 @@ export function TopologyPage() {
         <DeviceGroupModal deviceId={regrouping} onClose={() => setRegrouping(null)} />
       )}
     </Stack>
+    </TopologyAppearanceContext.Provider>
     </TopologyActionsContext.Provider>
   );
 }
