@@ -389,13 +389,17 @@ class DeviceBase(BaseModel):
 
 
 class DeviceCreate(DeviceBase):
+    # Длины — только на вводе: DeviceOut наследует DeviceBase, и ограничение
+    # там сделало бы нечитаемой запись, заведённую раньше.
+    name: Optional[str] = Field(default=None, max_length=200)
+    location: Optional[str] = Field(default=None, max_length=200)
     tag_ids: List[int] = []
 
 
 class DeviceUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=200)
     management_ip: Optional[IPAddressStr] = None
-    location: Optional[str] = None
+    location: Optional[str] = Field(default=None, max_length=200)
     role: Optional[DeviceRole] = None
     install_date: Optional[date] = None
     notes: Optional[str] = None

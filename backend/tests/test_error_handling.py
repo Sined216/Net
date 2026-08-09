@@ -98,3 +98,15 @@ def test_old_rows_stay_readable(client, headers, db):
     for path in ["/tags", "/vlans", "/link-templates", "/connector-types", "/modules", "/device-templates"]:
         response = client.get(path, headers=headers["viewer"])
         assert response.status_code == 200, f"{path} → {response.status_code}: {response.text[:200]}"
+
+
+def test_absurdly_long_device_name_is_rejected(client, headers, template):
+    """Имя на пять тысяч символов ломает и списки, и схему; двухсот хватает
+    любому названию станка."""
+    response = client.post(
+        "/devices", json={"template_id": template.id, "name": "Э" * 5000}, headers=headers["editor"],
+    )
+    assert response.status_code == 422
+    ok = client.post("/devices", json={"template_id": template.id, "name": "Станок №5 (линия 3)"},
+                     headers=headers["editor"])
+    assert ok.status_code == 201
