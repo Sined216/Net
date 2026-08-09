@@ -214,6 +214,10 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     _require_editable_ports(db, device)
+    if payload.connector_id is not None and not db.get(models.ConnectorType, payload.connector_id):
+        raise HTTPException(status_code=404, detail="Разъём не найден")
+    if payload.vlan_id is not None and not db.get(models.Vlan, payload.vlan_id):
+        raise HTTPException(status_code=404, detail="VLAN не найден")
 
     number = ports.next_number(db, models.Interface, "device_id", device_id)
     iface = models.Interface(device_id=device_id, port_number=number, **payload.model_dump())

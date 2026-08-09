@@ -147,6 +147,16 @@ def delete_connector_type(connector_id: int, db: Session = Depends(get_db),
 
 
 # ---------- Модули (трансиверы) ----------
+def _check_connectors(db: Session, data: dict) -> None:
+    """Разъёмы у модуля должны существовать: иначе ссылка на пустоту
+    доезжала до базы и возвращалась пятисоткой вместо внятного отказа."""
+    for field in ("cage_connector_id", "connector_id"):
+        value = data.get(field)
+        if value is not None and not db.get(models.ConnectorType, value):
+            raise HTTPException(status_code=404, detail="Разъём не найден")
+
+
+
 @router.get("/modules", response_model=list[schemas.TransceiverModuleOut])
 def list_modules(db: Session = Depends(get_db)):
     return db.query(models.TransceiverModule).order_by(models.TransceiverModule.name).all()
@@ -157,6 +167,7 @@ def create_module(payload: schemas.TransceiverModuleCreate, db: Session = Depend
                    _: models.User = Depends(auth.can_edit)):
     if db.query(models.TransceiverModule).filter(models.TransceiverModule.name == payload.name).first():
         raise HTTPException(status_code=409, detail="Модуль с таким названием уже есть")
+    _check_connectors(db, payload.model_dump())
     module = models.TransceiverModule(**payload.model_dump())
     db.add(module)
     db.commit()
@@ -175,6 +186,7 @@ def update_module(module_id: int, payload: schemas.TransceiverModuleUpdate, db: 
         models.TransceiverModule.name == data["name"], models.TransceiverModule.id != module_id
     ).first():
         raise HTTPException(status_code=409, detail="Модуль с таким названием уже есть")
+    _check_connectors(db, data)
     for field, value in data.items():
         setattr(module, field, value)
     db.commit()

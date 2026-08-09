@@ -1,7 +1,9 @@
 import logging
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.database import SessionLocal
@@ -38,6 +40,23 @@ app.include_router(auth_router.router)
 for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
                topology, topology_groups, schema):
     app.include_router(module.router, dependencies=authenticated)
+
+
+@app.exception_handler(IntegrityError)
+def on_integrity_error(request: Request, exc: IntegrityError):
+    """Страховка от пятисоток на нарушении целостности.
+
+    Ссылка на несуществующую запись или повтор уникального значения — это
+    ошибка запроса, а не поломка сервера: клиенту нужен внятный отказ, а не
+    «Internal Server Error». Места, где понятно, о чём именно речь, отвечают
+    сами и подробнее; сюда доезжает всё остальное.
+    """
+    log.warning("нарушение целостности на %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Запись ссылается на то, чего нет, либо нарушает уникальность. "
+                           "Обновите страницу — данные могли измениться в другой вкладке."},
+    )
 
 
 # (название, префикс кода устройства — SW-0001, SRV-0002...)

@@ -38,6 +38,10 @@ def create_template(payload: schemas.DeviceTemplateCreate, db: Session = Depends
     if not device_type:
         raise HTTPException(status_code=404, detail="Тип устройства не найден")
 
+    for iface in payload.interfaces:
+        if iface.connector_id is not None and not db.get(models.ConnectorType, iface.connector_id):
+            raise HTTPException(status_code=404, detail="Разъём не найден")
+
     data = payload.model_dump(exclude={"interfaces"})
     template = models.DeviceTemplate(**data)
     db.add(template)
@@ -108,6 +112,9 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     ).with_for_update().first()
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
+
+    if payload.connector_id is not None and not db.get(models.ConnectorType, payload.connector_id):
+        raise HTTPException(status_code=404, detail="Разъём не найден")
 
     number = ports.next_number(db, models.InterfaceTemplate, "template_id", template_id)
     iface = models.InterfaceTemplate(template_id=template_id, port_number=number, **payload.model_dump())

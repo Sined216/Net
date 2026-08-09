@@ -17,8 +17,26 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
     if not iface:
         raise HTTPException(status_code=404, detail="Интерфейс не найден")
 
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("vlan_id") is not None and not db.get(models.Vlan, data["vlan_id"]):
+        raise HTTPException(status_code=404, detail="VLAN не найден")
+    if data.get("module_id") is not None:
+        module = db.get(models.TransceiverModule, data["module_id"])
+        if not module:
+            raise HTTPException(status_code=404, detail="Модуль не найден")
+        # Модуль вставляется в клетку; в RJ45 его физически некуда деть, и
+        # такая запись означала бы неверную документацию, а не факт.
+        if iface.connector is None or not iface.connector.is_cage:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"В этот порт модуль не вставляется: у него разъём "
+                    f"{iface.connector.name if iface.connector else 'не указан'}, а не клетка"
+                ),
+            )
+
     old_snapshot = {c.name: getattr(iface, c.name) for c in iface.__table__.columns}
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    for field, value in data.items():
         setattr(iface, field, value)
 
     log_change(db, user.id, "update", "interface", iface.id, old=old_snapshot, new=iface)

@@ -78,17 +78,20 @@ class LoginRequest(BaseModel):
 
 # ---------- Tag (вложенный, вместо площадок) ----------
 class TagBase(BaseModel):
+    """Общая часть. Ограничения длины живут в схемах ввода, а не здесь:
+    иначе они попадают и в ответ, и запись, заведённая до появления
+    ограничения, перестаёт читаться — список отдаёт 500 вместо данных."""
     name: str
     parent_id: Optional[int] = None
     color: Optional[str] = None
 
 
 class TagCreate(TagBase):
-    pass
+    name: str = Field(min_length=1, max_length=100)
 
 
 class TagUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     parent_id: Optional[int] = None
     color: Optional[str] = None
 
@@ -111,14 +114,14 @@ class TopologyGroupBox(BaseModel):
 
 
 class TopologyGroupCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=100)
     color: Optional[str] = None
     # Группа внутри группы: цех — участок — линия.
     parent_id: Optional[int] = None
 
 
 class TopologyGroupUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     color: Optional[str] = None
     parent_id: Optional[int] = None
 
@@ -159,14 +162,14 @@ class DeviceTypeOut(BaseModel):
 
 # ---------- Разъёмы и модули ----------
 class ConnectorTypeBase(BaseModel):
-    name: str = Field(min_length=1, max_length=50)
+    name: str
     media: ConnectorMedia = "copper"
     # Клетка (SFP и подобные): разъём у неё появляется вместе с модулем.
     is_cage: bool = False
 
 
 class ConnectorTypeCreate(ConnectorTypeBase):
-    pass
+    name: str = Field(min_length=1, max_length=50)
 
 
 class ConnectorTypeUpdate(BaseModel):
@@ -181,7 +184,7 @@ class ConnectorTypeOut(ConnectorTypeBase):
 
 
 class TransceiverModuleBase(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: str
     # В какую клетку вставляется и что даёт наружу.
     cage_connector_id: Optional[int] = None
     connector_id: Optional[int] = None
@@ -189,7 +192,7 @@ class TransceiverModuleBase(BaseModel):
 
 
 class TransceiverModuleCreate(TransceiverModuleBase):
-    pass
+    name: str = Field(min_length=1, max_length=100)
 
 
 class TransceiverModuleUpdate(BaseModel):
@@ -215,7 +218,9 @@ class VlanBase(BaseModel):
 
 
 class VlanCreate(VlanBase):
-    pass
+    # 802.1Q: номера 1..4094, ноль и 4095 зарезервированы стандартом.
+    vlan_number: int = Field(ge=1, le=4094)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 
 class VlanOut(VlanBase):
@@ -225,7 +230,7 @@ class VlanOut(VlanBase):
 
 # ---------- Interface template (порт в шаблоне устройства) ----------
 class InterfaceTemplateBase(BaseModel):
-    label: str = Field(min_length=1, max_length=100)
+    label: str
     # Разъём — свойство модели. Пусто допустимо (не уточняли), но по
     # умолчанию интерфейс подставляет RJ45.
     connector_id: Optional[int] = None
@@ -233,6 +238,7 @@ class InterfaceTemplateBase(BaseModel):
 
 class InterfaceTemplateCreate(InterfaceTemplateBase):
     """Номер не передаётся: порты нумеруются подряд, новый встаёт в конец."""
+    label: str = Field(min_length=1, max_length=100)
 
 
 class PortsBulkCreate(BaseModel):
@@ -276,11 +282,12 @@ class DeviceTemplateBase(BaseModel):
 
 
 class DeviceTemplateCreate(DeviceTemplateBase):
+    name: str = Field(min_length=1, max_length=200)
     interfaces: List[InterfaceTemplateCreate] = []
 
 
 class DeviceTemplateUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     device_type_id: Optional[int] = None
     manufacturer: Optional[str] = None
     notes: Optional[str] = None
@@ -427,11 +434,11 @@ class LinkTemplateBase(BaseModel):
 
 
 class LinkTemplateCreate(LinkTemplateBase):
-    pass
+    name: str = Field(min_length=1, max_length=100)
 
 
 class LinkTemplateUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     media_type: Optional[MediaType] = None
     cable_category: Optional[str] = None
     color: Optional[str] = None
