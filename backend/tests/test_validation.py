@@ -120,8 +120,8 @@ def test_install_date_is_a_real_date(client, headers, template):
     assert bad.status_code == 422
 
 
-@pytest.mark.parametrize("field,value", [("port_type", "магистральный"), ("port_type", "ACCESS")])
-def test_unknown_port_type_is_rejected(client, headers, make_device, field, value):
+@pytest.mark.parametrize("field,value", [("mode", "магистральный"), ("mode", "ACCESS")])
+def test_unknown_port_mode_is_rejected(client, headers, make_device, field, value):
     device = make_device()
     response = client.patch(
         f"/interfaces/{device['interfaces'][0]['id']}", json={field: value}, headers=headers["editor"]

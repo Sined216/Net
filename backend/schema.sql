@@ -78,6 +78,25 @@ CREATE TABLE device_templates (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Разъём порта: то, что физически торчит из железки. SFP и подобные — не
+-- разъём, а клетка (is_cage): разъём у них появляется вместе с модулем.
+CREATE TABLE connector_types (
+    id      SERIAL PRIMARY KEY,
+    name    TEXT UNIQUE NOT NULL,            -- RJ45, SFP+, LC, M12...
+    media   TEXT NOT NULL DEFAULT 'copper' CHECK (media IN ('copper','fiber','other')),
+    is_cage BOOLEAN NOT NULL DEFAULT false
+);
+
+-- Модуль (трансивер), вставляемый в клетку. connector_id — разъём, который
+-- он даёт наружу: LC у оптики, RJ45 у медного SFP.
+CREATE TABLE transceiver_modules (
+    id                SERIAL PRIMARY KEY,
+    name              TEXT UNIQUE NOT NULL,
+    cage_connector_id INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
+    connector_id      INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
+    notes             TEXT
+);
+
 -- Порты, которые есть у этой модели устройства. При добавлении устройства
 -- в спецификацию оборудования эти строки копируются в interfaces.
 CREATE TABLE device_template_interfaces (
@@ -87,7 +106,9 @@ CREATE TABLE device_template_interfaces (
     -- и опознаётся, он напечатан на корпусе. Раздаёт номера приложение.
     port_number  INTEGER NOT NULL,
     label        TEXT NOT NULL,               -- "Порт 1", "Gi0/1", "SFP1"...
-    port_type    TEXT CHECK (port_type IN ('access','trunk','uplink')),
+    -- Разъём — свойство модели техники. Режима (доступ/транк) тут нет: он
+    -- настраивается на конкретной железке.
+    connector_id INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
     UNIQUE (template_id, port_number)
 );
 
@@ -151,7 +172,12 @@ CREATE TABLE interfaces (
     -- одинаково, но занимать разные гнёзда. Связь указывает на гнездо.
     port_number    INTEGER NOT NULL,
     label          TEXT NOT NULL,
-    port_type      TEXT CHECK (port_type IN ('access','trunk','uplink')),
+    -- Разъём приходит из модели; модуль вставляется в клетку (SFP и т.п.) и
+    -- определяет, какой разъём торчит из порта на самом деле.
+    connector_id   INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
+    module_id      INTEGER REFERENCES transceiver_modules(id) ON DELETE SET NULL,
+    -- Режим порта — настройка конкретной железки.
+    mode           TEXT CHECK (mode IN ('access','trunk','uplink')),
     vlan_id        INTEGER REFERENCES vlans(id) ON DELETE SET NULL,
     trunk_vlan_ids INTEGER[],
     ip             INET,

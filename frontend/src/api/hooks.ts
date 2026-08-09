@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from './endpoints';
 import type {
   TagCreate, TagUpdate,
-  DeviceTypeCreate,
+  DeviceTypeCreate, DeviceTypeUpdate,
+  ConnectorTypeCreate, ConnectorTypeUpdate,
+  TransceiverModuleCreate, TransceiverModuleUpdate,
+  InterfaceTemplateUpdate,
   VlanCreate,
   DeviceTemplateCreate, DeviceTemplateUpdate, InterfaceTemplateCreate,
   DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
@@ -16,6 +19,8 @@ import type {
 // ---------- Queries ----------
 export const useTags = () => useQuery({ queryKey: ['tags'], queryFn: api.listTags });
 export const useDeviceTypes = () => useQuery({ queryKey: ['deviceTypes'], queryFn: api.listDeviceTypes });
+export const useConnectorTypes = () => useQuery({ queryKey: ['connectorTypes'], queryFn: api.listConnectorTypes });
+export const useModules = () => useQuery({ queryKey: ['modules'], queryFn: api.listModules });
 export const useVlans = () => useQuery({ queryKey: ['vlans'], queryFn: api.listVlans });
 export const useDeviceTemplates = () => useQuery({ queryKey: ['deviceTemplates'], queryFn: api.listDeviceTemplates });
 export const useDevices = () => useQuery({ queryKey: ['devices'], queryFn: api.listDevices });
@@ -75,6 +80,59 @@ export function useDeleteDeviceType() {
   });
 }
 
+export function useUpdateDeviceType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: DeviceTypeUpdate }) => api.updateDeviceType(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['deviceTypes'] }),
+  });
+}
+
+// ---------- Разъёмы и модули ----------
+export function useCreateConnectorType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ConnectorTypeCreate) => api.createConnectorType(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['connectorTypes'] }),
+  });
+}
+export function useUpdateConnectorType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: ConnectorTypeUpdate }) => api.updateConnectorType(id, body),
+    // Разъём виден и в шаблонах, и в портах устройств.
+    onSuccess: () => invalidateAll(qc, ['connectorTypes', 'deviceTemplates', 'devices']),
+  });
+}
+export function useDeleteConnectorType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteConnectorType(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['connectorTypes'] }),
+  });
+}
+export function useCreateModule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TransceiverModuleCreate) => api.createModule(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
+  });
+}
+export function useUpdateModule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: TransceiverModuleUpdate }) => api.updateModule(id, body),
+    onSuccess: () => invalidateAll(qc, ['modules', 'devices']),
+  });
+}
+export function useDeleteModule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteModule(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
+  });
+}
+
 // ---------- VLANs ----------
 export function useCreateVlan() {
   const qc = useQueryClient();
@@ -121,6 +179,22 @@ export function useAddTemplateInterface() {
     // Порт добавляется и всем устройствам этой модели — списки устройств и
     // связей тоже устарели.
     onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links']),
+  });
+}
+export function useUpdateTemplateInterface() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ templateId, ifaceId, body }: { templateId: number; ifaceId: number; body: InterfaceTemplateUpdate }) =>
+      api.updateTemplateInterface(templateId, ifaceId, body),
+    // Правка порта модели доезжает до всех её устройств.
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices']),
+  });
+}
+export function useCopyDeviceTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.copyDeviceTemplate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['deviceTemplates'] }),
   });
 }
 export function useDeleteTemplateInterface() {

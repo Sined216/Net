@@ -116,7 +116,7 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
         ports.make_room(db, models.Interface, "device_id", device.id, number)
         db.add(models.Interface(
             device_id=device.id, port_number=number,
-            label=payload.label, port_type=payload.port_type,
+            label=payload.label, connector_id=payload.connector_id,
         ))
         ports.renumber(db, models.Interface, "device_id", device.id)
 
@@ -126,6 +126,94 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     db.commit()
     db.refresh(iface)
     return iface
+
+
+@router.patch("/{template_id}/interfaces/{iface_id}", response_model=schemas.InterfaceTemplateOut)
+def update_template_interface(template_id: int, iface_id: int, payload: schemas.InterfaceTemplateUpdate,
+                               db: Session = Depends(get_db), user: models.User = Depends(auth.can_edit)):
+    """Поправить название или разъём порта модели.
+
+    Правка разъезжается по всем устройствам этой модели: порт устройства —
+    копия порта модели, и если подпись поменялась в модели, а на железках
+    осталась прежней, одинаковые коммутаторы разъедутся по названиям портов
+    — ровно то, ради чего состав портов и задаётся моделью.
+
+    Порты, заведённые руками на устройстве со съёмными картами, не трогаются:
+    у них своё название и свой разъём, в модели их нет.
+    """
+    iface = db.query(models.InterfaceTemplate).filter(
+        models.InterfaceTemplate.id == iface_id, models.InterfaceTemplate.template_id == template_id
+    ).first()
+    if not iface:
+        raise HTTPException(status_code=404, detail="Порт шаблона не найден")
+
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        return iface
+    if data.get("connector_id") is not None and not db.get(models.ConnectorType, data["connector_id"]):
+        raise HTTPException(status_code=404, detail="Разъём не найден")
+
+    for field, value in data.items():
+        setattr(iface, field, value)
+
+    device_ids = [d.id for d in db.query(models.Device).filter(models.Device.template_id == template_id).all()]
+    touched = 0
+    if device_ids:
+        touched = db.query(models.Interface).filter(
+            models.Interface.device_id.in_(device_ids),
+            models.Interface.port_number == iface.port_number,
+        ).update(data, synchronize_session=False)
+
+    log_change(db, user.id, "update", "device_template", template_id,
+               old=None, new={"порт": f"№{iface.port_number}", **data, "устройств затронуто": touched})
+    db.commit()
+    db.refresh(iface)
+    return iface
+
+
+@router.post("/{template_id}/copy", response_model=schemas.DeviceTemplateOut, status_code=201)
+def copy_template(template_id: int, db: Session = Depends(get_db),
+                   user: models.User = Depends(auth.can_edit)):
+    """Копия модели со всеми портами.
+
+    «Такой же коммутатор, но на 48 портов» иначе набивается заново, а
+    отличается от исходного он одной строкой.
+    """
+    template = (
+        db.query(models.DeviceTemplate)
+        .options(joinedload(models.DeviceTemplate.interfaces))
+        .filter(models.DeviceTemplate.id == template_id)
+        .first()
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
+
+    name = f"{template.name} (копия)"
+    suffix = 2
+    while db.query(models.DeviceTemplate).filter(models.DeviceTemplate.name == name).first():
+        name = f"{template.name} (копия {suffix})"
+        suffix += 1
+
+    copy = models.DeviceTemplate(
+        name=name,
+        device_type_id=template.device_type_id,
+        manufacturer=template.manufacturer,
+        notes=template.notes,
+        color=template.color,
+        ports_editable_on_device=template.ports_editable_on_device,
+    )
+    db.add(copy)
+    db.flush()
+    for port in template.interfaces:
+        db.add(models.InterfaceTemplate(
+            template_id=copy.id, port_number=port.port_number,
+            label=port.label, connector_id=port.connector_id,
+        ))
+
+    log_change(db, user.id, "create", "device_template", None, old=None, new=copy)
+    db.commit()
+    db.refresh(copy)
+    return copy
 
 
 @router.delete("/{template_id}/interfaces/{iface_id}", status_code=204)

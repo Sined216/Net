@@ -2,10 +2,12 @@ import { apiFetch, setToken } from './client';
 import type {
   Token, UserOut, UserCreate, UserUpdate, PasswordChange, PasswordReset,
   TagOut, TagCreate, TagUpdate,
-  DeviceTypeOut, DeviceTypeCreate,
+  DeviceTypeOut, DeviceTypeCreate, DeviceTypeUpdate,
+  ConnectorTypeOut, ConnectorTypeCreate, ConnectorTypeUpdate,
+  TransceiverModuleOut, TransceiverModuleCreate, TransceiverModuleUpdate,
   VlanOut, VlanCreate,
   DeviceTemplateOut, DeviceTemplateCreate, DeviceTemplateUpdate,
-  InterfaceTemplateOut, InterfaceTemplateCreate,
+  InterfaceTemplateOut, InterfaceTemplateCreate, InterfaceTemplateUpdate,
   DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
@@ -45,6 +47,22 @@ export const createDeviceType = (body: DeviceTypeCreate) => apiFetch<DeviceTypeO
 export const deleteDeviceType = (id: number) => apiFetch<void>(`/device-types/${id}`, { method: 'DELETE' });
 
 // ---------- VLANs ----------
+export const listConnectorTypes = () => apiFetch<ConnectorTypeOut[]>('/connector-types');
+export const createConnectorType = (body: ConnectorTypeCreate) => apiFetch<ConnectorTypeOut>('/connector-types', { method: 'POST', body });
+export const updateConnectorType = (id: number, body: ConnectorTypeUpdate) => apiFetch<ConnectorTypeOut>(`/connector-types/${id}`, { method: 'PATCH', body });
+export const deleteConnectorType = (id: number) => apiFetch<void>(`/connector-types/${id}`, { method: 'DELETE' });
+
+export const listModules = () => apiFetch<TransceiverModuleOut[]>('/modules');
+export const createModule = (body: TransceiverModuleCreate) => apiFetch<TransceiverModuleOut>('/modules', { method: 'POST', body });
+export const updateModule = (id: number, body: TransceiverModuleUpdate) => apiFetch<TransceiverModuleOut>(`/modules/${id}`, { method: 'PATCH', body });
+export const deleteModule = (id: number) => apiFetch<void>(`/modules/${id}`, { method: 'DELETE' });
+
+export const updateDeviceType = (id: number, body: DeviceTypeUpdate) => apiFetch<DeviceTypeOut>(`/device-types/${id}`, { method: 'PATCH', body });
+
+export const updateTemplateInterface = (templateId: number, ifaceId: number, body: InterfaceTemplateUpdate) =>
+  apiFetch<InterfaceTemplateOut>(`/device-templates/${templateId}/interfaces/${ifaceId}`, { method: 'PATCH', body });
+export const copyDeviceTemplate = (id: number) => apiFetch<DeviceTemplateOut>(`/device-templates/${id}/copy`, { method: 'POST' });
+
 export const listVlans = () => apiFetch<VlanOut[]>('/vlans');
 export const createVlan = (body: VlanCreate) => apiFetch<VlanOut>('/vlans', { method: 'POST', body });
 export const deleteVlan = (id: number) => apiFetch<void>(`/vlans/${id}`, { method: 'DELETE' });

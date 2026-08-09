@@ -82,7 +82,8 @@ export function DeviceCard({
           <Table withTableBorder verticalSpacing={4} mt="xs">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th w={50}>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Тип</Table.Th><Table.Th>VLAN</Table.Th>
+                <Table.Th w={50}>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Разъём</Table.Th>
+                <Table.Th>Режим</Table.Th><Table.Th>VLAN</Table.Th>
                 <Table.Th>IP</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Заметка</Table.Th><Table.Th>Подключение</Table.Th><Table.Th />
               </Table.Tr>
             </Table.Thead>

@@ -132,14 +132,58 @@ class InterfaceTemplate(Base):
     # у разных портов она может совпадать.
     port_number = Column(Integer, nullable=False)
     label = Column(Text, nullable=False)
-    port_type = Column(Text)
+    # Разъём — свойство модели техники: у всех «Catalyst 2960» порт 25 это
+    # SFP. Режима (доступ/транк) здесь намеренно нет: он настраивается на
+    # конкретной железке и в модели ничего не значит.
+    connector_id = Column(Integer, ForeignKey("connector_types.id", ondelete="SET NULL"))
 
-    __table_args__ = (
-        UniqueConstraint("template_id", "port_number"),
-        CheckConstraint("port_type IN ('access','trunk','uplink') OR port_type IS NULL"),
-    )
+    __table_args__ = (UniqueConstraint("template_id", "port_number"),)
 
     template = relationship("DeviceTemplate", back_populates="interfaces")
+    connector = relationship("ConnectorType")
+
+
+class ConnectorType(Base):
+    """Разъём порта — то, что физически торчит из железки.
+
+    Разъёмы бывают двух сортов, и разница существенная: в RJ45 или LC кабель
+    втыкается напрямую, а SFP — это клетка (слот), и разъём у неё появляется
+    только вместе с модулем. Поэтому `is_cage` — не украшение, а признак,
+    по которому у порта устройства спрашивают модуль.
+
+    Справочник редактируемый: на заводе встречается M12, RS-485 и прочее, что
+    в закрытый список в коде пришлось бы дописывать релизом.
+    """
+    __tablename__ = "connector_types"
+    id = Column(Integer, primary_key=True)
+    name = Column(Text, unique=True, nullable=False)
+    # Среда: по ней потом видно, что медный патч-корд воткнут в оптику.
+    media = Column(Text, nullable=False, default="copper")
+    is_cage = Column(Boolean, nullable=False, server_default="false")
+
+    __table_args__ = (CheckConstraint("media IN ('copper','fiber','other')"),)
+
+
+class TransceiverModule(Base):
+    """Модуль (трансивер), вставляемый в клетку: SFP, SFP+ и подобные.
+
+    Держим справочником, а не строкой у порта: завод обычно стандартизуется
+    на нескольких партномерах, и выбирать из списка быстрее и надёжнее, чем
+    набирать текст. `connector_id` — разъём, который модуль даёт наружу
+    (LC у оптики, RJ45 у медного SFP); именно он и есть настоящий разъём
+    порта, когда модуль вставлен.
+    """
+    __tablename__ = "transceiver_modules"
+    id = Column(Integer, primary_key=True)
+    name = Column(Text, unique=True, nullable=False)
+    # В какую клетку вставляется (SFP, SFP+...). Пусто — не уточняли.
+    cage_connector_id = Column(Integer, ForeignKey("connector_types.id", ondelete="SET NULL"))
+    # Что даёт наружу (LC, RJ45...).
+    connector_id = Column(Integer, ForeignKey("connector_types.id", ondelete="SET NULL"))
+    notes = Column(Text)
+
+    cage_connector = relationship("ConnectorType", foreign_keys=[cage_connector_id])
+    connector = relationship("ConnectorType", foreign_keys=[connector_id])
 
 
 class TopologyGroup(Base):
@@ -214,7 +258,16 @@ class Interface(Base):
     # но занимать разные гнёзда. Связь всегда указывает на конкретное гнездо.
     port_number = Column(Integer, nullable=False)
     label = Column(Text, nullable=False)
-    port_type = Column(Text)
+    # Разъём приходит из модели и правится там же; у портов, заведённых
+    # руками на устройстве со съёмными картами, он свой.
+    connector_id = Column(Integer, ForeignKey("connector_types.id", ondelete="SET NULL"))
+    # Модуль, вставленный в клетку (SFP и подобные). У обычного разъёма
+    # пусто — вставлять некуда.
+    module_id = Column(Integer, ForeignKey("transceiver_modules.id", ondelete="SET NULL"))
+    # Режим порта — настройка конкретной железки, а не модели: одинаковые
+    # коммутаторы стоят в разных местах и настроены по-разному. Раньше поле
+    # называлось port_type и жило ещё и в шаблоне, где ничего не значило.
+    mode = Column(Text)
     vlan_id = Column(Integer, ForeignKey("vlans.id", ondelete="SET NULL"))
     trunk_vlan_ids = Column(ARRAY(Integer))
     ip = Column(INET)
@@ -223,10 +276,12 @@ class Interface(Base):
 
     __table_args__ = (
         UniqueConstraint("device_id", "port_number"),
-        CheckConstraint("port_type IN ('access','trunk','uplink') OR port_type IS NULL"),
+        CheckConstraint("mode IN ('access','trunk','uplink') OR mode IS NULL"),
     )
 
     device = relationship("Device", back_populates="interfaces")
+    connector = relationship("ConnectorType")
+    module = relationship("TransceiverModule")
 
 
 class LinkTemplate(Base):

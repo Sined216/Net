@@ -8,7 +8,10 @@ from app.fields import IPAddressStr, IPNetworkStr, MacAddressStr
 # опечатка в port_type доезжала до PostgreSQL и возвращалась пятисоткой
 # вместо понятного 422 с перечнем допустимых значений.
 Role = Literal["admin", "editor", "viewer"]
-PortType = Literal["access", "trunk", "uplink"]
+# Режим порта — настройка конкретной железки. Раньше поле называлось
+# «тип порта»; слово «тип» теперь занято разъёмом, которому оно подходит.
+PortMode = Literal["access", "trunk", "uplink"]
+ConnectorMedia = Literal["copper", "fiber", "other"]
 DeviceRole = Literal["core", "distribution", "access"]
 MediaType = Literal["copper", "fiber", "wireless", "dac", "other"]
 LineStyle = Literal["solid", "dashed", "dotted"]
@@ -136,8 +139,15 @@ class TopologyGroupOut(BaseModel):
 
 # ---------- Device type (категория устройства) ----------
 class DeviceTypeCreate(BaseModel):
-    name: str
-    code_prefix: str
+    name: str = Field(min_length=1, max_length=100)
+    code_prefix: str = Field(min_length=1, max_length=10)
+
+
+class DeviceTypeUpdate(BaseModel):
+    """Правка типа. Смена префикса действует только на будущие устройства:
+    коды уже заведённых напечатаны на наклейках и не переписываются."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    code_prefix: Optional[str] = Field(default=None, min_length=1, max_length=10)
 
 
 class DeviceTypeOut(BaseModel):
@@ -145,6 +155,53 @@ class DeviceTypeOut(BaseModel):
     id: int
     name: str
     code_prefix: str
+
+
+# ---------- Разъёмы и модули ----------
+class ConnectorTypeBase(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+    media: ConnectorMedia = "copper"
+    # Клетка (SFP и подобные): разъём у неё появляется вместе с модулем.
+    is_cage: bool = False
+
+
+class ConnectorTypeCreate(ConnectorTypeBase):
+    pass
+
+
+class ConnectorTypeUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    media: Optional[ConnectorMedia] = None
+    is_cage: Optional[bool] = None
+
+
+class ConnectorTypeOut(ConnectorTypeBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
+class TransceiverModuleBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    # В какую клетку вставляется и что даёт наружу.
+    cage_connector_id: Optional[int] = None
+    connector_id: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class TransceiverModuleCreate(TransceiverModuleBase):
+    pass
+
+
+class TransceiverModuleUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    cage_connector_id: Optional[int] = None
+    connector_id: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class TransceiverModuleOut(TransceiverModuleBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
 
 
 # ---------- VLAN ----------
@@ -169,11 +226,20 @@ class VlanOut(VlanBase):
 # ---------- Interface template (порт в шаблоне устройства) ----------
 class InterfaceTemplateBase(BaseModel):
     label: str = Field(min_length=1, max_length=100)
-    port_type: Optional[PortType] = None
+    # Разъём — свойство модели. Пусто допустимо (не уточняли), но по
+    # умолчанию интерфейс подставляет RJ45.
+    connector_id: Optional[int] = None
 
 
 class InterfaceTemplateCreate(InterfaceTemplateBase):
     """Номер не передаётся: порты нумеруются подряд, новый встаёт в конец."""
+
+
+class InterfaceTemplateUpdate(BaseModel):
+    """Правка порта модели. Название и разъём разъезжаются по всем её
+    устройствам: порт устройства — копия порта модели."""
+    label: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    connector_id: Optional[int] = None
 
 
 class InterfaceTemplateOut(InterfaceTemplateBase):
@@ -232,7 +298,9 @@ class InterfaceUpdate(BaseModel):
     портов. Здесь настраивается то, что у каждого экземпляра своё: адреса,
     VLAN, заметка.
     """
-    port_type: Optional[PortType] = None
+    mode: Optional[PortMode] = None
+    # Модуль, вставленный в клетку. Разъём здесь не правится — он из модели.
+    module_id: Optional[int] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
     ip: Optional[IPAddressStr] = None
@@ -245,7 +313,9 @@ class InterfaceCreate(BaseModel):
 
     Номер не передаётся: порт встаёт в конец ряда."""
     label: str = Field(min_length=1, max_length=100)
-    port_type: Optional[PortType] = None
+    connector_id: Optional[int] = None
+    mode: Optional[PortMode] = None
+    module_id: Optional[int] = None
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
     ip: Optional[IPAddressStr] = None
@@ -268,7 +338,14 @@ class InterfaceOut(BaseModel):
     device_id: int
     port_number: int
     label: str
-    port_type: Optional[PortType] = None
+    mode: Optional[PortMode] = None
+    # Разъём порта и вставленный модуль. `connector_effective` — то, что
+    # реально торчит наружу: разъём модуля, если он вставлен, иначе свой.
+    connector: Optional[ConnectorTypeOut] = None
+    module: Optional[TransceiverModuleOut] = None
+    connector_effective: Optional[ConnectorTypeOut] = None
+    # Клетка без модуля: порт есть, а воткнуть в него нечего.
+    empty_cage: bool = False
     vlan_id: Optional[int] = None
     trunk_vlan_ids: Optional[List[int]] = None
     ip: Optional[IPAddressStr] = None

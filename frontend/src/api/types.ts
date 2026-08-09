@@ -94,7 +94,40 @@ export interface TopologyGroupBox {
   height: number;
 }
 
+// ---------- Разъёмы и модули ----------
+export type ConnectorMedia = 'copper' | 'fiber' | 'other';
+
+export interface ConnectorTypeCreate {
+  name: string;
+  media: ConnectorMedia;
+  /** Клетка (SFP и подобные): разъём появляется вместе с модулем. */
+  is_cage: boolean;
+}
+export type ConnectorTypeUpdate = Partial<ConnectorTypeCreate>;
+export interface ConnectorTypeOut extends ConnectorTypeCreate {
+  id: number;
+}
+
+export interface TransceiverModuleCreate {
+  name: string;
+  /** В какую клетку вставляется и что даёт наружу. */
+  cage_connector_id?: number | null;
+  connector_id?: number | null;
+  notes?: string | null;
+}
+export type TransceiverModuleUpdate = Partial<TransceiverModuleCreate>;
+export interface TransceiverModuleOut extends TransceiverModuleCreate {
+  id: number;
+}
+
 // ---------- Device type ----------
+/** Смена префикса действует только на будущие устройства: коды уже
+ * заведённых напечатаны на наклейках и не переписываются. */
+export interface DeviceTypeUpdate {
+  name?: string;
+  code_prefix?: string;
+}
+
 export interface DeviceTypeCreate {
   name: string;
   code_prefix: string;
@@ -121,14 +154,18 @@ export interface VlanOut extends VlanCreate {
 }
 
 // ---------- Interface template (порт шаблона) ----------
-export type PortType = 'access' | 'trunk' | 'uplink';
+/** Режим порта — настройка конкретной железки, в модели его нет. */
+export type PortMode = 'access' | 'trunk' | 'uplink';
 
 export interface InterfaceTemplateCreate {
   /** Номер не передаётся: порты нумеруются подряд, новый встаёт в конец
    * ряда. Название — просто подпись, повторяться ей не запрещено. */
   label: string;
-  port_type?: PortType | null;
+  /** Разъём — свойство модели техники. */
+  connector_id?: number | null;
 }
+
+export type InterfaceTemplateUpdate = Partial<InterfaceTemplateCreate>;
 
 export interface InterfaceTemplateOut extends InterfaceTemplateCreate {
   id: number;
@@ -179,7 +216,9 @@ export interface TemplateImpact {
 /** Правка порта у устройства. Названия и номера здесь нет: они описывают
  * модель техники и правятся в шаблоне. */
 export interface InterfaceUpdate {
-  port_type?: PortType | null;
+  mode?: PortMode | null;
+  /** Модуль, вставленный в клетку. Разъём здесь не правится — он из модели. */
+  module_id?: number | null;
   vlan_id?: number | null;
   trunk_vlan_ids?: number[] | null;
   ip?: string | null;
@@ -190,7 +229,9 @@ export interface InterfaceUpdate {
 export interface InterfaceCreate {
   /** Номер порт получает сам — встаёт в конец ряда. */
   label: string;
-  port_type?: PortType | null;
+  connector_id?: number | null;
+  mode?: PortMode | null;
+  module_id?: number | null;
   vlan_id?: number | null;
   trunk_vlan_ids?: number[] | null;
   ip?: string | null;
@@ -212,7 +253,14 @@ export interface InterfaceOut {
   device_id: number;
   port_number: number;
   label: string;
-  port_type: PortType | null;
+  mode: PortMode | null;
+  /** Разъём порта, вставленный модуль и то, что торчит наружу на самом
+   * деле: у клетки с модулем — разъём модуля. */
+  connector: ConnectorTypeOut | null;
+  module: TransceiverModuleOut | null;
+  connector_effective: ConnectorTypeOut | null;
+  /** Клетка без модуля: порт есть, а воткнуть в него нечего. */
+  empty_cage: boolean;
   vlan_id: number | null;
   trunk_vlan_ids: number[] | null;
   ip: string | null;

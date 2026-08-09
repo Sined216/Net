@@ -176,6 +176,17 @@ def test_duplicate_port_numbers_are_resolved(legacy_database):
     assert device_ports["Заведён руками"] == 4
 
 
+def test_fresh_database_has_starter_connectors(legacy_database):
+    """Справочник разъёмов приезжает миграцией: без него у порта нечего
+    выбрать, и первый же шаблон пришлось бы заводить в пустоту."""
+    _run([sys.executable, "-m", "app.db_upgrade"], LEGACY_DB)
+
+    with legacy_database.connect() as conn:
+        rows = dict(conn.execute(text("SELECT name, is_cage FROM connector_types")).all())
+    assert rows["RJ45"] is False
+    assert rows["SFP+"] is True
+
+
 def _head_revision() -> str:
     """Последняя ревизия берётся из самих миграций, а не пишется в тесте:
     иначе каждая новая ревизия ломала бы этот тест на ровном месте."""

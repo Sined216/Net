@@ -3,23 +3,26 @@ import {
   ActionIcon, Badge, Button, Group, Modal, NumberInput, Select, Stack,
   Table, Text, TextInput, Textarea, Title, Card, Collapse, ColorInput, Switch, Alert, UnstyledButton,
 } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import {
-  useAddTemplateInterface, useCreateDeviceTemplate, useTemplateImpact, useCreateDeviceType, useDeleteDeviceTemplate,
-  useDeleteDeviceType, useDeleteTemplateInterface, useDeviceTemplates, useDeviceTypes, useUpdateDeviceTemplate,
+  IconChevronDown, IconChevronRight, IconCopy, IconEdit, IconPencil, IconPlus, IconTrash,
+} from '@tabler/icons-react';
+import {
+  useAddTemplateInterface, useConnectorTypes, useCopyDeviceTemplate, useCreateDeviceTemplate, useTemplateImpact,
+  useDeleteDeviceTemplate, useDeleteTemplateInterface, useDeviceTemplates, useDeviceTypes,
+  useUpdateDeviceTemplate, useUpdateTemplateInterface,
 } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
-import type { DeviceTemplateOut, InterfaceTemplateOut, PortType } from '../api/types';
+import type { ConnectorTypeOut, DeviceTemplateOut, InterfaceTemplateOut } from '../api/types';
 
 export function TemplatesPage() {
   const { data: types = [] } = useDeviceTypes();
   const { data: templates = [], isLoading } = useDeviceTemplates();
-  const [typeModalOpen, setTypeModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<DeviceTemplateOut | 'new' | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const deleteType = useDeleteDeviceType();
   const deleteTemplate = useDeleteDeviceTemplate();
+  const copyTemplate = useCopyDeviceTemplate();
+  const { data: connectors = [] } = useConnectorTypes();
 
   function typeName(id: number) {
     return types.find((t) => t.id === id)?.name ?? '—';
@@ -27,42 +30,6 @@ export function TemplatesPage() {
 
   return (
     <Stack>
-      <Group justify="space-between">
-        <Title order={2}>Типы устройств</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setTypeModalOpen(true)}>
-          Тип
-        </Button>
-      </Group>
-      <Table withTableBorder verticalSpacing="xs" mb="md">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Название</Table.Th>
-            <Table.Th>Префикс кода</Table.Th>
-            <Table.Th w={60} />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {types.map((t) => (
-            <Table.Tr key={t.id}>
-              <Table.Td>{t.name}</Table.Td>
-              <Table.Td>{t.code_prefix}</Table.Td>
-              <Table.Td>
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  onClick={() => {
-                    if (!confirm('Удалить тип устройства?')) return;
-                    deleteType.mutate(t.id, { onSuccess: () => notifySuccess('Тип удалён'), onError: notifyError });
-                  }}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-
       <Group justify="space-between">
         <Title order={2}>Шаблоны устройств</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => setEditingTemplate('new')}>
@@ -89,8 +56,17 @@ export function TemplatesPage() {
                 </Group>
               </UnstyledButton>
               <Group gap={4}>
-                <ActionIcon variant="subtle" onClick={() => setEditingTemplate(tpl)}>
+                <ActionIcon variant="subtle" onClick={() => setEditingTemplate(tpl)} title="Правка">
                   <IconEdit size={16} />
+                </ActionIcon>
+                <ActionIcon
+                  variant="subtle" title="Копия модели со всеми портами"
+                  onClick={() => copyTemplate.mutate(tpl.id, {
+                    onSuccess: (created) => notifySuccess(`Создан шаблон «${created.name}»`),
+                    onError: notifyError,
+                  })}
+                >
+                  <IconCopy size={16} />
                 </ActionIcon>
                 <ActionIcon
                   variant="subtle"
@@ -112,7 +88,7 @@ export function TemplatesPage() {
                     <Table.Tr>
                       <Table.Th w={60}>№</Table.Th>
                       <Table.Th>Название</Table.Th>
-                      <Table.Th>Тип</Table.Th>
+                      <Table.Th>Разъём</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -120,7 +96,7 @@ export function TemplatesPage() {
                       <Table.Tr key={i.id}>
                         <Table.Td fw={600}>{i.port_number}</Table.Td>
                         <Table.Td>{i.label}</Table.Td>
-                        <Table.Td>{i.port_type ?? '—'}</Table.Td>
+                        <Table.Td>{connectors.find((c) => c.id === i.connector_id)?.name ?? '—'}</Table.Td>
                       </Table.Tr>
                     ))}
                     {tpl.interfaces.length === 0 && (
@@ -139,40 +115,10 @@ export function TemplatesPage() {
         {!isLoading && templates.length === 0 && <Text c="dimmed">Шаблонов ещё нет — начните с добавления хотя бы одного.</Text>}
       </Stack>
 
-      {typeModalOpen && <DeviceTypeFormModal onClose={() => setTypeModalOpen(false)} />}
       {editingTemplate && (
         <TemplateFormModal template={editingTemplate === 'new' ? null : editingTemplate} onClose={() => setEditingTemplate(null)} />
       )}
     </Stack>
-  );
-}
-
-function DeviceTypeFormModal({ onClose }: { onClose: () => void }) {
-  const [name, setName] = useState('');
-  const [prefix, setPrefix] = useState('');
-  const createType = useCreateDeviceType();
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    createType.mutate(
-      { name: name.trim(), code_prefix: prefix.trim().toUpperCase() },
-      { onSuccess: () => { notifySuccess('Тип устройства создан'); onClose(); }, onError: notifyError },
-    );
-  }
-
-  return (
-    <Modal opened onClose={onClose} title="Новый тип устройства">
-      <form onSubmit={handleSubmit}>
-        <Stack>
-          <TextInput label="Название" placeholder="напр. Медиаконвертер" value={name} onChange={(e) => setName(e.currentTarget.value)} required />
-          <TextInput label="Префикс кода" placeholder="напр. MC" maxLength={8} value={prefix} onChange={(e) => setPrefix(e.currentTarget.value)} required />
-          <Text size="xs" c="dimmed">Префикс используется для автогенерации кода устройства: MC-0001, MC-0002...</Text>
-          <Group justify="flex-end" mt="sm">
-            <Button type="submit" loading={createType.isPending}>Создать</Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
   );
 }
 
@@ -182,7 +128,7 @@ interface DraftPort {
    * он равен позиции в списке. */
   port_number: number;
   label: string;
-  port_type: PortType | null;
+  connector_id: number | null;
 }
 
 /** Форма шаблона — создание и редактирование в одном месте. В режиме
@@ -192,6 +138,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const isEdit = !!template;
   const { data: types = [] } = useDeviceTypes();
   const { data: templates = [] } = useDeviceTemplates();
+  const { data: connectors = [] } = useConnectorTypes();
   const [name, setName] = useState(template?.name ?? '');
   const [typeId, setTypeId] = useState<string | null>(template ? String(template.device_type_id) : null);
   const [manufacturer, setManufacturer] = useState(template?.manufacturer ?? '');
@@ -203,7 +150,10 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   const [draftPorts, setDraftPorts] = useState<DraftPort[]>([]);
   const draftSeq = useRef(0);
   const [portLabel, setPortLabel] = useState('');
-  const [portType, setPortType] = useState<string | null>(null);
+  // Разъём по умолчанию — RJ45: на заводе это подавляющее большинство портов.
+  const defaultConnectorId = connectors.find((c) => c.name === 'RJ45')?.id ?? connectors[0]?.id ?? null;
+  const [portConnector, setPortConnector] = useState<string | null>(null);
+  const [editingPort, setEditingPort] = useState<InterfaceTemplateOut | null>(null);
   const [genCount, setGenCount] = useState<number | ''>(24);
 
   const createTemplate = useCreateDeviceTemplate();
@@ -224,12 +174,12 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
   function addPortNow() {
     const number = nextPortNumber;
     const label = portLabel.trim() || `Порт ${number}`;
-    const pt = (portType || null) as PortType | null;
+    const connectorId = portConnector ? parseInt(portConnector, 10) : defaultConnectorId;
     if (isEdit) {
-      addPort.mutate({ templateId: template!.id, body: { label, port_type: pt } }, { onError: notifyError });
+      addPort.mutate({ templateId: template!.id, body: { label, connector_id: connectorId } }, { onError: notifyError });
     } else {
       draftSeq.current += 1;
-      setDraftPorts((prev) => [...prev, { _key: draftSeq.current, port_number: number, label, port_type: pt }]);
+      setDraftPorts((prev) => [...prev, { _key: draftSeq.current, port_number: number, label, connector_id: connectorId }]);
     }
     setPortLabel('');
   }
@@ -246,7 +196,10 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
       const newPorts: DraftPort[] = [];
       for (let i = 1; i <= n; i++) {
         draftSeq.current += 1;
-        newPorts.push({ _key: draftSeq.current, port_number: start + i, label: `Порт ${start + i}`, port_type: null });
+        newPorts.push({
+          _key: draftSeq.current, port_number: start + i,
+          label: `Порт ${start + i}`, connector_id: defaultConnectorId,
+        });
       }
       setDraftPorts((prev) => [...prev, ...newPorts]);
     }
@@ -277,7 +230,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
       updateTemplate.mutate({ id: template!.id, body }, { onSuccess, onError: notifyError });
     } else {
       createTemplate.mutate(
-        { ...body, interfaces: draftPorts.map(({ label, port_type }) => ({ label, port_type })) },
+        { ...body, interfaces: draftPorts.map(({ label, connector_id }) => ({ label, connector_id })) },
         { onSuccess, onError: notifyError },
       );
     }
@@ -329,8 +282,8 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
               <Table.Tr>
                 <Table.Th w={60}>№</Table.Th>
                 <Table.Th>Название</Table.Th>
-                <Table.Th>Тип</Table.Th>
-                <Table.Th w={40} />
+                <Table.Th>Разъём</Table.Th>
+                <Table.Th w={70} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -338,8 +291,17 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
                 <Table.Tr key={isEdit ? (p as InterfaceTemplateOut).id : (p as DraftPort)._key}>
                   <Table.Td fw={600}>{p.port_number}</Table.Td>
                   <Table.Td>{p.label}</Table.Td>
-                  <Table.Td>{p.port_type ?? '—'}</Table.Td>
+                  <Table.Td>{connectors.find((c) => c.id === p.connector_id)?.name ?? '—'}</Table.Td>
                   <Table.Td>
+                    <Group gap={2} wrap="nowrap" justify="flex-end">
+                    {isEdit && (
+                      <ActionIcon
+                        variant="subtle" size="sm" title="Название и разъём"
+                        onClick={() => setEditingPort(p as InterfaceTemplateOut)}
+                      >
+                        <IconPencil size={14} />
+                      </ActionIcon>
+                    )}
                     <ActionIcon
                       variant="subtle"
                       color="red"
@@ -348,6 +310,7 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
                     >
                       <IconTrash size={14} />
                     </ActionIcon>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -370,8 +333,9 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPortNow(); } }}
             />
             <Select
-              label="Тип" placeholder="—" data={['access', 'trunk', 'uplink']} value={portType} onChange={setPortType}
-              clearable style={{ flex: 1 }}
+              label="Разъём" placeholder={connectorName(connectors, defaultConnectorId)} style={{ flex: 1 }}
+              data={connectors.map((c) => ({ value: String(c.id), label: c.name }))}
+              value={portConnector} onChange={setPortConnector} clearable searchable
             />
             <Button variant="light" onClick={addPortNow}>+ Добавить</Button>
           </Group>
@@ -382,6 +346,65 @@ function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut 
 
           <Group justify="flex-end" mt="sm">
             <Button type="submit" loading={pending}>{isEdit ? 'Сохранить' : 'Создать'}</Button>
+          </Group>
+        </Stack>
+      </form>
+      {editingPort && (
+        <PortEditModal templateId={template!.id} port={editingPort} onClose={() => setEditingPort(null)} />
+      )}
+    </Modal>
+  );
+}
+
+
+/** Название разъёма по id — в нескольких местах подряд. */
+function connectorName(connectors: ConnectorTypeOut[], id: number | null | undefined): string {
+  return connectors.find((c) => c.id === id)?.name ?? '—';
+}
+
+/** Правка порта модели: название и разъём.
+ *
+ * Правка доезжает до всех устройств этой модели — порт устройства это копия
+ * порта модели, и расхождение подписей развело бы одинаковые железки. */
+function PortEditModal({ templateId, port, onClose }: {
+  templateId: number;
+  port: InterfaceTemplateOut;
+  onClose: () => void;
+}) {
+  const { data: connectors = [] } = useConnectorTypes();
+  const updatePort = useUpdateTemplateInterface();
+  const [label, setLabel] = useState(port.label);
+  const [connector, setConnector] = useState<string | null>(
+    port.connector_id != null ? String(port.connector_id) : null,
+  );
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    updatePort.mutate(
+      {
+        templateId, ifaceId: port.id,
+        body: { label: label.trim(), connector_id: connector ? parseInt(connector, 10) : null },
+      },
+      { onSuccess: () => { notifySuccess('Порт сохранён'); onClose(); }, onError: notifyError },
+    );
+  }
+
+  return (
+    <Modal opened onClose={onClose} title={`Порт №${port.port_number}`} size="sm">
+      <form onSubmit={handleSubmit}>
+        <Stack>
+          <TextInput label="Название" description="просто подпись, может повторяться" required
+            value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
+          <Select label="Разъём" placeholder="— не указан —" clearable searchable
+            data={connectors.map((c) => ({ value: String(c.id), label: c.name }))}
+            value={connector} onChange={setConnector} />
+          <Text size="xs" c="dimmed">
+            Правка применится ко всем устройствам этой модели: порт устройства — копия порта модели.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="subtle" onClick={onClose}>Отмена</Button>
+            <Button type="submit" loading={updatePort.isPending}>Сохранить</Button>
           </Group>
         </Stack>
       </form>

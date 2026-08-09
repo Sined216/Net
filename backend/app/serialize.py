@@ -62,12 +62,24 @@ def build_link_map(db: Session, interface_ids: Iterable[int]) -> Dict[int, "Link
 
 def serialize_interface(iface: models.Interface, link_map: Dict[int, LinkEnd]) -> schemas.InterfaceOut:
     end = link_map.get(iface.id)
+    connector = iface.connector
+    module = iface.module
+    # Что реально торчит из порта: у клетки это разъём вставленного модуля,
+    # у обычного порта — свой. Клетка без модуля — порт, в который физически
+    # нечем воткнуть кабель.
+    effective = module.connector if module is not None and module.connector is not None else connector
+    empty_cage = bool(connector is not None and connector.is_cage and module is None)
+
     return schemas.InterfaceOut(
         id=iface.id,
         device_id=iface.device_id,
         label=iface.label,
         port_number=iface.port_number,
-        port_type=iface.port_type,
+        mode=iface.mode,
+        connector=schemas.ConnectorTypeOut.model_validate(connector) if connector else None,
+        module=schemas.TransceiverModuleOut.model_validate(module) if module else None,
+        connector_effective=schemas.ConnectorTypeOut.model_validate(effective) if effective else None,
+        empty_cage=empty_cage,
         vlan_id=iface.vlan_id,
         trunk_vlan_ids=iface.trunk_vlan_ids,
         ip=iface.ip,

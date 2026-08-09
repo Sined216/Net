@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { ActionIcon, Group, Select, Table, Text, TextInput } from '@mantine/core';
+import { ActionIcon, Badge, Group, Select, Table, Text, TextInput } from '@mantine/core';
 import { IconCheck, IconPlugConnected, IconTrash } from '@tabler/icons-react';
-import { useAttachLinkEnd, useCreateLink, useDeleteInterface, useDeleteLink, useUpdateInterface } from '../../api/hooks';
+import {
+  useAttachLinkEnd, useCreateLink, useDeleteInterface, useDeleteLink, useModules, useUpdateInterface,
+} from '../../api/hooks';
 import { nn, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
-import type { DeviceOut, InterfaceOut, PortType, VlanOut } from '../../api/types';
+import type { DeviceOut, InterfaceOut, PortMode, VlanOut } from '../../api/types';
 
-const PORT_TYPES: PortType[] = ['access', 'trunk', 'uplink'];
+// Режим — настройка конкретной железки; в модели техники его нет.
+const PORT_MODES: PortMode[] = ['access', 'trunk', 'uplink'];
 
 export interface FreeEntry {
   device: DeviceOut;
@@ -22,13 +25,17 @@ export function InterfaceRow({
   /** Разрешает удалять порт — только у моделей со съёмными картами. */
   portsEditable?: boolean;
 }) {
-  const [portType, setPortType] = useState<string | null>(iface.port_type);
+  const [mode, setMode] = useState<string | null>(iface.mode);
+  const [moduleId, setModuleId] = useState<string | null>(
+    iface.module ? String(iface.module.id) : null,
+  );
   const [vlanId, setVlanId] = useState<string | null>(iface.vlan_id != null ? String(iface.vlan_id) : null);
   const [ip, setIp] = useState(iface.ip ?? '');
   const [mac, setMac] = useState(iface.mac ?? '');
   const [notes, setNotes] = useState(iface.notes ?? '');
   const [connectTarget, setConnectTarget] = useState<string | null>(null);
 
+  const { data: modules = [] } = useModules();
   const updateInterface = useUpdateInterface();
   const deleteInterface = useDeleteInterface();
   const createLink = useCreateLink();
@@ -41,7 +48,13 @@ export function InterfaceRow({
         id: iface.id,
         // Ни номера, ни названия: они описывают модель техники и правятся в
         // шаблоне. Здесь — только то, что у каждого экземпляра своё.
-        body: { port_type: (portType as PortType) || null, vlan_id: nnInt(vlanId), ip: nn(ip), mac: nn(mac), notes: nn(notes) },
+        body: {
+          mode: (mode as PortMode) || null,
+          // Модуль вставляется только в клетку; у обычного разъёма поля нет,
+          // и его значение не отправляется.
+          ...(isCage ? { module_id: nnInt(moduleId) } : {}),
+          vlan_id: nnInt(vlanId), ip: nn(ip), mac: nn(mac), notes: nn(notes),
+        },
       },
       { onSuccess: () => notifySuccess('Порт сохранён'), onError: notifyError },
     );
@@ -80,6 +93,13 @@ export function InterfaceRow({
   }
 
   const connectData = groupFreeEntries(freeEntries, iface.id);
+  const isCage = !!iface.connector?.is_cage;
+  // Клетка без модуля: гнездо есть, а воткнуть в него физически нечего.
+  const emptyCage = iface.empty_cage;
+  // Модули для этой клетки: остальные сюда не вставляются.
+  const moduleOptions = modules
+    .filter((m) => m.cage_connector_id == null || m.cage_connector_id === iface.connector?.id)
+    .map((m) => ({ value: String(m.id), label: m.name }));
   // Кабель воткнут, но на том конце порта уже нет. Порт занят, а подключение
   // недоделано — тем же оранжевым, что и заглушка на схеме, чтобы такие
   // порты было видно, не вчитываясь в столбец подключения.
@@ -93,7 +113,23 @@ export function InterfaceRow({
       <Table.Td><Text size="xs" fw={600} c={dangling ? 'orange' : undefined}>{iface.port_number}</Text></Table.Td>
       <Table.Td><Text size="xs" c={dangling ? 'orange' : undefined}>{iface.label}</Text></Table.Td>
       <Table.Td>
-        <Select size="xs" data={PORT_TYPES} value={portType} onChange={setPortType} clearable w={100} />
+        {/* Разъём приходит из модели и правится там же. У клетки показываем,
+            что в неё вставлено: пустая клетка — это не свободный порт. */}
+        {isCage ? (
+          <Group gap={4} wrap="nowrap">
+            <Select
+              size="xs" w={140} clearable searchable
+              placeholder={`${iface.connector?.name ?? 'клетка'} — пусто`}
+              data={moduleOptions} value={moduleId} onChange={setModuleId}
+            />
+            {emptyCage && <Badge size="xs" variant="light" color="orange">нет модуля</Badge>}
+          </Group>
+        ) : (
+          <Text size="xs" c="dimmed">{iface.connector?.name ?? '—'}</Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        <Select size="xs" data={PORT_MODES} value={mode} onChange={setMode} clearable w={100} />
       </Table.Td>
       <Table.Td>
         <Select
