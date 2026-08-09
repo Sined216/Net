@@ -172,6 +172,10 @@ CREATE TABLE interfaces (
     -- одинаково, но занимать разные гнёзда. Связь указывает на гнездо.
     port_number    INTEGER NOT NULL,
     label          TEXT NOT NULL,
+    -- Из какого порта модели скопирован. Пусто — порт заведён руками на
+    -- устройстве со съёмными картами. По номеру их сопоставлять нельзя:
+    -- сняли карту, номера сомкнулись — и правка модели попадала в соседний порт.
+    template_interface_id INTEGER REFERENCES device_template_interfaces(id) ON DELETE SET NULL,
     -- Разъём приходит из модели; модуль вставляется в клетку (SFP и т.п.) и
     -- определяет, какой разъём торчит из порта на самом деле.
     connector_id   INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,

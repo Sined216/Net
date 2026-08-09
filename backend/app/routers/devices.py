@@ -74,6 +74,7 @@ def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db),
         db.add(models.Interface(
             device_id=device.id, port_number=tpl_iface.port_number,
             label=tpl_iface.label, connector_id=tpl_iface.connector_id,
+            template_interface_id=tpl_iface.id,
         ))
 
     log_change(db, user.id, "create", "device", None, old=None, new=device)

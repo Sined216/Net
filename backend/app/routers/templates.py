@@ -119,6 +119,7 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
     number = ports.next_number(db, models.InterfaceTemplate, "template_id", template_id)
     iface = models.InterfaceTemplate(template_id=template_id, port_number=number, **payload.model_dump())
     db.add(iface)
+    db.flush()  # нужен id порта модели: устройства ссылаются именно на него
 
     devices = db.query(models.Device).filter(models.Device.template_id == template_id).all()
     for device in devices:
@@ -129,6 +130,7 @@ def add_template_interface(template_id: int, payload: schemas.InterfaceTemplateC
         db.add(models.Interface(
             device_id=device.id, port_number=number,
             label=payload.label, connector_id=payload.connector_id,
+            template_interface_id=iface.id,
         ))
         ports.renumber(db, models.Interface, "device_id", device.id)
 
@@ -168,11 +170,13 @@ def add_template_interfaces_bulk(template_id: int, payload: schemas.PortsBulkCre
             template_id=template_id, port_number=number, label=label, connector_id=payload.connector_id,
         )
         db.add(iface)
+        db.flush()
         created.append(iface)
         for device in devices:
             ports.make_room(db, models.Interface, "device_id", device.id, number)
             db.add(models.Interface(
                 device_id=device.id, port_number=number, label=label, connector_id=payload.connector_id,
+                template_interface_id=iface.id,
             ))
             ports.renumber(db, models.Interface, "device_id", device.id)
 
@@ -212,13 +216,12 @@ def update_template_interface(template_id: int, iface_id: int, payload: schemas.
     for field, value in data.items():
         setattr(iface, field, value)
 
-    device_ids = [d.id for d in db.query(models.Device).filter(models.Device.template_id == template_id).all()]
-    touched = 0
-    if device_ids:
-        touched = db.query(models.Interface).filter(
-            models.Interface.device_id.in_(device_ids),
-            models.Interface.port_number == iface.port_number,
-        ).update(data, synchronize_session=False)
+    # Порты устройств находятся по ссылке на порт модели, а не по номеру:
+    # у устройства со съёмными картами номера могли сомкнуться после снятой
+    # карты, и правка попадала бы в соседний порт.
+    touched = db.query(models.Interface).filter(
+        models.Interface.template_interface_id == iface.id,
+    ).update(data, synchronize_session=False)
 
     log_change(db, user.id, "update", "device_template", template_id,
                old=None, new={"порт": f"№{iface.port_number}", **data, "устройств затронуто": touched})
@@ -295,8 +298,7 @@ def delete_template_interface(template_id: int, iface_id: int, db: Session = Dep
     if device_ids:
         doomed = [
             row.id for row in db.query(models.Interface).filter(
-                models.Interface.device_id.in_(device_ids),
-                models.Interface.port_number == iface.port_number,
+                models.Interface.template_interface_id == iface.id,
             ).all()
         ]
         if doomed:

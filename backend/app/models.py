@@ -258,6 +258,16 @@ class Interface(Base):
     # но занимать разные гнёзда. Связь всегда указывает на конкретное гнездо.
     port_number = Column(Integer, nullable=False)
     label = Column(Text, nullable=False)
+    # Из какого порта модели этот порт скопирован. Пусто — порт заведён
+    # руками на устройстве со съёмными картами.
+    #
+    # Раньше порт модели и порт устройства сопоставлялись по номеру, и это
+    # разъезжалось: сняли на ПК вторую карту, номера сомкнулись — и правка
+    # порта №2 в модели переименовывала на этом ПК уже другой порт. Ссылка
+    # не сдвигается вместе с номерами.
+    template_interface_id = Column(
+        Integer, ForeignKey("device_template_interfaces.id", ondelete="SET NULL"), index=True,
+    )
     # Разъём приходит из модели и правится там же; у портов, заведённых
     # руками на устройстве со съёмными картами, он свой.
     connector_id = Column(Integer, ForeignKey("connector_types.id", ondelete="SET NULL"))
@@ -280,6 +290,7 @@ class Interface(Base):
     )
 
     device = relationship("Device", back_populates="interfaces")
+    template_interface = relationship("InterfaceTemplate")
     connector = relationship("ConnectorType")
     module = relationship("TransceiverModule")
 

@@ -180,3 +180,57 @@ def test_bulk_ports_reach_devices(client, headers, template, make_device):
 
     refreshed = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
     assert [i["port_number"] for i in refreshed["interfaces"]] == list(range(1, 8))
+
+
+def test_template_edit_finds_the_right_port_after_a_card_was_removed(client, headers, device_type, db):
+    """Правка порта модели должна попадать в тот же порт, а не в соседний.
+
+    Сняли на ПК вторую карту — номера оставшихся портов сомкнулись. Раньше
+    порт устройства искали по номеру, и правка порта №2 в модели
+    переименовывала на этом ПК уже третий порт. Молча."""
+    template = client.post(
+        "/device-templates",
+        json={
+            "name": "ПК со съёмной картой", "device_type_id": device_type.id,
+            "ports_editable_on_device": True,
+            "interfaces": [{"label": "eth0"}, {"label": "eth1"}, {"label": "eth2"}],
+        },
+        headers=headers["editor"],
+    ).json()
+    device = client.post("/devices", json={"template_id": template["id"]}, headers=headers["editor"]).json()
+
+    # сняли eth1 — остались eth0 (№1) и eth2 (№2)
+    client.delete(f"/interfaces/{device['interfaces'][1]['id']}", headers=headers["editor"])
+    ports = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()["interfaces"]
+    assert [(p["port_number"], p["label"]) for p in ports] == [(1, "eth0"), (2, "eth2")]
+
+    # правим в модели eth1 — на устройстве его больше нет, задеть ничего не должно
+    eth1 = [p for p in template["interfaces"] if p["label"] == "eth1"][0]
+    client.patch(
+        f"/device-templates/{template['id']}/interfaces/{eth1['id']}",
+        json={"label": "eth1 (новая карта)"}, headers=headers["editor"],
+    )
+
+    ports = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()["interfaces"]
+    assert [p["label"] for p in ports] == ["eth0", "eth2"], "переименован соседний порт"
+
+
+def test_template_port_removal_takes_its_own_copies(client, headers, device_type):
+    """Удаление порта модели забирает именно свои копии у устройств."""
+    template = client.post(
+        "/device-templates",
+        json={
+            "name": "ПК со съёмной картой 2", "device_type_id": device_type.id,
+            "ports_editable_on_device": True,
+            "interfaces": [{"label": "eth0"}, {"label": "eth1"}, {"label": "eth2"}],
+        },
+        headers=headers["editor"],
+    ).json()
+    device = client.post("/devices", json={"template_id": template["id"]}, headers=headers["editor"]).json()
+    client.delete(f"/interfaces/{device['interfaces'][0]['id']}", headers=headers["editor"])  # сняли eth0
+
+    eth2 = [p for p in template["interfaces"] if p["label"] == "eth2"][0]
+    client.delete(f"/device-templates/{template['id']}/interfaces/{eth2['id']}", headers=headers["editor"])
+
+    ports = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()["interfaces"]
+    assert [p["label"] for p in ports] == ["eth1"]
