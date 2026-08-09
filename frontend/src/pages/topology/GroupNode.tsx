@@ -1,4 +1,4 @@
-import { NodeToolbar, Position, type Node, type NodeProps } from '@xyflow/react';
+import { NodeResizer, NodeToolbar, Position, type Node, type NodeProps } from '@xyflow/react';
 import { ActionIcon, Group, Paper, Text, Tooltip } from '@mantine/core';
 import { IconFolderPlus, IconPencil, IconTrash } from '@tabler/icons-react';
 import { useTopologyActions } from './actions';
@@ -15,6 +15,8 @@ export interface GroupNodeData extends Record<string, unknown> {
 export type GroupNodeType = Node<GroupNodeData, 'group'>;
 
 export const GROUP_HEADER_HEIGHT = 26;
+/** Меньше рамку не ужать: в неё перестанет помещаться даже один узел. */
+export const GROUP_MIN_SIZE = { width: 240, height: 130 };
 
 /** Рамка группы устройств на топологии.
  *
@@ -43,6 +45,17 @@ export function GroupNode({ id, data, selected }: NodeProps<GroupNodeType>) {
         outlineOffset: 2,
       }}
     >
+      {/* Рамку тянут за углы и стороны. Ручки показываются только у
+          выделенной группы — иначе они ловят клики по устройствам, которые
+          стоят у самого края. */}
+      <NodeResizer
+        isVisible={selected}
+        minWidth={GROUP_MIN_SIZE.width}
+        minHeight={GROUP_MIN_SIZE.height}
+        color={data.color}
+        onResizeEnd={(_event, size) => actions?.resizeGroup(groupId, size)}
+      />
+
       {actions && (
         <NodeToolbar isVisible={selected} position={Position.Top} offset={6}>
           <Paper withBorder shadow="sm" p={2} radius="md">

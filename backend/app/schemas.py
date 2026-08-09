@@ -98,6 +98,15 @@ class TagOut(TagBase):
 # ---------- Topology group (отдельный от тегов параметр: одна группа на
 # устройство — только для визуальной кластеризации на топологии; группы
 # вкладываются друг в друга: цех — участок — линия) ----------
+class TopologyGroupBox(BaseModel):
+    """Положение и размер рамки на схеме. Рамку двигают и тянут руками —
+    под содержимое она не подгоняется."""
+    x: float
+    y: float
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+
+
 class TopologyGroupCreate(BaseModel):
     name: str
     color: Optional[str] = None
@@ -117,6 +126,12 @@ class TopologyGroupOut(BaseModel):
     name: str
     color: Optional[str] = None
     parent_id: Optional[int] = None
+    # Пусто, пока рамку ни разу не двигали: тогда она считается по
+    # содержимому, как было до появления ручной правки.
+    x: Optional[float] = None
+    y: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
 
 
 # ---------- Device type (категория устройства) ----------

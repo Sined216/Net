@@ -17,6 +17,8 @@ export interface TopologyActions {
   editGroup: (groupId: number) => void;
   addSubgroup: (groupId: number) => void;
   removeGroup: (groupId: number) => void;
+  /** Рамку растянули за угол: размеры приходят в координатах родителя. */
+  resizeGroup: (groupId: number, size: { x: number; y: number; width: number; height: number }) => void;
 }
 
 export const TopologyActionsContext = createContext<TopologyActions | null>(null);

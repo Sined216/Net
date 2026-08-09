@@ -9,7 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   useDeviceTemplates, useDeviceTypes, useDevices, useLinkTemplates, useLinks, useTags,
   useTopologyGroups, useUpdateDevicePosition, useDeleteDevice, useDeleteLink, useCreateDevice,
-  useUpdateDevice, useDeleteTopologyGroup,
+  useDeleteTopologyGroup, useSetTopologyGroupBox,
 } from '../api/hooks';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
 import { AttachEndModal } from './topology/AttachEndModal';
@@ -36,6 +36,28 @@ const GROUP_PADDING = 30;
 /** Узел-заглушка свободного конца: `dangling-<id связи>`. Префикс отличает
  * его от узла устройства, id которого — просто число. */
 const DANGLING_PREFIX = 'dangling-';
+/** Запас, с которым запоминается рамка, посчитанная по содержимому: внутри
+ * должно остаться место, чтобы узлы можно было двигать — наружу они больше
+ * не выходят. */
+const GROUP_SLACK = 90;
+
+type Box = { minX: number; minY: number; maxX: number; maxY: number };
+
+/** Рамка, заданная руками. Пусто — группу ещё ни разу не двигали, и рамка
+ * считается по содержимому, как было раньше. */
+function storedBox(group: TopologyGroupOut): Box | null {
+  if (group.x == null || group.y == null || group.width == null || group.height == null) return null;
+  return { minX: group.x, minY: group.y, maxX: group.x + group.width, maxY: group.y + group.height };
+}
+
+/** Не дать узлу вылезти за рамку: React Flow подрезает перетаскивание, но
+ * не координаты, пришедшие из базы. */
+function clampToBox(position: { x: number; y: number }, width: number, height: number) {
+  return {
+    x: Math.min(Math.max(position.x, 4), Math.max(4, width - DEVICE_NODE_WIDTH - 4)),
+    y: Math.min(Math.max(position.y, GROUP_HEADER_HEIGHT), Math.max(GROUP_HEADER_HEIGHT, height - DEVICE_NODE_HEIGHT - 4)),
+  };
+}
 const GROUP_HEADER = GROUP_HEADER_HEIGHT;
 
 /** Общая заглушка для ещё не загруженных запросов.
@@ -70,8 +92,8 @@ export function TopologyPage() {
   const deleteDevice = useDeleteDevice();
   const deleteLink = useDeleteLink();
   const createDevice = useCreateDevice();
-  const updateDevice = useUpdateDevice();
   const deleteGroup = useDeleteTopologyGroup();
+  const setGroupBox = useSetTopologyGroupBox();
   const [editingLink, setEditingLink] = useState<LinkOut | null>(null);
   const [editingDevice, setEditingDevice] = useState<DeviceOut | null>(null);
   const [addingDevice, setAddingDevice] = useState(false);
@@ -101,6 +123,10 @@ export function TopologyPage() {
   /** Абсолютные рамки групп из последней раскладки: по ним определяется, в
    * какую группу человек бросил устройство, перетащив его мышью. */
   const groupBoxes = useRef(new Map<number, { minX: number; minY: number; maxX: number; maxY: number }>());
+  /** Группы, которым уже записали посчитанную рамку, — чтобы не писать её
+   * повторно на каждую перерисовку. */
+  const autoSaved = useRef(new Set<number>());
+
 
   const filteredDevices = useMemo(
     () => (tagFilter ? devices.filter((d) => d.tags.some((t) => String(t.id) === tagFilter)) : devices),
@@ -192,15 +218,18 @@ export function TopologyPage() {
       });
     }
 
-    // Рамки групп — постфактум вокруг уже сложившегося кластера. Группы
-    // вкладываются друг в друга (цех — участок — линия), поэтому рамка
-    // считается снизу вверх: сначала внутренние, затем внешняя охватывает
-    // их вместе со своими собственными устройствами.
+    // Рамки групп. Рамка — самостоятельная область на схеме: у неё своё
+    // положение и размер, её двигают и растягивают руками, как участок на
+    // плане цеха. Под содержимое она не подгоняется — иначе размер задавал
+    // бы не человек, а случайное расположение узлов.
     //
-    // React Flow требует, чтобы координаты вложенного узла были заданы
+    // Исключение — группы, заведённые до появления ручной правки: у них
+    // размеров нет, и рамка, как раньше, считается по содержимому, пока её
+    // первый раз не подвинут.
+    //
+    // React Flow требует, чтобы координаты вложенного узла задавались
     // относительно родителя, поэтому сначала считаются абсолютные рамки, и
-    // только потом всё пересчитывается в относительные — иначе смещение
-    // родителя пришлось бы вычитать дважды.
+    // только потом всё пересчитывается в относительные.
     const childGroups = new Map<number | null, typeof topologyGroups>();
     for (const group of topologyGroups) {
       const key = group.parent_id ?? null;
@@ -208,7 +237,6 @@ export function TopologyPage() {
       childGroups.get(key)!.push(group);
     }
 
-    type Box = { minX: number; minY: number; maxX: number; maxY: number };
     const groupBox = new Map<number, Box>();
     const groupDevices = new Map<number, number>();  // сколько устройств внутри, с подгруппами
 
@@ -218,8 +246,8 @@ export function TopologyPage() {
       if (visited.has(group.id)) return null;
       visited.add(group.id);
 
-      const parts: Box[] = [];
       let count = 0;
+      const parts: Box[] = [];
       for (const d of filteredDevices) {
         if (d.topology_group_id !== group.id) continue;
         const { x, y } = deviceNodesById.get(d.id)!.position;
@@ -233,8 +261,16 @@ export function TopologyPage() {
           count += groupDevices.get(child.id) ?? 0;
         }
       }
-      // Пустая группа рамкой не рисуется: пустой прямоугольник на схеме
-      // только мешает, а сама группа никуда не делась — она в списке.
+      groupDevices.set(group.id, count);
+
+      const stored = storedBox(group);
+      if (stored) {
+        groupBox.set(group.id, stored);
+        return stored;
+      }
+      // Пустая группа без заданной рамки не рисуется: пустой прямоугольник
+      // на схеме только мешает, а сама группа никуда не делась — она в
+      // списке групп, и рамка появится, как только в ней что-то окажется.
       if (parts.length === 0) return null;
 
       const box: Box = {
@@ -244,7 +280,6 @@ export function TopologyPage() {
         maxY: Math.max(...parts.map((p) => p.maxY)) + GROUP_PADDING,
       };
       groupBox.set(group.id, box);
-      groupDevices.set(group.id, count);
       return box;
     };
     for (const group of childGroups.get(null) ?? []) measure(group, new Set());
@@ -262,19 +297,23 @@ export function TopologyPage() {
         // Родитель уже в списке — он выше по глубине, а React Flow требует
         // объявлять родителя раньше ребёнка.
         parentId: parentBox ? `group-${group.parent_id}` : undefined,
+        // Подгруппа не должна уезжать из своего цеха: наружу её не выпускает
+        // сам React Flow, а не проверка после отпускания мыши.
+        extent: parentBox ? 'parent' : undefined,
         position: parentBox
           ? { x: box.minX - parentBox.minX, y: box.minY - parentBox.minY }
           : { x: box.minX, y: box.minY },
-        style: { width: box.maxX - box.minX, height: box.maxY - box.minY },
+        // Размер задаётся полями узла, а не style: за них берётся ручка
+        // изменения размера, и через style она перерисовать рамку не может —
+        // style перекрывает то, что она выставляет.
+        width: box.maxX - box.minX,
+        height: box.maxY - box.minY,
         data: {
           name: group.name,
           color: group.color ?? '#94a3b8',
           depth: depthOf(group),
           deviceCount: groupDevices.get(group.id) ?? 0,
         },
-        // Рамку двигать нельзя (она считается по содержимому), но выделить
-        // нужно — иначе панель действий над ней не появится.
-        draggable: false,
       });
     }
 
@@ -283,12 +322,38 @@ export function TopologyPage() {
       if (!box) continue;
       const node = deviceNodesById.get(d.id)!;
       node.parentId = `group-${d.topology_group_id}`;
-      node.position = { x: node.position.x - box.minX, y: node.position.y - box.minY };
+      // За рамку своей группы устройство не выходит: React Flow сам не
+      // выпускает его при перетаскивании, а положение, доставшееся от
+      // прежней раскладки, подрезается здесь.
+      node.extent = 'parent';
+      node.position = clampToBox(
+        { x: node.position.x - box.minX, y: node.position.y - box.minY },
+        box.maxX - box.minX, box.maxY - box.minY,
+      );
     }
 
-    // Рамки нужны и снаружи эффекта: по ним определяется, в какую группу
-    // человек бросил устройство мышью.
+    // Рамки нужны и снаружи эффекта: по ним пересчитываются координаты,
+    // когда рамку двигают или растягивают.
     groupBoxes.current = groupBox;
+
+    // Группе, у которой размеров ещё нет, посчитанная рамка запоминается —
+    // один раз. Дальше она живёт своей жизнью: её двигают и растягивают, а
+    // содержимое внутри неё уже не может её распирать. Заодно рамка сразу
+    // берётся с запасом, чтобы устройствам было куда двигаться: за её
+    // границу они больше не выходят.
+    for (const group of topologyGroups) {
+      const box = groupBox.get(group.id);
+      if (!box || storedBox(group) || autoSaved.current.has(group.id)) continue;
+      autoSaved.current.add(group.id);
+      setGroupBox.mutate({
+        id: group.id,
+        body: {
+          x: box.minX, y: box.minY,
+          width: (box.maxX - box.minX) + GROUP_SLACK,
+          height: (box.maxY - box.minY) + GROUP_SLACK,
+        },
+      });
+    }
 
     // Подвешенные кабели: второй конец рисуется заглушкой рядом с живым
     // устройством. Иначе снятая сетевая карта просто стирала кабель со
@@ -363,7 +428,13 @@ export function TopologyPage() {
       };
     });
 
-    setNodes(rfNodes);
+    // Выделение переносится на пересобранные узлы. Узлы строятся заново на
+    // каждое изменение данных, и без этого панель действий закрывалась бы
+    // сама — достаточно кому-то поправить соседнее устройство.
+    setNodes((previous) => {
+      const selected = new Set(previous.filter((n) => n.selected).map((n) => n.id));
+      return rfNodes.map((node) => (selected.has(node.id) ? { ...node, selected: true } : node));
+    });
     setEdges([...rfEdges, ...danglingEdges]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredDevices, links, linkTemplates, templates, types, topologyGroups, focusedId]);
@@ -437,6 +508,20 @@ export function TopologyPage() {
       if (group) setEditingGroup({ group, parentId: null });
     },
     addSubgroup: (groupId) => setEditingGroup({ group: null, parentId: groupId }),
+    resizeGroup: (groupId, size) => {
+      // Размер приходит в координатах родителя — переводим в общие.
+      const group = topologyGroups.find((g) => g.id === groupId);
+      const parentBox = group?.parent_id != null ? groupBoxes.current.get(group.parent_id) : undefined;
+      setGroupBox.mutate({
+        id: groupId,
+        body: {
+          x: size.x + (parentBox?.minX ?? 0),
+          y: size.y + (parentBox?.minY ?? 0),
+          width: size.width,
+          height: size.height,
+        },
+      }, { onError: notifyError });
+    },
     removeGroup: (groupId) => {
       const group = topologyGroups.find((g) => g.id === groupId);
       if (!group) return;
@@ -526,46 +611,71 @@ export function TopologyPage() {
     updatePosition.mutate({ id: deviceId, body: { x, y } });
   }
 
+  /** Абсолютное положение узла: у вложенных оно задано относительно рамки. */
+  function absolutePosition(node: Node) {
+    if (!node.parentId) return { ...node.position };
+    const parentBox = groupBoxes.current.get(parseInt(node.parentId.replace('group-', ''), 10));
+    if (!parentBox) return { ...node.position };
+    return { x: node.position.x + parentBox.minX, y: node.position.y + parentBox.minY };
+  }
+
+  /** Все группы внутри этой, на любую глубину. */
+  const descendantGroups = useCallback((groupId: number): number[] => {
+    const direct = topologyGroups.filter((g) => g.parent_id === groupId).map((g) => g.id);
+    return direct.flatMap((id) => [id, ...descendantGroups(id)]);
+  }, [topologyGroups]);
+
   function handleNodeDragStop(_event: unknown, node: Node) {
+    if (node.type === 'group') {
+      const groupId = parseInt(node.id.replace('group-', ''), 10);
+      const box = groupBoxes.current.get(groupId);
+      if (!box) return;
+      const moved = absolutePosition(node);
+      const dx = moved.x - box.minX;
+      const dy = moved.y - box.minY;
+      if (dx === 0 && dy === 0) return;
+
+      setGroupBox.mutate({
+        id: groupId,
+        body: { x: moved.x, y: moved.y, width: box.maxX - box.minX, height: box.maxY - box.minY },
+      });
+
+      // Содержимое едет вместе с рамкой. На экране это уже произошло —
+      // React Flow двигает вложенные узлы за родителем, — но в базе
+      // положение хранится абсолютным, и его нужно сдвинуть тоже, иначе
+      // после обновления страницы устройства останутся на прежнем месте.
+      const inside = new Set([groupId, ...descendantGroups(groupId)]);
+      for (const nested of descendantGroups(groupId)) {
+        const nestedBox = groupBoxes.current.get(nested);
+        const group = topologyGroups.find((g) => g.id === nested);
+        // У рамки, которая считается по содержимому, сдвигать нечего:
+        // она пересчитается сама по новым координатам устройств.
+        if (!nestedBox || !group || group.x == null) continue;
+        setGroupBox.mutate({
+          id: nested,
+          body: {
+            x: nestedBox.minX + dx, y: nestedBox.minY + dy,
+            width: nestedBox.maxX - nestedBox.minX, height: nestedBox.maxY - nestedBox.minY,
+          },
+        });
+      }
+      for (const device of devices) {
+        if (device.topology_group_id == null || !inside.has(device.topology_group_id)) continue;
+        const at = placed.current.get(device.id);
+        if (!at) continue;
+        updatePosition.mutate({ id: device.id, body: { x: at.x + dx, y: at.y + dy } });
+      }
+      return;
+    }
+
     if (node.type !== 'device') return;
-    let x = node.position.x, y = node.position.y;
-    if (node.parentId) {
-      // Позиция вложенного узла задана относительно рамки — возвращаем её в
-      // общие координаты схемы, в которых она и хранится в базе.
-      const parentBox = groupBoxes.current.get(parseInt(node.parentId.replace('group-', ''), 10));
-      if (parentBox) { x += parentBox.minX; y += parentBox.minY; }
-    }
-    const deviceId = parseInt(node.id, 10);
-    const center = { x: x + DEVICE_NODE_WIDTH / 2, y: y + DEVICE_NODE_HEIGHT / 2 };
-    updatePosition.mutate({ id: deviceId, body: center });
-
-    // Куда бросили, туда и положили: перетаскивание в рамку — самый прямой
-    // способ сменить группу, а тащить в список из нескольких десятков
-    // устройств — долго. Из всех рамок под курсором берётся самая глубокая:
-    // рамка участка всегда лежит внутри рамки цеха.
-    const device = devices.find((d) => d.id === deviceId);
-    if (!device) return;
-    let dropped: number | null = null;
-    let deepest = -1;
-    for (const [groupId, box] of groupBoxes.current) {
-      const inside = center.x >= box.minX && center.x <= box.maxX && center.y >= box.minY && center.y <= box.maxY;
-      if (!inside) continue;
-      const depth = groupDepth(topologyGroups, groupId);
-      if (depth > deepest) { deepest = depth; dropped = groupId; }
-    }
-    if (dropped === (device.topology_group_id ?? null)) return;
-
-    updateDevice.mutate(
-      { id: deviceId, body: { topology_group_id: dropped } },
-      {
-        onSuccess: () => notifySuccess(
-          dropped == null
-            ? `${device.code} вынесено из группы`
-            : `${device.code} — в группе «${topologyGroups.find((g) => g.id === dropped)?.name ?? ''}»`,
-        ),
-        onError: notifyError,
-      },
-    );
+    // Позиция вложенного узла задана относительно рамки — возвращаем её в
+    // общие координаты схемы, в которых она и хранится в базе.
+    const { x, y } = absolutePosition(node);
+    updatePosition.mutate({
+      id: parseInt(node.id, 10),
+      body: { x: x + DEVICE_NODE_WIDTH / 2, y: y + DEVICE_NODE_HEIGHT / 2 },
+    });
   }
 
   return (
@@ -625,7 +735,8 @@ export function TopologyPage() {
       <Text c="dimmed" size="sm">
         Соединить устройства — потяните за точку на краю узла до другого узла и выберите порты. Клик по узлу
         открывает панель: править, копировать, в группу, удалить; клик по рамке группы — свою: правка, подгруппа,
-        удаление. Устройство переносится в группу перетаскиванием в её рамку. Клик по линии открывает правку связи. Оранжевый кружок
+        удаление. Рамку группы двигают и растягивают мышью, а её состав меняется только явно — узел, вынесенный
+        за рамку, группу не покидает и за её границу не выходит. Клик по линии открывает правку связи. Оранжевый кружок
         с «?» — свободный конец кабеля: потяните его на устройство, чтобы воткнуть в порт. Клавиша Delete
         удаляет выделенный узел или линию. Узлы можно перетаскивать, позиция сохраняется. Цвет узла берётся из
         модели техники, цвет линии — из шаблона связи. Пунктирная рамка — группа (кнопка «Группы»).

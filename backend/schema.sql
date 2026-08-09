@@ -101,7 +101,14 @@ CREATE TABLE topology_groups (
     color     TEXT,
     -- Группа внутри группы: цех — участок — линия. SET NULL, а не CASCADE:
     -- удаление цеха не уносит с собой участки вместе с их устройствами.
-    parent_id INTEGER REFERENCES topology_groups(id) ON DELETE SET NULL
+    parent_id INTEGER REFERENCES topology_groups(id) ON DELETE SET NULL,
+    -- Рамка на схеме: своё положение и размер, а не подгонка под содержимое.
+    -- Пусто, пока рамку ни разу не двигали, — тогда она считается по
+    -- содержимому и запоминается при первой же правке.
+    x         DOUBLE PRECISION,
+    y         DOUBLE PRECISION,
+    width     DOUBLE PRECISION,
+    height    DOUBLE PRECISION
 );
 CREATE INDEX ix_topology_groups_parent_id ON topology_groups(parent_id);
 

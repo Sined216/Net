@@ -159,6 +159,15 @@ class TopologyGroup(Base):
     # Удаление родителя не должно уносить с собой устройства вложенных
     # групп — подгруппы просто всплывают на уровень выше.
     parent_id = Column(Integer, ForeignKey("topology_groups.id", ondelete="SET NULL"), index=True)
+    # Положение и размер рамки на схеме — в тех же координатах, что и
+    # устройства. Рамка не подгоняется под содержимое: её двигают и тянут
+    # руками, как область на плане цеха, а устройства живут внутри неё.
+    # Пусто у групп, заведённых до появления этой правки — им рамка
+    # считается по содержимому, пока её первый раз не подвинут.
+    x = Column(Float)
+    y = Column(Float)
+    width = Column(Float)
+    height = Column(Float)
 
     parent = relationship("TopologyGroup", remote_side=[id], backref="children")
     devices = relationship("Device", back_populates="topology_group")

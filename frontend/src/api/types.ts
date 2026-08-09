@@ -77,6 +77,21 @@ export interface TopologyGroupOut {
   name: string;
   color: string | null;
   parent_id: number | null;
+  /** Рамка на схеме: своё положение и размер, а не подгонка под содержимое.
+   * Пусто у групп, которые ещё ни разу не двигали. */
+  x: number | null;
+  y: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** Положение и размер рамки — отдельно от прочих полей группы: двигают её
+ * часто, и правкой данных об оборудовании это не является. */
+export interface TopologyGroupBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 // ---------- Device type ----------
