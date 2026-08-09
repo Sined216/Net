@@ -2,7 +2,10 @@ import { BaseEdge, EdgeLabelRenderer, getStraightPath, useInternalNode, type Edg
 import { useAppearance } from './appearance';
 
 export interface FloatingEdgeData extends Record<string, unknown> {
+  /** Номер порта. Пусто — конца в порту нет (свободный конец кабеля). */
+  sourceNumber: number | null;
   sourceLabel: string;
+  targetNumber: number | null;
   targetLabel: string;
   color: string;
   dashArray?: string;
@@ -67,12 +70,24 @@ export function FloatingEdge({ id, source, target, data }: EdgeProps<FloatingEdg
       />
       {look.edgeLabels && (
         <EdgeLabelRenderer>
-          <PortLabel x={sLabel.x} y={sLabel.y} text={data.sourceLabel} />
-          <PortLabel x={tLabel.x} y={tLabel.y} text={data.targetLabel} />
+          <PortLabel x={sLabel.x} y={sLabel.y} text={portText(data.sourceNumber, data.sourceLabel, look.edgeLabelName)} />
+          <PortLabel x={tLabel.x} y={tLabel.y} text={portText(data.targetNumber, data.targetLabel, look.edgeLabelName)} />
         </EdgeLabelRenderer>
       )}
     </>
   );
+}
+
+/** Подпись конца линии: сначала номер порта, потом название.
+ *
+ * Номер — то, чем порт опознают на самой железке (и он же уникален внутри
+ * устройства), поэтому он идёт первым и не убирается; название — свободная
+ * подпись вроде «Gi0/1», её можно скрыть в настройках вида, когда схема
+ * плотная. Порядок тот же, что в списках портов на страницах устройства и
+ * связей, — чтобы одно и то же читалось одинаково везде. */
+export function portText(number: number | null, label: string, withName: boolean): string {
+  if (number == null) return label;
+  return withName && label ? `№${number} · ${label}` : `№${number}`;
 }
 
 function PortLabel({ x, y, text }: { x: number; y: number; text: string }) {

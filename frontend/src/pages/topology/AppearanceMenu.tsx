@@ -112,6 +112,11 @@ export function AppearanceMenu({ value, onChange }: Props) {
               size="xs" label="Подписи портов на концах линии" checked={value.edgeLabels}
               onChange={(e) => set('edgeLabels', e.currentTarget.checked)}
             />
+            <Switch
+              size="xs" label="Название порта рядом с номером" checked={value.edgeLabelName}
+              disabled={!value.edgeLabels}
+              onChange={(e) => set('edgeLabelName', e.currentTarget.checked)}
+            />
 
             <Divider my={4} />
             <Section title="Полотно" />

@@ -29,6 +29,9 @@ export interface TopologyAppearance {
   edgeWidth: number;
   /** Подписи портов на концах линии. */
   edgeLabels: boolean;
+  /** Название порта в подписи рядом с номером. Номер остаётся всегда: это
+   * то, чем порт опознают на железке. */
+  edgeLabelName: boolean;
 
   background: 'dots' | 'lines' | 'cross' | 'none';
   minimap: boolean;
@@ -48,6 +51,7 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
 
   edgeWidth: 2,
   edgeLabels: true,
+  edgeLabelName: true,
 
   background: 'dots',
   minimap: true,

@@ -27,7 +27,7 @@ import { computeForceLayout, type LayoutNode, type Spring } from './topology/lay
 import { DeviceNode, DEVICE_NODE_WIDTH, DEVICE_NODE_HEIGHT, type DeviceNodeType } from './topology/DeviceNode';
 import { GroupNode, GROUP_HEADER_HEIGHT, type GroupNodeType } from './topology/GroupNode';
 import { DanglingNode, DANGLING_NODE_SIZE, type DanglingNodeType } from './topology/DanglingNode';
-import { FloatingEdge, type FloatingEdgeType } from './topology/FloatingEdge';
+import { FloatingEdge, portText, type FloatingEdgeType } from './topology/FloatingEdge';
 import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
 import {
@@ -208,7 +208,13 @@ export function TopologyPage() {
     for (const n of layoutNodes) placed.current.set(parseInt(n.id, 10), { x: n.x, y: n.y });
 
     const ifaceLabel = new Map<number, string>();
-    for (const d of filteredDevices) for (const i of d.interfaces) ifaceLabel.set(i.id, i.label);
+    const ifaceNumber = new Map<number, number>();
+    for (const d of filteredDevices) {
+      for (const i of d.interfaces) {
+        ifaceLabel.set(i.id, i.label);
+        ifaceNumber.set(i.id, i.port_number);
+      }
+    }
 
     const deviceNodesById = new Map<number, DeviceNodeType>();
     for (const d of filteredDevices) {
@@ -399,7 +405,9 @@ export function TopologyPage() {
           y: deviceNode.position.y + DEVICE_NODE_HEIGHT + 46 + index * 30,
         },
         parentId: deviceNode.parentId,
-        data: { fromLabel: `${deviceNode.data.code} · ${ifaceLabel.get(liveEnd) ?? ''}`.trim() },
+        data: {
+          fromLabel: `${deviceNode.data.code} · ${portText(ifaceNumber.get(liveEnd) ?? null, ifaceLabel.get(liveEnd) ?? '', true)}`.trim(),
+        },
         selectable: false,
         // Перетаскивание самой заглушки выключено: тянут за неё кабель, а
         // не двигают её по схеме — иначе жест был бы двусмысленным.
@@ -411,7 +419,10 @@ export function TopologyPage() {
         target: stubId,
         type: 'floating',
         data: {
+          sourceNumber: ifaceNumber.get(liveEnd) ?? null,
           sourceLabel: ifaceLabel.get(liveEnd) ?? '',
+          // У свободного конца порта нет — вместо номера так и написано.
+          targetNumber: null,
           targetLabel: 'не подключён',
           color: 'var(--mantine-color-orange-6)',
           dashArray: '4 4',
@@ -432,7 +443,9 @@ export function TopologyPage() {
         target: String(ifaceToDevice.get(l.interface_b_id)),
         type: 'floating',
         data: {
+          sourceNumber: ifaceNumber.get(l.interface_a_id) ?? null,
           sourceLabel: ifaceLabel.get(l.interface_a_id) ?? '',
+          targetNumber: ifaceNumber.get(l.interface_b_id) ?? null,
           targetLabel: ifaceLabel.get(l.interface_b_id) ?? '',
           color: lt?.color ?? '#9aa1ab',
           dashArray: LINE_DASH[lt?.line_style ?? 'solid'],
