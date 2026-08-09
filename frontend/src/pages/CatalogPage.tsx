@@ -10,6 +10,7 @@ import {
 } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { useCan } from '../auth/permissions';
 import type { ConnectorMedia, ConnectorTypeOut, DeviceTypeOut, TransceiverModuleOut } from '../api/types';
 
 const MEDIA: { value: ConnectorMedia; label: string }[] = [
@@ -42,6 +43,7 @@ export function CatalogPage() {
 // ---------- Типы устройств ----------
 function DeviceTypes() {
   const { data: types = [] } = useDeviceTypes();
+  const canEdit = useCan('edit');
   const deleteType = useDeleteDeviceType();
   const [editing, setEditing] = useState<DeviceTypeOut | 'new' | null>(null);
 
@@ -49,7 +51,7 @@ function DeviceTypes() {
     <Stack gap="xs">
       <Group justify="space-between">
         <Title order={4}>Типы устройств</Title>
-        <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Тип</Button>
+        {canEdit && <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Тип</Button>}
       </Group>
       <Text size="xs" c="dimmed">
         Префикс участвует в коде устройства (SW-0001). Его правка действует только на будущие устройства —
@@ -69,7 +71,7 @@ function DeviceTypes() {
               <Table.Td>{t.name}</Table.Td>
               <Table.Td><Text ff="monospace">{t.code_prefix}</Text></Table.Td>
               <Table.Td>
-                <Group gap={2} justify="flex-end" wrap="nowrap">
+                <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
                   <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(t)}>
                     <IconPencil size={15} />
                   </ActionIcon>
@@ -142,6 +144,7 @@ function DeviceTypeModal({ deviceType, onClose }: { deviceType: DeviceTypeOut | 
 // ---------- Разъёмы ----------
 function Connectors() {
   const { data: connectors = [] } = useConnectorTypes();
+  const canEdit = useCan('edit');
   const deleteConnector = useDeleteConnectorType();
   const [editing, setEditing] = useState<ConnectorTypeOut | 'new' | null>(null);
 
@@ -149,7 +152,7 @@ function Connectors() {
     <Stack gap="xs" mt="lg">
       <Group justify="space-between">
         <Title order={4}>Разъёмы</Title>
-        <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Разъём</Button>
+        {canEdit && <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Разъём</Button>}
       </Group>
       <Text size="xs" c="dimmed">
         То, что физически торчит из железки. SFP и подобные — не разъём, а клетка: разъём у них появляется
@@ -171,7 +174,7 @@ function Connectors() {
               <Table.Td>{mediaLabel(c.media)}</Table.Td>
               <Table.Td>{c.is_cage && <Badge size="sm" variant="light" color="grape">под модуль</Badge>}</Table.Td>
               <Table.Td>
-                <Group gap={2} justify="flex-end" wrap="nowrap">
+                <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
                   <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(c)}>
                     <IconPencil size={15} />
                   </ActionIcon>
@@ -246,6 +249,7 @@ function ConnectorModal({ connector, onClose }: { connector: ConnectorTypeOut | 
 // ---------- Модули ----------
 function Modules() {
   const { data: modules = [] } = useModules();
+  const canEdit = useCan('edit');
   const { data: connectors = [] } = useConnectorTypes();
   const deleteModule = useDeleteModule();
   const [editing, setEditing] = useState<TransceiverModuleOut | 'new' | null>(null);
@@ -256,7 +260,7 @@ function Modules() {
     <Stack gap="xs" mt="lg">
       <Group justify="space-between">
         <Title order={4}>Модули</Title>
-        <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Модуль</Button>
+        {canEdit && <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Модуль</Button>}
       </Group>
       <Text size="xs" c="dimmed">
         То, что вставляют в клетку: SFP, SFP+ и подобные. Модуль и определяет, какой разъём в итоге торчит из
@@ -280,7 +284,7 @@ function Modules() {
               <Table.Td>{connectorName(m.connector_id)}</Table.Td>
               <Table.Td><Text size="sm" c="dimmed">{m.notes ?? '—'}</Text></Table.Td>
               <Table.Td>
-                <Group gap={2} justify="flex-end" wrap="nowrap">
+                <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
                   <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(m)}>
                     <IconPencil size={15} />
                   </ActionIcon>

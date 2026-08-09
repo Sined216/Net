@@ -465,3 +465,34 @@ export interface SiteUpdate {
   name?: string;
   notes?: string | null;
 }
+
+// ---------- Журнал изменений ----------
+export interface AuditChange {
+  field: string;
+  label: string;
+  old: string | null;
+  new: string | null;
+}
+export interface AuditEntryOut {
+  id: number;
+  action: 'create' | 'update' | 'delete' | string;
+  entity_type: string;
+  entity_label: string;
+  entity_id: number | null;
+  user_id: number | null;
+  user_name: string | null;
+  created_at: string;
+  changes: AuditChange[];
+}
+export interface AuditPage {
+  items: AuditEntryOut[];
+  total: number;
+}
+export interface AuditQuery {
+  entity_type?: string;
+  entity_id?: number;
+  user_id?: number;
+  since?: string;
+  limit?: number;
+  offset?: number;
+}

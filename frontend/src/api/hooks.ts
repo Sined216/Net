@@ -14,7 +14,7 @@ import type {
   LinkCreate, LinkUpdate,
   TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
   UserCreate, UserUpdate, PasswordReset,
-  SiteCreate, SiteUpdate,
+  SiteCreate, SiteUpdate, AuditQuery,
 } from './types';
 
 // ---------- Queries ----------
@@ -30,7 +30,10 @@ export const useLinks = () => useQuery({ queryKey: ['links'], queryFn: api.listL
 export const useLinkTemplates = () => useQuery({ queryKey: ['linkTemplates'], queryFn: api.listLinkTemplates });
 export const useTopologyGroups = () => useQuery({ queryKey: ['topologyGroups'], queryFn: api.listTopologyGroups });
 export const useDatabaseSchema = () => useQuery({ queryKey: ['schema'], queryFn: api.getDatabaseSchema });
-export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: api.listUsers });
+/** Список людей отдаётся только администратору, поэтому вызывающий может
+ * его отключить — иначе страница, доступная всем, ловила бы 403. */
+export const useUsers = (enabled = true) =>
+  useQuery({ queryKey: ['users'], queryFn: api.listUsers, enabled });
 /** Сколько устройств и подключённых портов заденет правка портов модели. */
 export const useTemplateImpact = (id: number | null) =>
   useQuery({ queryKey: ['templateImpact', id], queryFn: () => api.templateImpact(id!), enabled: id != null });
@@ -475,3 +478,7 @@ export function useSetSiteAccess() {
     onSuccess: (_data, { id }) => qc.invalidateQueries({ queryKey: ['siteAccess', id] }),
   });
 }
+
+// ---------- Журнал изменений ----------
+export const useAudit = (query: AuditQuery) =>
+  useQuery({ queryKey: ['audit', query], queryFn: () => api.listAudit(query) });

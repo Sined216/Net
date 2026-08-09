@@ -64,8 +64,9 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
     # через API руками, — всегда ручная и сразу подтверждённая.
     link = models.Link(**data, site_id=site_id, source="manual", confirmed=True, updated_by=user.id)
     db.add(link)
+    db.flush()
 
-    log_change(db, user.id, "create", "link", None, old=None, new=link)
+    log_change(db, user.id, "create", "link", link.id, old=None, new=link)
     db.commit()
     db.refresh(link)
     return link

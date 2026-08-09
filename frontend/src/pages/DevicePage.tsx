@@ -10,6 +10,8 @@ import {
 import { notifyError, notifySuccess } from '../lib/notify';
 import { InterfaceRow, type FreeEntry } from './devices/InterfaceRow';
 import { useState } from 'react';
+import { useCan } from '../auth/permissions';
+import { DeviceHistory } from '../history/DeviceHistory';
 
 const EMPTY: never[] = [];
 
@@ -19,6 +21,7 @@ const EMPTY: never[] = [];
  * коллеге конкретный коммутатор можно было только словами «пролистай до
  * SW-0007». */
 export function DevicePage() {
+  const canEdit = useCan('edit');
   const { deviceId } = useParams();
   const navigate = useNavigate();
   const { data: devices = EMPTY, isLoading } = useDevices();
@@ -102,9 +105,11 @@ export function DevicePage() {
           >
             Показать на схеме
           </Button>
-          <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={handleDelete}>
-            Удалить
-          </Button>
+          {canEdit && (
+            <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={handleDelete}>
+              Удалить
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -154,7 +159,7 @@ export function DevicePage() {
         </Table>
       </Paper>
 
-      {portsEditable ? (
+      {portsEditable && canEdit ? (
         <Group>
           <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addPort}>Порт</Button>
           <NumberInput size="xs" value={bulkCount} onChange={(v) => setBulkCount(v === '' ? '' : Number(v))} min={1} max={96} w={80} />
@@ -170,6 +175,8 @@ export function DevicePage() {
           — изменение применится ко всем устройствам этой модели.
         </Text>
       )}
+
+      <DeviceHistory deviceId={device.id} />
     </Stack>
   );
 }

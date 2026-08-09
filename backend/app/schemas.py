@@ -76,6 +76,37 @@ class LoginRequest(BaseModel):
     password: str
 
 
+# ---------- Журнал изменений ----------
+class AuditChange(BaseModel):
+    """Одно изменённое поле — уже разобранное на «было» и «стало».
+
+    Разбор делает сервер, а не интерфейс: сравнивать два снимка столбцов —
+    работа над данными, и делать её в каждом клиенте заново незачем.
+    """
+    field: str
+    label: str
+    old: Optional[str] = None
+    new: Optional[str] = None
+
+
+class AuditEntryOut(BaseModel):
+    id: int
+    action: str
+    entity_type: str
+    entity_label: str
+    entity_id: Optional[int] = None
+    user_id: Optional[int] = None
+    user_name: Optional[str] = None
+    created_at: datetime
+    changes: list[AuditChange] = []
+
+
+class AuditPage(BaseModel):
+    """Страница журнала. Всего записей — чтобы интерфейс знал, есть ли ещё."""
+    items: list[AuditEntryOut]
+    total: int
+
+
 # ---------- Площадка (фабрика) ----------
 class SiteCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)

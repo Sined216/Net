@@ -91,7 +91,7 @@ def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db),
             template_interface_id=tpl_iface.id,
         ))
 
-    log_change(db, user.id, "create", "device", None, old=None, new=device)
+    log_change(db, user.id, "create", "device", device.id, old=None, new=device)
     db.commit()
     db.refresh(device)
     return serialize.serialize_device(device, db=db)
@@ -261,7 +261,8 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
     iface = models.Interface(device_id=device_id, site_id=site_id, port_number=number,
                              **payload.model_dump())
     db.add(iface)
-    log_change(db, user.id, "create", "interface", None, old=None, new=iface)
+    db.flush()
+    log_change(db, user.id, "create", "interface", iface.id, old=None, new=iface)
     db.commit()
     db.refresh(iface)
     return serialize.serialize_interface(iface, {})

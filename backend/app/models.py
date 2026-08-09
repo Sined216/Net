@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, BigInteger, Text, Boolean, Float, ForeignKey, ForeignKeyConstraint,
+    Column, Index, Integer, BigInteger, Text, Boolean, Float, ForeignKey, ForeignKeyConstraint,
     CheckConstraint, UniqueConstraint, Numeric, Date, DateTime, ARRAY, JSON, Table,
     func,
 )
@@ -511,12 +511,27 @@ class ImportRow(Base):
 
 
 class AuditLog(Base):
+    """Кто, что и когда менял.
+
+    Площадка проставляется, если менялось что-то принадлежащее площадке
+    (устройство, кабель, тег). У общих справочников — моделей техники,
+    разъёмов, пресетов кабелей — и у действий с людьми она пустая: такие
+    записи видны всем, потому что и сами справочники общие. Без этой колонки
+    журнал обходил бы изоляцию: по нему было бы видно и чужие устройства.
+    """
     __tablename__ = "audit_log"
     id = Column(BigInteger, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     action = Column(Text, nullable=False)
     entity_type = Column(Text, nullable=False)
     entity_id = Column(Integer)
     old_value = Column(JSON)
     new_value = Column(JSON)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    __table_args__ = (
+        # Журнал листают либо целиком по времени, либо по конкретной записи
+        # («что было с этим устройством») — под оба случая по индексу.
+        Index("ix_audit_entity", "entity_type", "entity_id"),
+    )

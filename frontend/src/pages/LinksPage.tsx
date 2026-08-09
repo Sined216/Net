@@ -12,6 +12,7 @@ import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { LinkFormModal } from './links/LinkFormModal';
 import type { DeviceOut, LinkOut, LinkTemplateOut, MediaType, LineStyle } from '../api/types';
+import { useCan } from '../auth/permissions';
 
 const MEDIA_TYPES: MediaType[] = ['copper', 'fiber', 'wireless', 'dac', 'other'];
 const LINE_STYLES: LineStyle[] = ['solid', 'dashed', 'dotted'];
@@ -34,14 +35,17 @@ export function LinksPage() {
   const [editingLink, setEditingLink] = useState<LinkOut | null>(null);
   const deleteLt = useDeleteLinkTemplate();
   const deleteLink = useDeleteLink();
+  const canEdit = useCan('edit');
 
   return (
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Шаблоны связей</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setLtModalOpen(true)}>
-          Шаблон связи
-        </Button>
+        {canEdit && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setLtModalOpen(true)}>
+            Шаблон связи
+          </Button>
+        )}
       </Group>
       <Text c="dimmed" size="sm">
         Шаблон задаёт среду передачи, категорию кабеля и оформление на топологии (цвет, стиль линии). Длина и разъём —
@@ -68,16 +72,20 @@ export function LinksPage() {
               <Table.Td>{t.line_style}</Table.Td>
               <Table.Td>
                 <Group gap={4}>
-                  <ActionIcon variant="subtle" onClick={() => setEditingLt(t)}><IconEdit size={16} /></ActionIcon>
-                  <ActionIcon
-                    variant="subtle" color="red"
-                    onClick={() => {
-                      if (!confirm('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.')) return;
-                      deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
-                    }}
-                  >
-                    <IconTrash size={16} />
-                  </ActionIcon>
+                  {canEdit && (
+                    <>
+                      <ActionIcon variant="subtle" onClick={() => setEditingLt(t)}><IconEdit size={16} /></ActionIcon>
+                      <ActionIcon
+                        variant="subtle" color="red"
+                        onClick={() => {
+                          if (!confirm('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.')) return;
+                          deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
+                        }}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </>
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>
@@ -130,16 +138,20 @@ export function LinksPage() {
                 </Table.Td>
                 <Table.Td>
                   <Group gap={4}>
-                    <ActionIcon variant="subtle" onClick={() => setEditingLink(l)}><IconEdit size={16} /></ActionIcon>
-                    <ActionIcon
-                      variant="subtle" color="red"
-                      onClick={() => {
-                        if (!confirm('Удалить связь? Оба порта снова станут свободными.')) return;
-                        deleteLink.mutate(l.id, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
-                      }}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
+                    {canEdit && (
+                      <>
+                        <ActionIcon variant="subtle" onClick={() => setEditingLink(l)}><IconEdit size={16} /></ActionIcon>
+                        <ActionIcon
+                          variant="subtle" color="red"
+                          onClick={() => {
+                            if (!confirm('Удалить связь? Оба порта снова станут свободными.')) return;
+                            deleteLink.mutate(l.id, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
+                          }}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </>
+                    )}
                   </Group>
                 </Table.Td>
               </Table.Tr>

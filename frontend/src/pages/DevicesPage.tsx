@@ -7,8 +7,10 @@ import { DeviceCard, typeNameForTemplate } from './devices/DeviceCard';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import type { FreeEntry } from './devices/InterfaceRow';
 import type { DeviceOut } from '../api/types';
+import { useCan } from '../auth/permissions';
 
 export function DevicesPage() {
+  const canEdit = useCan('edit');
   const { data: devices = [] } = useDevices();
   const { data: templates = [] } = useDeviceTemplates();
   const { data: types = [] } = useDeviceTypes();
@@ -51,7 +53,9 @@ export function DevicesPage() {
             data={types.map((t) => ({ value: String(t.id), label: t.name }))}
             value={typeFilter} onChange={setTypeFilter}
           />
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>Устройство</Button>
+          {canEdit && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>Устройство</Button>
+          )}
         </Group>
       </Group>
 

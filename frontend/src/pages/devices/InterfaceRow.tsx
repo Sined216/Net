@@ -8,6 +8,7 @@ import { nn, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { portLabel } from '../topology/ConnectPortsModal';
 import type { DeviceOut, InterfaceOut, PortMode, VlanOut } from '../../api/types';
+import { useCan } from '../../auth/permissions';
 
 // Режим — настройка конкретной железки; в модели техники его нет.
 const PORT_MODES: PortMode[] = ['access', 'trunk', 'uplink'];
@@ -97,6 +98,10 @@ export function InterfaceRow({
   const isCage = !!iface.connector?.is_cage;
   // Клетка без модуля: гнездо есть, а воткнуть в него физически нечего.
   const emptyCage = iface.empty_cage;
+  // Смотрящему поля показываются, но не правятся: пустая строка вместо
+  // данных сбивала бы с толку, а кнопка, за которой стоит 403, — обманывает.
+  const canEdit = useCan('edit');
+
   // Модули для этой клетки: остальные сюда не вставляются.
   const moduleOptions = modules
     .filter((m) => m.cage_connector_id == null || m.cage_connector_id === iface.connector?.id)
@@ -119,7 +124,7 @@ export function InterfaceRow({
         {isCage ? (
           <Group gap={4} wrap="nowrap">
             <Select
-              size="xs" w={140} clearable searchable allowDeselect={false}
+              size="xs" w={140} clearable searchable allowDeselect={false} disabled={!canEdit}
               placeholder={`${iface.connector?.name ?? 'клетка'} — пусто`}
               data={moduleOptions} value={moduleId} onChange={setModuleId}
             />
@@ -130,24 +135,30 @@ export function InterfaceRow({
         )}
       </Table.Td>
       <Table.Td>
-        <Select size="xs" data={PORT_MODES} value={mode} onChange={setMode} clearable w={100} />
+        <Select size="xs" data={PORT_MODES} value={mode} onChange={setMode} clearable w={100} disabled={!canEdit} />
       </Table.Td>
       <Table.Td>
         <Select
-          size="xs" w={130} clearable
+          size="xs" w={130} clearable disabled={!canEdit}
           data={vlans.map((v) => ({ value: String(v.id), label: `${v.vlan_number} ${v.name ?? ''}`.trim() }))}
           value={vlanId} onChange={setVlanId}
         />
       </Table.Td>
-      <Table.Td><TextInput size="xs" placeholder="IP" value={ip} onChange={(e) => setIp(e.currentTarget.value)} w={100} /></Table.Td>
-      <Table.Td><TextInput size="xs" placeholder="MAC" value={mac} onChange={(e) => setMac(e.currentTarget.value)} w={110} /></Table.Td>
-      <Table.Td><TextInput size="xs" placeholder="заметка" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} w={90} /></Table.Td>
+      <Table.Td><TextInput size="xs" placeholder="IP" value={ip} onChange={(e) => setIp(e.currentTarget.value)} w={100} disabled={!canEdit} /></Table.Td>
+      <Table.Td><TextInput size="xs" placeholder="MAC" value={mac} onChange={(e) => setMac(e.currentTarget.value)} w={110} disabled={!canEdit} /></Table.Td>
+      <Table.Td><TextInput size="xs" placeholder="заметка" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} w={90} disabled={!canEdit} /></Table.Td>
       <Table.Td>
         {iface.connected_to ? (
           <Group gap={4} wrap="nowrap">
             <Text size="xs" c="teal">→ {iface.connected_to.device_code} · {iface.connected_to.interface_label}</Text>
-            <ActionIcon size="sm" variant="subtle" color="red" onClick={disconnect}><IconTrash size={14} /></ActionIcon>
+            {canEdit && (
+              <ActionIcon size="sm" variant="subtle" color="red" onClick={disconnect}><IconTrash size={14} /></ActionIcon>
+            )}
           </Group>
+        ) : !canEdit ? (
+          <Text size="xs" c={iface.link_id ? 'orange' : 'dimmed'}>
+            {iface.link_id ? 'повис' : '— свободен —'}
+          </Text>
         ) : iface.link_id ? (
           // Кабель воткнут, но на том конце порт удалили — предлагаем
           // подключить его заново, а не заводить связь с нуля: длина,
@@ -175,8 +186,8 @@ export function InterfaceRow({
       </Table.Td>
       <Table.Td>
         <Group gap={4} wrap="nowrap">
-          <ActionIcon size="sm" variant="subtle" onClick={save}><IconCheck size={14} /></ActionIcon>
-          {portsEditable && (
+          {canEdit && <ActionIcon size="sm" variant="subtle" onClick={save}><IconCheck size={14} /></ActionIcon>}
+          {portsEditable && canEdit && (
             <ActionIcon size="sm" variant="subtle" color="red" onClick={remove} title="Убрать порт">
               <IconTrash size={14} />
             </ActionIcon>

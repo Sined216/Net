@@ -6,6 +6,7 @@ import { useAddInterface, useAddInterfacesBulk, useDeleteDevice } from '../../ap
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { InterfaceRow, type FreeEntry } from './InterfaceRow';
 import type { DeviceOut, DeviceTemplateOut, DeviceTypeOut, VlanOut } from '../../api/types';
+import { useCan } from '../../auth/permissions';
 
 export function DeviceCard({
   device, template, typeName, vlans, freeEntries, onEdit,
@@ -17,6 +18,7 @@ export function DeviceCard({
   freeEntries: FreeEntry[];
   onEdit: () => void;
 }) {
+  const canEdit = useCan('edit');
   const [open, setOpen] = useState(false);
   const [bulkCount, setBulkCount] = useState<number | ''>(24);
   const deleteDevice = useDeleteDevice();
@@ -68,8 +70,12 @@ export function DeviceCard({
           <ActionIcon variant="subtle" component={Link} to={`/devices/${device.id}`} title="Открыть страницу устройства">
             <IconExternalLink size={16} />
           </ActionIcon>
-          <ActionIcon variant="subtle" onClick={onEdit}><IconEdit size={16} /></ActionIcon>
-          <ActionIcon variant="subtle" color="red" onClick={handleDelete}><IconTrash size={16} /></ActionIcon>
+          {canEdit && (
+            <>
+              <ActionIcon variant="subtle" onClick={onEdit}><IconEdit size={16} /></ActionIcon>
+              <ActionIcon variant="subtle" color="red" onClick={handleDelete}><IconTrash size={16} /></ActionIcon>
+            </>
+          )}
         </Group>
       </Group>
 
@@ -94,7 +100,7 @@ export function DeviceCard({
               )}
             </Table.Tbody>
           </Table>
-          {portsEditable ? (
+          {portsEditable && canEdit ? (
             <Group mt="xs">
               <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addPort}>Порт</Button>
               <NumberInput size="xs" value={bulkCount} onChange={(v) => setBulkCount(v === '' ? '' : Number(v))} min={1} max={96} w={70} />

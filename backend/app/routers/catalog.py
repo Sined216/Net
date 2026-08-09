@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, auth, sites
+from app.audit import log_change
 
 router = APIRouter(tags=["catalog"])
 
@@ -15,13 +16,15 @@ def list_device_types(db: Session = Depends(get_db)):
 
 @router.post("/device-types", response_model=schemas.DeviceTypeOut, status_code=201)
 def create_device_type(payload: schemas.DeviceTypeCreate, db: Session = Depends(get_db),
-                        _: models.User = Depends(auth.can_edit)):
+                        user: models.User = Depends(auth.can_edit)):
     if db.query(models.DeviceType).filter(models.DeviceType.name == payload.name).first():
         raise HTTPException(status_code=409, detail="Тип устройства с таким названием уже существует")
     if db.query(models.DeviceType).filter(models.DeviceType.code_prefix == payload.code_prefix).first():
         raise HTTPException(status_code=409, detail="Такой префикс кода уже используется другим типом")
     device_type = models.DeviceType(name=payload.name, code_prefix=payload.code_prefix.upper())
     db.add(device_type)
+    db.flush()
+    log_change(db, user.id, "create", "device_type", device_type.id, old=None, new=device_type)
     db.commit()
     db.refresh(device_type)
     return device_type
@@ -29,7 +32,7 @@ def create_device_type(payload: schemas.DeviceTypeCreate, db: Session = Depends(
 
 @router.patch("/device-types/{type_id}", response_model=schemas.DeviceTypeOut)
 def update_device_type(type_id: int, payload: schemas.DeviceTypeUpdate, db: Session = Depends(get_db),
-                        _: models.User = Depends(auth.can_edit)):
+                        user: models.User = Depends(auth.can_edit)):
     """Правка типа устройства.
 
     Смена префикса действует только на будущие устройства: код SW-0001
@@ -52,8 +55,10 @@ def update_device_type(type_id: int, payload: schemas.DeviceTypeUpdate, db: Sess
     ).first():
         raise HTTPException(status_code=409, detail="Такой префикс кода уже используется другим типом")
 
+    old = {c.name: getattr(device_type, c.name) for c in device_type.__table__.columns}
     for field, value in data.items():
         setattr(device_type, field, value)
+    log_change(db, user.id, "update", "device_type", device_type.id, old=old, new=device_type)
     db.commit()
     db.refresh(device_type)
     return device_type
@@ -61,11 +66,13 @@ def update_device_type(type_id: int, payload: schemas.DeviceTypeUpdate, db: Sess
 
 @router.delete("/device-types/{type_id}", status_code=204)
 def delete_device_type(type_id: int, db: Session = Depends(get_db),
-                        _: models.User = Depends(auth.can_edit)):
+                        user: models.User = Depends(auth.can_edit)):
     device_type = db.query(models.DeviceType).get(type_id)
     if not device_type:
         raise HTTPException(status_code=404, detail="Тип устройства не найден")
     try:
+        log_change(db, user.id, "delete", "device_type", device_type.id,
+                   old={c.name: getattr(device_type, c.name) for c in device_type.__table__.columns}, new=None)
         db.delete(device_type)
         db.commit()
     except IntegrityError:
@@ -83,11 +90,13 @@ def list_connector_types(db: Session = Depends(get_db)):
 
 @router.post("/connector-types", response_model=schemas.ConnectorTypeOut, status_code=201)
 def create_connector_type(payload: schemas.ConnectorTypeCreate, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit)):
+                           user: models.User = Depends(auth.can_edit)):
     if db.query(models.ConnectorType).filter(models.ConnectorType.name == payload.name).first():
         raise HTTPException(status_code=409, detail="Разъём с таким названием уже есть")
     connector = models.ConnectorType(**payload.model_dump())
     db.add(connector)
+    db.flush()
+    log_change(db, user.id, "create", "connector_type", connector.id, old=None, new=connector)
     db.commit()
     db.refresh(connector)
     return connector
@@ -95,7 +104,7 @@ def create_connector_type(payload: schemas.ConnectorTypeCreate, db: Session = De
 
 @router.patch("/connector-types/{connector_id}", response_model=schemas.ConnectorTypeOut)
 def update_connector_type(connector_id: int, payload: schemas.ConnectorTypeUpdate, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit)):
+                           user: models.User = Depends(auth.can_edit)):
     connector = db.get(models.ConnectorType, connector_id)
     if not connector:
         raise HTTPException(status_code=404, detail="Разъём не найден")
@@ -104,8 +113,10 @@ def update_connector_type(connector_id: int, payload: schemas.ConnectorTypeUpdat
         models.ConnectorType.name == data["name"], models.ConnectorType.id != connector_id
     ).first():
         raise HTTPException(status_code=409, detail="Разъём с таким названием уже есть")
+    old = {c.name: getattr(connector, c.name) for c in connector.__table__.columns}
     for field, value in data.items():
         setattr(connector, field, value)
+    log_change(db, user.id, "update", "connector_type", connector.id, old=old, new=connector)
     db.commit()
     db.refresh(connector)
     return connector
@@ -113,7 +124,7 @@ def update_connector_type(connector_id: int, payload: schemas.ConnectorTypeUpdat
 
 @router.delete("/connector-types/{connector_id}", status_code=204)
 def delete_connector_type(connector_id: int, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit)):
+                           user: models.User = Depends(auth.can_edit)):
     """Удалить разъём из справочника.
 
     Если он уже проставлен портам, удаление отбивается: молча обнулить
@@ -142,6 +153,8 @@ def delete_connector_type(connector_id: int, db: Session = Depends(get_db),
                 "Сначала замените его там."
             ),
         )
+    log_change(db, user.id, "delete", "connector_type", connector.id,
+               old={c.name: getattr(connector, c.name) for c in connector.__table__.columns}, new=None)
     db.delete(connector)
     db.commit()
 
@@ -164,12 +177,14 @@ def list_modules(db: Session = Depends(get_db)):
 
 @router.post("/modules", response_model=schemas.TransceiverModuleOut, status_code=201)
 def create_module(payload: schemas.TransceiverModuleCreate, db: Session = Depends(get_db),
-                   _: models.User = Depends(auth.can_edit)):
+                   user: models.User = Depends(auth.can_edit)):
     if db.query(models.TransceiverModule).filter(models.TransceiverModule.name == payload.name).first():
         raise HTTPException(status_code=409, detail="Модуль с таким названием уже есть")
     _check_connectors(db, payload.model_dump())
     module = models.TransceiverModule(**payload.model_dump())
     db.add(module)
+    db.flush()
+    log_change(db, user.id, "create", "transceiver_module", module.id, old=None, new=module)
     db.commit()
     db.refresh(module)
     return module
@@ -177,7 +192,7 @@ def create_module(payload: schemas.TransceiverModuleCreate, db: Session = Depend
 
 @router.patch("/modules/{module_id}", response_model=schemas.TransceiverModuleOut)
 def update_module(module_id: int, payload: schemas.TransceiverModuleUpdate, db: Session = Depends(get_db),
-                   _: models.User = Depends(auth.can_edit)):
+                   user: models.User = Depends(auth.can_edit)):
     module = db.get(models.TransceiverModule, module_id)
     if not module:
         raise HTTPException(status_code=404, detail="Модуль не найден")
@@ -187,8 +202,10 @@ def update_module(module_id: int, payload: schemas.TransceiverModuleUpdate, db: 
     ).first():
         raise HTTPException(status_code=409, detail="Модуль с таким названием уже есть")
     _check_connectors(db, data)
+    old = {c.name: getattr(module, c.name) for c in module.__table__.columns}
     for field, value in data.items():
         setattr(module, field, value)
+    log_change(db, user.id, "update", "transceiver_module", module.id, old=old, new=module)
     db.commit()
     db.refresh(module)
     return module
@@ -196,7 +213,7 @@ def update_module(module_id: int, payload: schemas.TransceiverModuleUpdate, db: 
 
 @router.delete("/modules/{module_id}", status_code=204)
 def delete_module(module_id: int, db: Session = Depends(get_db),
-                   _: models.User = Depends(auth.can_edit)):
+                   user: models.User = Depends(auth.can_edit)):
     module = db.get(models.TransceiverModule, module_id)
     if not module:
         raise HTTPException(status_code=404, detail="Модуль не найден")
@@ -206,6 +223,8 @@ def delete_module(module_id: int, db: Session = Depends(get_db),
             status_code=409,
             detail=f"Модуль вставлен в {used} порт(ов) — сначала выньте его там",
         )
+    log_change(db, user.id, "delete", "transceiver_module", module.id,
+               old={c.name: getattr(module, c.name) for c in module.__table__.columns}, new=None)
     db.delete(module)
     db.commit()
 
@@ -222,7 +241,7 @@ def list_vlans(db: Session = Depends(get_db), site_id: int = Depends(sites.curre
 
 @router.post("/vlans", response_model=schemas.VlanOut, status_code=201)
 def create_vlan(payload: schemas.VlanCreate, db: Session = Depends(get_db),
-                 _: models.User = Depends(auth.can_edit),
+                 user: models.User = Depends(auth.can_edit),
                  site_id: int = Depends(sites.current_site_id)):
     if db.query(models.Vlan).filter(
         models.Vlan.vlan_number == payload.vlan_number, models.Vlan.site_id == site_id
@@ -230,6 +249,8 @@ def create_vlan(payload: schemas.VlanCreate, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail="VLAN с таким номером уже существует")
     vlan = models.Vlan(site_id=site_id, **payload.model_dump())
     db.add(vlan)
+    db.flush()
+    log_change(db, user.id, "create", "vlan", vlan.id, old=None, new=vlan)
     db.commit()
     db.refresh(vlan)
     return vlan
@@ -237,12 +258,14 @@ def create_vlan(payload: schemas.VlanCreate, db: Session = Depends(get_db),
 
 @router.delete("/vlans/{vlan_id}", status_code=204)
 def delete_vlan(vlan_id: int, db: Session = Depends(get_db),
-                 _: models.User = Depends(auth.can_edit),
+                 user: models.User = Depends(auth.can_edit),
                  site_id: int = Depends(sites.current_site_id)):
     vlan = db.query(models.Vlan).filter(
         models.Vlan.id == vlan_id, models.Vlan.site_id == site_id
     ).first()
     if not vlan:
         raise HTTPException(status_code=404, detail="VLAN не найден")
+    log_change(db, user.id, "delete", "vlan", vlan.id,
+               old={c.name: getattr(vlan, c.name) for c in vlan.__table__.columns}, new=None)
     db.delete(vlan)
     db.commit()

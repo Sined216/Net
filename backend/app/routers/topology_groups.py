@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, auth, sites
+from app.audit import log_change
 
 router = APIRouter(prefix="/topology-groups", tags=["topology-groups"])
 
@@ -81,7 +82,7 @@ def list_topology_groups(db: Session = Depends(get_db),
 
 @router.post("", response_model=schemas.TopologyGroupOut, status_code=201)
 def create_topology_group(payload: schemas.TopologyGroupCreate, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit),
+                           user: models.User = Depends(auth.can_edit),
                            site_id: int = Depends(sites.current_site_id)):
     if db.query(models.TopologyGroup).filter(
         models.TopologyGroup.name == payload.name, models.TopologyGroup.site_id == site_id
@@ -90,6 +91,8 @@ def create_topology_group(payload: schemas.TopologyGroupCreate, db: Session = De
     _check_parent(db, site_id, payload.parent_id)
     group = models.TopologyGroup(site_id=site_id, **payload.model_dump())
     db.add(group)
+    db.flush()
+    log_change(db, user.id, "create", "topology_group", group.id, old=None, new=group)
     db.commit()
     db.refresh(group)
     return group
@@ -97,7 +100,7 @@ def create_topology_group(payload: schemas.TopologyGroupCreate, db: Session = De
 
 @router.patch("/{group_id}", response_model=schemas.TopologyGroupOut)
 def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit),
+                           user: models.User = Depends(auth.can_edit),
                            site_id: int = Depends(sites.current_site_id)):
     group = db.query(models.TopologyGroup).filter(
         models.TopologyGroup.id == group_id, models.TopologyGroup.site_id == site_id
@@ -114,8 +117,10 @@ def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, d
     ).first():
         raise HTTPException(status_code=409, detail="Группа с таким названием уже существует")
 
+    old = {c.name: getattr(group, c.name) for c in group.__table__.columns}
     for field, value in data.items():
         setattr(group, field, value)
+    log_change(db, user.id, "update", "topology_group", group.id, old=old, new=group)
     db.commit()
     db.refresh(group)
     return group
@@ -145,7 +150,7 @@ def set_topology_group_box(group_id: int, payload: schemas.TopologyGroupBox, db:
 
 @router.delete("/{group_id}", status_code=204)
 def delete_topology_group(group_id: int, db: Session = Depends(get_db),
-                           _: models.User = Depends(auth.can_edit),
+                           user: models.User = Depends(auth.can_edit),
                            site_id: int = Depends(sites.current_site_id)):
     group = db.query(models.TopologyGroup).filter(
         models.TopologyGroup.id == group_id, models.TopologyGroup.site_id == site_id
@@ -154,5 +159,7 @@ def delete_topology_group(group_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Группа не найдена")
     # У устройств этой группы topology_group_id станет NULL, а подгруппы
     # всплывут на уровень выше (обе связи — ON DELETE SET NULL).
+    log_change(db, user.id, "delete", "topology_group", group.id,
+               old={c.name: getattr(group, c.name) for c in group.__table__.columns}, new=None)
     db.delete(group)
     db.commit()

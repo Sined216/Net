@@ -5,8 +5,10 @@ import { useCreateTag, useDeleteTag, useTags, useUpdateTag } from '../api/hooks'
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import type { TagOut } from '../api/types';
+import { useCan } from '../auth/permissions';
 
 export function TagsPage() {
+  const canEdit = useCan('edit');
   const { data: tags = [], isLoading, error } = useTags();
   const [editing, setEditing] = useState<TagOut | 'new' | null>(null);
   const deleteTag = useDeleteTag();
@@ -22,9 +24,11 @@ export function TagsPage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Теги</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>
-          Тег
-        </Button>
+        {canEdit && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>
+            Тег
+          </Button>
+        )}
       </Group>
       <Text c="dimmed" size="sm">
         Вложенность — только для организации списка (напр. «Завод → Цех 1 → Шкаф А»). Устройство может нести сразу
@@ -52,12 +56,16 @@ export function TagsPage() {
               </Table.Td>
               <Table.Td>
                 <Group gap={4} justify="flex-end">
-                  <ActionIcon variant="subtle" onClick={() => setEditing(tag)}>
-                    <IconEdit size={16} />
-                  </ActionIcon>
-                  <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(tag)}>
-                    <IconTrash size={16} />
-                  </ActionIcon>
+                  {canEdit && (
+                    <>
+                      <ActionIcon variant="subtle" onClick={() => setEditing(tag)}>
+                        <IconEdit size={16} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(tag)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </>
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>

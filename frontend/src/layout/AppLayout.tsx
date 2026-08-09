@@ -3,7 +3,7 @@ import { AppShell, Group, NavLink as MantineNavLink, ScrollArea, Select, Text, B
 import {
   IconDeviceDesktop, IconTemplate, IconPlugConnected, IconTopologyStar,
   IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase, IconBook,
-  IconFileImport, IconBuildingFactory2,
+  IconFileImport, IconBuildingFactory2, IconHistory,
 } from '@tabler/icons-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { to: '/tags', label: 'Теги', icon: IconTags },
   { to: '/vlans', label: 'VLAN', icon: IconNetwork },
   { to: '/import', label: 'Импорт', icon: IconFileImport },
+  { to: '/history', label: 'История', icon: IconHistory },
   { to: '/catalog', label: 'Справочники', icon: IconBook },
   { to: '/schema', label: 'Структура БД', icon: IconDatabase },
 ];

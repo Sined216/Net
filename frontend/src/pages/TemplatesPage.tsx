@@ -14,8 +14,10 @@ import {
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import type { ConnectorTypeOut, DeviceTemplateOut, InterfaceTemplateOut } from '../api/types';
+import { useCan } from '../auth/permissions';
 
 export function TemplatesPage() {
+  const canEdit = useCan('edit');
   const { data: types = [] } = useDeviceTypes();
   const { data: templates = [], isLoading } = useDeviceTemplates();
   const [editingTemplate, setEditingTemplate] = useState<DeviceTemplateOut | 'new' | null>(null);
@@ -32,9 +34,11 @@ export function TemplatesPage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Шаблоны устройств</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setEditingTemplate('new')}>
-          Шаблон
-        </Button>
+        {canEdit && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setEditingTemplate('new')}>
+            Шаблон
+          </Button>
+        )}
       </Group>
       <Text c="dimmed" size="sm">
         Шаблон описывает модель техники: тип и набор портов. При добавлении устройства в спецификацию оборудования его
@@ -55,7 +59,7 @@ export function TemplatesPage() {
                   <Badge variant="light" color="gray">{tpl.interfaces.length} порт(ов)</Badge>
                 </Group>
               </UnstyledButton>
-              <Group gap={4}>
+              <Group gap={4} display={canEdit ? undefined : 'none'}>
                 <ActionIcon variant="subtle" onClick={() => setEditingTemplate(tpl)} title="Правка">
                   <IconEdit size={16} />
                 </ActionIcon>

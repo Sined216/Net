@@ -33,6 +33,7 @@ import { AppearanceMenu } from './topology/AppearanceMenu';
 import {
   TopologyAppearanceContext, loadAppearance, saveAppearance, type TopologyAppearance,
 } from './topology/appearance';
+import { useCan } from '../auth/permissions';
 
 const nodeTypes = { device: DeviceNode, group: GroupNode, dangling: DanglingNode };
 const edgeTypes = { floating: FloatingEdge };
@@ -93,6 +94,7 @@ export function TopologyPage() {
   /** Внешний вид схемы. Настройка личная и живёт в браузере — читается один
    * раз при первом рендере, а не на каждый. */
   const [look, setLook] = useState<TopologyAppearance>(loadAppearance);
+  const canEdit = useCan('edit');
 
   function changeLook(next: TopologyAppearance) {
     setLook(next);
@@ -705,7 +707,7 @@ export function TopologyPage() {
   }
 
   return (
-    <TopologyActionsContext.Provider value={actions}>
+    <TopologyActionsContext.Provider value={canEdit ? actions : null}>
     <TopologyAppearanceContext.Provider value={look}>
     <Stack h="100%" gap="sm">
       <Group justify="space-between">
@@ -716,13 +718,19 @@ export function TopologyPage() {
             data={flattenTagsOrdered(tags).map(({ tag, depth }) => ({ value: String(tag.id), label: `${'—'.repeat(depth)} ${tag.name}` }))}
             value={tagFilter} onChange={setTagFilter}
           />
-          <Button variant="light" leftSection={<IconUsersGroup size={16} />} onClick={() => setGroupsModalOpen(true)}>
-            Группы
-          </Button>
+          {canEdit && (
+            <Button variant="light" leftSection={<IconUsersGroup size={16} />} onClick={() => setGroupsModalOpen(true)}>
+              Группы
+            </Button>
+          )}
+          {/* Настройки вида — не правка данных: смотрящему они нужны так же,
+              как и всем, и 403 за ними не стоит. */}
           <AppearanceMenu value={look} onChange={changeLook} />
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setAddingDevice(true)}>
-            Устройство
-          </Button>
+          {canEdit && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setAddingDevice(true)}>
+              Устройство
+            </Button>
+          )}
         </Group>
       </Group>
       <Paper withBorder style={{ height: 640 }}>
@@ -735,12 +743,17 @@ export function TopologyPage() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeDragStop={handleNodeDragStop}
+            // Смотрящему схема доступна целиком, но только смотреть: узел не
+            // сдвинуть (положение сохраняется на сервере), кабель не
+            // протянуть, Delete ничего не удаляет.
+            nodesDraggable={canEdit}
+            nodesConnectable={canEdit}
             onConnect={handleConnect}
             onEdgeClick={handleEdgeClick}
             onBeforeDelete={handleBeforeDelete}
             // По умолчанию React Flow слушает только Backspace — на клавише
             // Delete ничего не происходило, хотя подсказка обещала обратное.
-            deleteKeyCode={['Delete', 'Backspace']}
+            deleteKeyCode={canEdit ? ['Delete', 'Backspace'] : null}
             onInit={(instance) => { flowRef.current = instance; }}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}

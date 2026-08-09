@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, auth, sites
+from app.audit import log_change
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -36,7 +37,7 @@ def list_tags(db: Session = Depends(get_db), site_id: int = Depends(sites.curren
 
 @router.post("", response_model=schemas.TagOut, status_code=201)
 def create_tag(payload: schemas.TagCreate, db: Session = Depends(get_db),
-                _: models.User = Depends(auth.can_edit),
+                user: models.User = Depends(auth.can_edit),
                 site_id: int = Depends(sites.current_site_id)):
     # Родитель — только своей площадки: дерево тегов принадлежит фабрике
     # целиком, и «Цех 1» одной не может оказаться внутри «Цеха 1» другой.
@@ -48,6 +49,8 @@ def create_tag(payload: schemas.TagCreate, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail="У этого родителя уже есть тег с таким названием")
     tag = models.Tag(site_id=site_id, **payload.model_dump())
     db.add(tag)
+    db.flush()
+    log_change(db, user.id, "create", "tag", tag.id, old=None, new=tag)
     db.commit()
     db.refresh(tag)
     return tag
@@ -55,7 +58,7 @@ def create_tag(payload: schemas.TagCreate, db: Session = Depends(get_db),
 
 @router.patch("/{tag_id}", response_model=schemas.TagOut)
 def update_tag(tag_id: int, payload: schemas.TagUpdate, db: Session = Depends(get_db),
-                _: models.User = Depends(auth.can_edit),
+                user: models.User = Depends(auth.can_edit),
                 site_id: int = Depends(sites.current_site_id)):
     tag = db.query(models.Tag).filter(
         models.Tag.id == tag_id, models.Tag.site_id == site_id
@@ -78,8 +81,10 @@ def update_tag(tag_id: int, payload: schemas.TagUpdate, db: Session = Depends(ge
     if _same_parent_exists(db, site_id, new_name, new_parent_id, exclude_id=tag_id):
         raise HTTPException(status_code=409, detail="У этого родителя уже есть тег с таким названием")
 
+    old = {c.name: getattr(tag, c.name) for c in tag.__table__.columns}
     for field, value in data.items():
         setattr(tag, field, value)
+    log_change(db, user.id, "update", "tag", tag.id, old=old, new=tag)
     db.commit()
     db.refresh(tag)
     return tag
@@ -87,7 +92,7 @@ def update_tag(tag_id: int, payload: schemas.TagUpdate, db: Session = Depends(ge
 
 @router.delete("/{tag_id}", status_code=204)
 def delete_tag(tag_id: int, db: Session = Depends(get_db),
-                _: models.User = Depends(auth.can_edit),
+                user: models.User = Depends(auth.can_edit),
                 site_id: int = Depends(sites.current_site_id)):
     tag = db.query(models.Tag).filter(
         models.Tag.id == tag_id, models.Tag.site_id == site_id
@@ -96,5 +101,7 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Тег не найден")
     # дочерние теги удалятся каскадом (parent_id ON DELETE CASCADE),
     # у устройств этот тег просто пропадёт из списка (M2M ON DELETE CASCADE)
+    log_change(db, user.id, "delete", "tag", tag.id,
+               old={c.name: getattr(tag, c.name) for c in tag.__table__.columns}, new=None)
     db.delete(tag)
     db.commit()

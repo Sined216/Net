@@ -10,6 +10,7 @@ import {
 import { notifyError, notifySuccess } from '../lib/notify';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import type { ImportRowOut } from '../api/types';
+import { useCan } from '../auth/permissions';
 
 /** Импорт устройств из файла.
  *
@@ -27,6 +28,7 @@ export function ImportPage() {
   const clearRows = useClearImportRows();
   const fileInput = useRef<HTMLInputElement>(null);
   const [adding, setAdding] = useState<ImportRowOut | null>(null);
+  const canEdit = useCan('edit');
 
   const waiting = rows.filter((r) => r.status === 'new');
   const moved = rows.filter((r) => r.status === 'moved');
@@ -46,7 +48,7 @@ export function ImportPage() {
       <Group justify="space-between">
         <Title order={2}>Импорт устройств</Title>
         <Group>
-          {rows.length > 0 && (
+          {canEdit && rows.length > 0 && (
             <Menu>
               <Menu.Target>
                 <ActionIcon variant="default" size="lg"><IconDotsVertical size={16} /></ActionIcon>
@@ -74,12 +76,14 @@ export function ImportPage() {
               </Menu.Dropdown>
             </Menu>
           )}
-          <Button
-            leftSection={<IconUpload size={16} />} loading={upload.isPending}
-            onClick={() => fileInput.current?.click()}
-          >
-            Загрузить файл
-          </Button>
+          {canEdit && (
+            <Button
+              leftSection={<IconUpload size={16} />} loading={upload.isPending}
+              onClick={() => fileInput.current?.click()}
+            >
+              Загрузить файл
+            </Button>
+          )}
         </Group>
       </Group>
       <input
@@ -163,7 +167,7 @@ export function ImportPage() {
                     )}
                   </Table.Td>
                   <Table.Td>
-                    <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
                       {row.status === 'new' && (
                         <Tooltip label="Завести устройство по этой строке">
                           <ActionIcon variant="subtle" size="sm" onClick={() => setAdding(row)}>

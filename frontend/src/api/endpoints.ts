@@ -14,7 +14,7 @@ import type {
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
   TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox,
   SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
-  SiteOut, SiteCreate, SiteUpdate,
+  SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
 } from './types';
 
 // ---------- Auth ----------
@@ -145,3 +145,7 @@ export const deleteSite = (id: number) => apiFetch<void>(`/sites/${id}`, { metho
 export const listSiteAccess = (id: number) => apiFetch<number[]>(`/sites/${id}/access`);
 export const setSiteAccess = (id: number, userIds: number[]) =>
   apiFetch<number[]>(`/sites/${id}/access`, { method: 'PUT', body: { user_ids: userIds } });
+
+// ---------- Журнал изменений ----------
+export const listAudit = (query: AuditQuery) =>
+  apiFetch<AuditPage>('/audit', { query: query as Record<string, string | number | undefined> });

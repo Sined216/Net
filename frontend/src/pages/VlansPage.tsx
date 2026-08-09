@@ -4,8 +4,10 @@ import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useCreateVlan, useDeleteVlan, useVlans } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { useCan } from '../auth/permissions';
 
 export function VlansPage() {
+  const canEdit = useCan('edit');
   const { data: vlans = [], isLoading, error } = useVlans();
   const [opened, setOpened] = useState(false);
   const deleteVlan = useDeleteVlan();
@@ -19,9 +21,11 @@ export function VlansPage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>VLAN</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setOpened(true)}>
-          VLAN
-        </Button>
+        {canEdit && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setOpened(true)}>
+            VLAN
+          </Button>
+        )}
       </Group>
 
       {error && <Alert color="red">{(error as Error).message}</Alert>}
@@ -44,9 +48,11 @@ export function VlansPage() {
               <Table.Td>{v.subnet || '—'}</Table.Td>
               <Table.Td>{v.gateway || '—'}</Table.Td>
               <Table.Td>
-                <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(v.id)}>
-                  <IconTrash size={16} />
-                </ActionIcon>
+                {canEdit && (
+                  <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(v.id)}>
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                )}
               </Table.Td>
             </Table.Tr>
           ))}
