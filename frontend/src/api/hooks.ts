@@ -76,7 +76,9 @@ export function useCreateTag() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: TagCreate) => api.createTag(body),
-    onSuccess: () => invalidateAll(qc, ['tags', 'devices']),
+    // Строки импорта тоже устаревают: подсказки в них — это найденные по
+    // названию записи справочников, и новый тег может закрыть пробел.
+    onSuccess: () => invalidateAll(qc, ['tags', 'devices', 'importRows']),
   });
 }
 export function useUpdateTag() {
@@ -215,7 +217,7 @@ export function useCreateDeviceTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: DeviceTemplateCreate) => api.createDeviceTemplate(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deviceTemplates'] }),
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'importRows']),
   });
 }
 export function useUpdateDeviceTemplate() {
@@ -350,7 +352,7 @@ export function useCreateTopologyGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: TopologyGroupCreate) => api.createTopologyGroup(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['topologyGroups'] }),
+    onSuccess: () => invalidateAll(qc, ['topologyGroups', 'importRows']),
   });
 }
 export function useUpdateTopologyGroup() {

@@ -9,6 +9,7 @@ import {
 } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { DeviceFormModal } from './devices/DeviceFormModal';
+import { MissingRefs } from './import/MissingRefs';
 import type { ImportRowOut } from '../api/types';
 import { useCan } from '../auth/permissions';
 
@@ -92,20 +93,22 @@ export function ImportPage() {
 
       <Text c="dimmed" size="sm">
         Строки из файла попадают сюда, а не сразу в спецификацию оборудования. «Добавить» открывает обычное окно
-        устройства с тем, что удалось разобрать: модель, IP, расположение. Чего в файле нет — заполняется руками.
+        устройства с тем, что удалось разобрать: шаблон, IP, расположение. Чего в файле нет — заполняется руками.
         Связи из файла не заводятся: кабель соединяет порты, а портов до заведения устройства ещё нет.
       </Text>
 
       {templates.length === 0 && (
         <Alert color="yellow" variant="light">
           Шаблонов устройств пока нет — завести устройство будет не из чего. Начните с вкладки «Шаблоны»:
-          модель задаёт состав портов.
+          шаблон задаёт состав портов.
         </Alert>
       )}
 
+      {canEdit && <MissingRefs rows={rows} />}
+
       {rows.length === 0 ? (
         <Text c="dimmed">
-          {isLoading ? 'Загрузка…' : 'Пусто. Загрузите .xlsx или .csv — колонки распознаются по названиям: имя, модель, IP, расположение, группа, теги.'}
+          {isLoading ? 'Загрузка…' : 'Пусто. Загрузите .xlsx или .csv — колонки распознаются по названиям: имя, шаблон (модель), IP, расположение, группа, теги.'}
         </Text>
       ) : (
         <>
@@ -118,9 +121,10 @@ export function ImportPage() {
               <Table.Tr>
                 <Table.Th w={70}>Строка</Table.Th>
                 <Table.Th>Название</Table.Th>
-                <Table.Th>Модель</Table.Th>
+                <Table.Th>Шаблон устройства</Table.Th>
                 <Table.Th w={130}>IP</Table.Th>
                 <Table.Th>Расположение</Table.Th>
+                <Table.Th>Группа и теги</Table.Th>
                 <Table.Th>Ещё из файла</Table.Th>
                 <Table.Th w={160}>Состояние</Table.Th>
                 <Table.Th w={90} />
@@ -140,13 +144,29 @@ export function ImportPage() {
                       <Group gap={6} wrap="nowrap">
                         <Text size="sm">{row.template_name}</Text>
                         {row.suggested_template_id == null && (
-                          <Badge size="xs" color="orange" variant="light">нет такой модели</Badge>
+                          <Badge size="xs" color="orange" variant="light" style={{ flexShrink: 0 }}>
+                            нет в базе
+                          </Badge>
                         )}
                       </Group>
                     ) : <Text c="dimmed" size="sm">—</Text>}
                   </Table.Td>
                   <Table.Td><Text size="sm">{row.management_ip ?? '—'}</Text></Table.Td>
                   <Table.Td><Text size="sm">{row.location ?? '—'}</Text></Table.Td>
+                  <Table.Td>
+                    {row.group_name && (
+                      <Group gap={6} wrap="nowrap">
+                        <Text size="sm">{row.group_name}</Text>
+                        {row.suggested_group_id == null && (
+                          <Badge size="xs" color="orange" variant="light" style={{ flexShrink: 0 }}>
+                            нет в базе
+                          </Badge>
+                        )}
+                      </Group>
+                    )}
+                    {row.tags_text && <Text size="xs" c="dimmed">теги: {row.tags_text}</Text>}
+                    {!row.group_name && !row.tags_text && <Text c="dimmed" size="sm">—</Text>}
+                  </Table.Td>
                   <Table.Td>
                     <Text size="xs" c="dimmed" lineClamp={2}>
                       {row.extra ? Object.entries(row.extra).map(([k, v]) => `${k}: ${v}`).join('; ') : '—'}

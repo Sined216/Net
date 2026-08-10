@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Button, Checkbox, Group, Modal, ScrollArea, Select, Stack, Text, TextInput, Textarea } from '@mantine/core';
 import {
-  useCreateDevice, useDeviceTemplates, useMoveImportRow, useSetDeviceTags, useTags, useTopologyGroups,
-  useUpdateDevice,
+  Badge, Button, Checkbox, Group, Modal, ScrollArea, Select, Stack, Table, Text, TextInput, Textarea,
+} from '@mantine/core';
+import {
+  useConnectorTypes, useCreateDevice, useDeviceInterfaces, useDeviceTemplates, useMoveImportRow,
+  useSetDeviceTags, useTags, useTopologyGroups, useUpdateDevice,
 } from '../../api/hooks';
 import { flattenTagsOrdered, nn } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
@@ -46,6 +48,7 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
   const { data: templates = [] } = useDeviceTemplates();
   const { data: tags = [] } = useTags();
   const { data: topologyGroups = [] } = useTopologyGroups();
+  const { data: connectors = [] } = useConnectorTypes();
   const [templateId, setTemplateId] = useState<string | null>(
     draft?.template_id != null ? String(draft.template_id) : null,
   );
@@ -67,9 +70,31 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
   const updateDevice = useUpdateDevice();
   const setDeviceTags = useSetDeviceTags();
 
-  const template = isEdit ? templates.find((t) => t.id === device!.template_id) : null;
+  const template = isEdit
+    ? templates.find((t) => t.id === device!.template_id) ?? null
+    : templates.find((t) => String(t.id) === templateId) ?? null;
   const pending = createDevice.isPending || updateDevice.isPending || setDeviceTags.isPending
     || moveImportRow.isPending;
+
+  // У заведённого устройства порты берутся его собственные, а не шаблонные:
+  // у моделей со сменным составом они успевают разойтись с шаблоном, да и
+  // занятость порта видна только у железки.
+  const { data: devicePorts = [] } = useDeviceInterfaces(isEdit ? device!.id : null);
+  const ports: PreviewPort[] = isEdit
+    ? devicePorts.map((port) => ({
+      key: port.id,
+      number: port.port_number,
+      label: port.label,
+      connector: (port.connector_effective ?? port.connector)?.name ?? null,
+      busy: port.link_id != null,
+    }))
+    : (template?.interfaces ?? []).map((iface) => ({
+      key: iface.id,
+      number: iface.port_number,
+      label: iface.label,
+      connector: connectors.find((c) => c.id === iface.connector_id)?.name ?? null,
+      busy: false,
+    }));
 
   function toggleTag(id: number) {
     setTagIds((prev) => {
@@ -167,11 +192,83 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
               </Stack>
             </ScrollArea.Autosize>
           </div>
+          <PortsPreview ports={ports} hasTemplate={!!template} isEdit={isEdit} />
           <Group justify="flex-end" mt="sm">
             <Button type="submit" loading={pending}>{isEdit ? 'Сохранить' : 'Создать'}</Button>
           </Group>
         </Stack>
       </form>
     </Modal>
+  );
+}
+
+/** Порт в списке под формой — одинаково и для шаблонного, и для настоящего. */
+interface PreviewPort {
+  key: number;
+  number: number;
+  label: string;
+  connector: string | null;
+  busy: boolean;
+}
+
+/** Что за порты будут (или уже есть) у устройства.
+ *
+ * Состав портов задаётся шаблоном, поэтому здесь он только показан: выбрал
+ * шаблон — сразу видно, то ли это железо. Без этого списка ошибку в выборе
+ * модели замечали уже на карточке устройства, когда порты заведены и часть
+ * из них воткнута.
+ */
+function PortsPreview({ ports, hasTemplate, isEdit }: {
+  ports: PreviewPort[];
+  hasTemplate: boolean;
+  isEdit: boolean;
+}) {
+  return (
+    <div>
+      <Group gap={6} mb={4}>
+        <Text size="sm" fw={500}>Порты</Text>
+        {hasTemplate && <Badge size="xs" variant="light" color="gray">{ports.length}</Badge>}
+      </Group>
+      {!hasTemplate ? (
+        <Text size="sm" c="dimmed">Выберите шаблон устройства — порты появятся здесь.</Text>
+      ) : ports.length === 0 ? (
+        <Text size="sm" c="dimmed">У шаблона нет портов — их можно добавить во вкладке «Шаблоны».</Text>
+      ) : (
+        <ScrollArea.Autosize
+          mah={220}
+          style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}
+        >
+          <Table verticalSpacing={4} horizontalSpacing="sm" striped stickyHeader>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th w={44}>№</Table.Th>
+                <Table.Th>Название</Table.Th>
+                <Table.Th w={110}>Разъём</Table.Th>
+                {isEdit && <Table.Th w={90} />}
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {ports.map((port) => (
+                <Table.Tr key={port.key}>
+                  <Table.Td><Text size="xs" c="dimmed">{port.number}</Text></Table.Td>
+                  <Table.Td><Text size="sm">{port.label}</Text></Table.Td>
+                  <Table.Td><Text size="sm" c={port.connector ? undefined : 'dimmed'}>{port.connector ?? '—'}</Text></Table.Td>
+                  {isEdit && (
+                    <Table.Td>
+                      {port.busy && <Badge size="xs" color="teal" variant="light">занят</Badge>}
+                    </Table.Td>
+                  )}
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea.Autosize>
+      )}
+      <Text size="xs" c="dimmed" mt={4}>
+        {isEdit
+          ? 'Состав портов задаётся шаблоном; настройки порта правятся в карточке устройства.'
+          : 'Порты заведутся вместе с устройством.'}
+      </Text>
+    </div>
   );
 }
