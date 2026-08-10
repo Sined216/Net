@@ -16,7 +16,6 @@ import { CatalogPage } from './pages/CatalogPage';
 import { ImportPage } from './pages/ImportPage';
 import { SitesPage } from './pages/SitesPage';
 import { HistoryPage } from './pages/HistoryPage';
-import { TopologyJointPage } from './pages/TopologyJointPage';
 import { SiteProvider } from './sites/SiteContext';
 
 export function App() {
@@ -38,7 +37,8 @@ export function App() {
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/links" element={<LinksPage />} />
         <Route path="/topology" element={<TopologyPage />} />
-        <Route path="/topology-joint" element={<TopologyJointPage />} />
+        {/* Прежний адрес второй схемы: ссылки на неё могли осесть в закладках. */}
+        <Route path="/topology-joint" element={<Navigate to="/topology" replace />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/vlans" element={<VlansPage />} />

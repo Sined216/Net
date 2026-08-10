@@ -136,10 +136,6 @@ export function AppearanceMenu({ value, onChange }: Props) {
                 ]}
               />
             </Field>
-            <Switch
-              size="xs" label="Мини-карта" checked={value.minimap}
-              onChange={(e) => set('minimap', e.currentTarget.checked)}
-            />
 
             <Divider my={4} />
             <Group justify="space-between" align="center">

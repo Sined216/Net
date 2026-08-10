@@ -1,5 +1,3 @@
-import { createContext, useContext } from 'react';
-
 /** Внешний вид схемы связей.
  *
  * Настройка личная и лежит в браузере, а не в базе: это вкус, а не данные.
@@ -37,7 +35,6 @@ export interface TopologyAppearance {
   edgeLabelName: boolean;
 
   background: 'dots' | 'lines' | 'cross' | 'none';
-  minimap: boolean;
 }
 
 export const DEFAULT_APPEARANCE: TopologyAppearance = {
@@ -58,7 +55,6 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   edgeLabelName: true,
 
   background: 'dots',
-  minimap: true,
 };
 
 const STORAGE_KEY = 'netdoc.topology.appearance';
@@ -86,20 +82,14 @@ export function saveAppearance(value: TopologyAppearance): void {
   }
 }
 
-export const TopologyAppearanceContext = createContext<TopologyAppearance>(DEFAULT_APPEARANCE);
-
-export function useAppearance(): TopologyAppearance {
-  return useContext(TopologyAppearanceContext);
-}
-
 /** Цвет с прозрачностью. `color-mix` берёт любую запись цвета — и hex из
  * справочника, и переменную темы, — в отличие от склейки hex + альфа. */
 export function tint(color: string, percent: number): string {
   return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 }
 
-/** Цвета карточки узла: тёмная своими, светлая — цветами темы. Обе схемы
- * красят узел одинаково, поэтому набор один на двоих. */
+/** Цвета карточки узла. Тёмная — своими цветами, а не переменными темы:
+ * полотно схемы светлое независимо от темы интерфейса. */
 export function nodeColors(dark: boolean) {
   return {
     fill: dark ? '#1a1b1e' : '#ffffff',

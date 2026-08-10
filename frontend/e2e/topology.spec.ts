@@ -16,8 +16,8 @@ import { ensureUiUser, seedTopology } from './fixtures';
 const SLOW_MS = 1500;
 
 /** Безобидный шум браузера: срабатывает на любой перерисовке, к которой
- * привязан ResizeObserver (у React Flow он есть), приложение при этом
- * работает. Пропускать его нужно, иначе тест падал бы через раз. */
+ * привязан ResizeObserver (схема следит им за размером полотна), приложение
+ * при этом работает. Пропускать его нужно, иначе тест падал бы через раз. */
 const HARMLESS = /ResizeObserver loop/;
 
 async function collectPageErrors(page: Page) {
@@ -66,7 +66,7 @@ test('схема рисуется, когда часть запросов отв
   await page.goto('/topology');
 
   await expect(page.getByRole('heading', { name: 'Схема связей' })).toBeVisible();
-  await expect(page.locator('.react-flow__node').first()).toBeVisible();
+  await expect(page.locator('[data-type="netdoc.Device"]').first()).toBeVisible();
 
   // Приложение не должно упасть: пустой #root — это и есть «чёрный экран».
   const rootChildren = await page.evaluate(() => document.getElementById('root')?.children.length ?? 0);
@@ -89,7 +89,7 @@ test('повторные открытия схемы не роняют стра�
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.goto('/topology');
-    await expect(page.locator('.react-flow__node').first()).toBeVisible();
+    await expect(page.locator('[data-type="netdoc.Device"]').first()).toBeVisible();
     expect(errors, `ошибка на открытии №${attempt}`).toEqual([]);
   }
 });
