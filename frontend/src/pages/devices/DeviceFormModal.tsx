@@ -2,12 +2,15 @@ import { useState } from 'react';
 import {
   Badge, Button, Checkbox, Group, Modal, ScrollArea, Select, Stack, Table, Text, TextInput, Textarea,
 } from '@mantine/core';
+import { IconPencil } from '@tabler/icons-react';
 import {
   useConnectorTypes, useCreateDevice, useDeviceInterfaces, useDeviceTemplates, useMoveImportRow,
   useSetDeviceTags, useTags, useTopologyGroups, useUpdateDevice,
 } from '../../api/hooks';
+import { TemplateFormModal } from '../TemplatesPage';
 import { flattenTagsOrdered, nn } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { useCan } from '../../auth/permissions';
 import type { DeviceOut, DeviceRole, DeviceListItem } from '../../api/types';
 
 const ROLES: { value: DeviceRole; label: string }[] = [
@@ -45,6 +48,7 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
   importRowId?: number;
 }) {
   const isEdit = !!device;
+  const canEdit = useCan('edit');
   const { data: templates = [] } = useDeviceTemplates();
   const { data: tags = [] } = useTags();
   const { data: topologyGroups = [] } = useTopologyGroups();
@@ -61,6 +65,7 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
     device?.topology_group_id != null ? String(device.topology_group_id)
       : draft?.topology_group_id != null ? String(draft.topology_group_id) : null,
   );
+  const [editingTemplate, setEditingTemplate] = useState(false);
   const [tagIds, setTagIds] = useState<Set<number>>(
     new Set(device ? (device.tags ?? []).map((t) => t.id) : (draft?.tag_ids ?? [])),
   );
@@ -157,10 +162,30 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
                 }))}
                 value={templateId} onChange={setTemplateId}
               />
-              <Text size="xs" c="dimmed">Нет нужного шаблона? Сначала заведите его во вкладке «Шаблоны».</Text>
+              <Group gap={6}>
+                <Text size="xs" c="dimmed">Нет нужного шаблона? Заведите его во вкладке «Шаблоны».</Text>
+                {template && canEdit && (
+                  <Button
+                    size="compact-xs" variant="subtle" leftSection={<IconPencil size={13} />}
+                    onClick={() => setEditingTemplate(true)}
+                  >
+                    Править шаблон
+                  </Button>
+                )}
+              </Group>
             </>
           ) : (
-            <Text size="sm" c="dimmed">Шаблон: {template?.name ?? '—'} (после создания не меняется)</Text>
+            <Group gap={6}>
+              <Text size="sm" c="dimmed">Шаблон: {template?.name ?? '—'} (после создания не меняется)</Text>
+              {template && canEdit && (
+                <Button
+                  size="compact-xs" variant="subtle" leftSection={<IconPencil size={13} />}
+                  onClick={() => setEditingTemplate(true)}
+                >
+                  Править шаблон
+                </Button>
+              )}
+            </Group>
           )}
           <TextInput label="Название" placeholder="необязательно" value={name} onChange={(e) => setName(e.currentTarget.value)} />
           <Group grow>
@@ -198,6 +223,12 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
           </Group>
         </Stack>
       </form>
+      {/* Правка шаблона прямо отсюда: состав портов задаёт шаблон, и заметив
+          нехватку порта в списке ниже, незачем уходить на другую вкладку и
+          терять начатое заведение устройства. */}
+      {editingTemplate && template && (
+        <TemplateFormModal template={template} onClose={() => setEditingTemplate(false)} />
+      )}
     </Modal>
   );
 }

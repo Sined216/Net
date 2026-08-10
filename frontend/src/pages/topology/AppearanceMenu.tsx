@@ -98,6 +98,10 @@ export function AppearanceMenu({ value, onChange }: Props) {
               size="xs" label="Свечение по цвету модели" checked={value.deviceGlow}
               onChange={(e) => set('deviceGlow', e.currentTarget.checked)}
             />
+            <Switch
+              size="xs" label="Тёмная карточка узла" checked={value.deviceDark}
+              onChange={(e) => set('deviceDark', e.currentTarget.checked)}
+            />
 
             <Divider my={4} />
             <Section title="Связи" />

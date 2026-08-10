@@ -18,7 +18,7 @@ import { DeviceFormModal } from './devices/DeviceFormModal';
 import { groupDepth } from './topology/groups';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { AppearanceMenu } from './topology/AppearanceMenu';
-import { loadAppearance, saveAppearance, tint, type TopologyAppearance } from './topology/appearance';
+import { loadAppearance, nodeColors, saveAppearance, tint, type TopologyAppearance } from './topology/appearance';
 import {
   DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, STUB_SIZE, withAlpha,
 } from './topology/joint/shapes';
@@ -444,6 +444,7 @@ export function TopologyJointPage() {
     graph.clear();
     if (filteredDevices.length === 0) return;
 
+    const colors = nodeColors(look.deviceDark);
     const positions = computePositions(filteredDevices, links, placed, relayout);
     const boxes = computeBoxes(groups, filteredDevices, positions);
 
@@ -520,13 +521,17 @@ export function TopologyJointPage() {
               ? { name: 'dropShadow', args: { dx: 0, dy: 1, blur: 5, color: withAlpha(accent, 0.35) } }
               : null,
           },
+          body: { fill: colors.fill },
           dot: { fill: accent },
-          code: { text: device.code },
+          code: { text: device.code, fill: colors.code },
           ports: {
             text: look.devicePorts ? `${connected}/${device.interfaces.length}` : '',
-            fill: connected > 0 ? '#0ca678' : '#868e96',
+            fill: connected > 0 ? colors.portsBusy : colors.portsIdle,
           },
-          name: { text: look.deviceSubtitle ? cut(device.name || template?.name || typeName || '—', 26) : '' },
+          name: {
+            text: look.deviceSubtitle ? cut(device.name || template?.name || typeName || '—', 26) : '',
+            fill: colors.subtitle,
+          },
         },
       });
       graph.addCell(cell);

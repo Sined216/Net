@@ -22,13 +22,25 @@ export function TemplatesPage() {
   const { data: templates = [], isLoading } = useDeviceTemplates();
   const [editingTemplate, setEditingTemplate] = useState<DeviceTemplateOut | 'new' | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  /** Раскрытый тип устройств. Открыт один: типов немного, и раскрытые все
+   * сразу — это тот же сплошной список, от которого группировка и спасает. */
+  const [openType, setOpenType] = useState<number | null>(null);
   const deleteTemplate = useDeleteDeviceTemplate();
   const copyTemplate = useCopyDeviceTemplate();
   const { data: connectors = [] } = useConnectorTypes();
 
-  function typeName(id: number) {
-    return types.find((t) => t.id === id)?.name ?? '—';
-  }
+  // Шаблоны по типам техники: коммутаторы отдельно, станки отдельно. Тип без
+  // единого шаблона не показывается — пустой заголовок только мешает.
+  const byType = [
+    ...types.map((type) => ({ type, list: templates.filter((t) => t.device_type_id === type.id) })),
+    { type: undefined, list: templates.filter((t) => !types.some((x) => x.id === t.device_type_id)) },
+  ]
+    .filter(({ list }) => list.length > 0)
+    .map(({ type, list }) => ({
+      type,
+      list,
+      devices: list.reduce((sum, t) => sum + t.devices_count, 0),
+    }));
 
   return (
     <Stack>
@@ -42,82 +54,101 @@ export function TemplatesPage() {
       </Group>
       <Text c="dimmed" size="sm">
         Шаблон описывает модель техники: тип и набор портов. При добавлении устройства в спецификацию оборудования его
-        порты копируются из шаблона.
+        порты копируются из шаблона. Число рядом с названием — сколько устройств этой модели заведено на площадке.
       </Text>
 
-      <Stack gap="xs">
-        {templates.map((tpl) => (
-          <Card key={tpl.id} withBorder padding="sm">
-            <Group justify="space-between">
-              <UnstyledButton onClick={() => setExpanded(expanded === tpl.id ? null : tpl.id)} style={{ flex: 1 }}>
-                <Group gap="xs">
-                  {expanded === tpl.id ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-                  <Text fw={600}>{tpl.name}</Text>
-                  {tpl.color && <span className="tag-badge-dot" style={{ background: tpl.color }} />}
-                  {tpl.manufacturer && <Text c="dimmed">{tpl.manufacturer}</Text>}
-                  <Badge variant="light">{typeName(tpl.device_type_id)}</Badge>
-                  <Badge variant="light" color="gray">{tpl.interfaces.length} порт(ов)</Badge>
-                </Group>
-              </UnstyledButton>
-              <Group gap={4} display={canEdit ? undefined : 'none'}>
-                <ActionIcon variant="subtle" onClick={() => setEditingTemplate(tpl)} title="Правка">
-                  <IconEdit size={16} />
-                </ActionIcon>
-                <ActionIcon
-                  variant="subtle" title="Копия модели со всеми портами"
-                  onClick={() => copyTemplate.mutate(tpl.id, {
-                    onSuccess: (created) => notifySuccess(`Создан шаблон «${created.name}»`),
-                    onError: notifyError,
-                  })}
-                >
-                  <IconCopy size={16} />
-                </ActionIcon>
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  onClick={() => {
-                    if (!confirm(`Удалить шаблон "${tpl.name}"?`)) return;
-                    deleteTemplate.mutate(tpl.id, { onSuccess: () => notifySuccess('Шаблон удалён'), onError: notifyError });
-                  }}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Group>
+      {byType.map(({ type, list, devices }) => (
+        <div key={type?.id ?? 'none'}>
+          <UnstyledButton
+            onClick={() => setOpenType(openType === (type?.id ?? 0) ? null : (type?.id ?? 0))}
+            style={{ width: '100%' }}
+          >
+            <Group gap="xs" py={4}>
+              {openType === (type?.id ?? 0) ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+              <Text fw={700}>{type?.name ?? 'Без типа'}</Text>
+              <Badge variant="light" color="gray">{list.length} шаблон(ов)</Badge>
+              <Badge variant="light" color={devices > 0 ? 'teal' : 'gray'}>{devices} устройств(а)</Badge>
             </Group>
-            <Collapse expanded={expanded === tpl.id}>
-              <Stack mt="sm" gap={4}>
-                {tpl.notes && <Text size="sm" c="dimmed">{tpl.notes}</Text>}
-                <Table withTableBorder verticalSpacing={4}>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th w={60}>№</Table.Th>
-                      <Table.Th>Название</Table.Th>
-                      <Table.Th>Разъём</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {tpl.interfaces.map((i) => (
-                      <Table.Tr key={i.id}>
-                        <Table.Td fw={600}>{i.port_number}</Table.Td>
-                        <Table.Td>{i.label}</Table.Td>
-                        <Table.Td>{connectors.find((c) => c.id === i.connector_id)?.name ?? '—'}</Table.Td>
-                      </Table.Tr>
-                    ))}
-                    {tpl.interfaces.length === 0 && (
-                      <Table.Tr>
-                        <Table.Td colSpan={3}>
-                          <Text c="dimmed" size="sm">Портов ещё нет</Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    )}
-                  </Table.Tbody>
-                </Table>
-              </Stack>
-            </Collapse>
-          </Card>
-        ))}
-        {!isLoading && templates.length === 0 && <Text c="dimmed">Шаблонов ещё нет — начните с добавления хотя бы одного.</Text>}
-      </Stack>
+          </UnstyledButton>
+          <Collapse expanded={openType === (type?.id ?? 0)}>
+            <Stack gap="xs" mt="xs" ml="md">
+              {list.map((tpl) => (
+                <Card key={tpl.id} withBorder padding="sm">
+                  <Group justify="space-between">
+                    <UnstyledButton onClick={() => setExpanded(expanded === tpl.id ? null : tpl.id)} style={{ flex: 1 }}>
+                      <Group gap="xs">
+                        {expanded === tpl.id ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+                        <Text fw={600}>{tpl.name}</Text>
+                        {tpl.color && <span className="tag-badge-dot" style={{ background: tpl.color }} />}
+                        {tpl.manufacturer && <Text c="dimmed">{tpl.manufacturer}</Text>}
+                        <Badge variant="light" color="gray">{tpl.interfaces.length} порт(ов)</Badge>
+                        <Badge variant="light" color={tpl.devices_count > 0 ? 'teal' : 'gray'}>
+                          {tpl.devices_count} устройств(а)
+                        </Badge>
+                      </Group>
+                    </UnstyledButton>
+                    <Group gap={4} display={canEdit ? undefined : 'none'}>
+                      <ActionIcon variant="subtle" onClick={() => setEditingTemplate(tpl)} title="Правка">
+                        <IconEdit size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle" title="Копия модели со всеми портами"
+                        onClick={() => copyTemplate.mutate(tpl.id, {
+                          onSuccess: (created) => notifySuccess(`Создан шаблон «${created.name}»`),
+                          onError: notifyError,
+                        })}
+                      >
+                        <IconCopy size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={() => {
+                          if (!confirm(`Удалить шаблон "${tpl.name}"?`)) return;
+                          deleteTemplate.mutate(tpl.id, { onSuccess: () => notifySuccess('Шаблон удалён'), onError: notifyError });
+                        }}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Group>
+                  <Collapse expanded={expanded === tpl.id}>
+                    <Stack mt="sm" gap={4}>
+                      {tpl.notes && <Text size="sm" c="dimmed">{tpl.notes}</Text>}
+                      <Table withTableBorder verticalSpacing={4}>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th w={60}>№</Table.Th>
+                            <Table.Th>Название</Table.Th>
+                            <Table.Th>Разъём</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {tpl.interfaces.map((i) => (
+                            <Table.Tr key={i.id}>
+                              <Table.Td fw={600}>{i.port_number}</Table.Td>
+                              <Table.Td>{i.label}</Table.Td>
+                              <Table.Td>{connectors.find((c) => c.id === i.connector_id)?.name ?? '—'}</Table.Td>
+                            </Table.Tr>
+                          ))}
+                          {tpl.interfaces.length === 0 && (
+                            <Table.Tr>
+                              <Table.Td colSpan={3}>
+                                <Text c="dimmed" size="sm">Портов ещё нет</Text>
+                              </Table.Td>
+                            </Table.Tr>
+                          )}
+                        </Table.Tbody>
+                      </Table>
+                    </Stack>
+                  </Collapse>
+                </Card>
+              ))}
+            </Stack>
+          </Collapse>
+        </div>
+      ))}
+      {!isLoading && templates.length === 0 && <Text c="dimmed">Шаблонов ещё нет — начните с добавления хотя бы одного.</Text>}
 
       {editingTemplate && (
         <TemplateFormModal template={editingTemplate === 'new' ? null : editingTemplate} onClose={() => setEditingTemplate(null)} />

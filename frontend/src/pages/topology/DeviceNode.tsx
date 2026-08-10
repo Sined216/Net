@@ -2,7 +2,7 @@ import { Handle, NodeToolbar, Position, type NodeProps, type Node } from '@xyflo
 import { ActionIcon, Group, Paper, Text, Tooltip } from '@mantine/core';
 import { IconCopy, IconPencil, IconTrash, IconUsersGroup } from '@tabler/icons-react';
 import { useTopologyActions } from './actions';
-import { useAppearance } from './appearance';
+import { nodeColors, useAppearance } from './appearance';
 
 export interface DeviceNodeData extends Record<string, unknown> {
   code: string;
@@ -41,6 +41,7 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
   const connected = data.portsConnected > 0;
   const actions = useTopologyActions();
   const look = useAppearance();
+  const colors = nodeColors(look.deviceDark);
   const deviceId = parseInt(id, 10);
 
   return (
@@ -106,7 +107,7 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
       <div
         style={{
           borderRadius: 8.5,
-          background: 'var(--mantine-color-body)',
+          background: colors.fill,
           padding: '7px 9px',
           height: '100%',
         }}
@@ -118,17 +119,20 @@ export function DeviceNode({ id, data, selected }: NodeProps<DeviceNodeType>) {
               background: accent,
             }}
           />
-          <Text size="sm" fw={700} truncate style={{ flex: 1, minWidth: 0 }}>
+          <Text size="sm" fw={700} truncate style={{ flex: 1, minWidth: 0, color: colors.code }}>
             {data.code}
           </Text>
           {look.devicePorts && (
-            <Text size="xs" c={connected ? 'teal' : 'dimmed'} fw={600} style={{ flexShrink: 0 }}>
+            <Text
+              size="xs" fw={600}
+              style={{ flexShrink: 0, color: connected ? colors.portsBusy : colors.portsIdle }}
+            >
               {data.portsConnected}/{data.portsTotal}
             </Text>
           )}
         </div>
         {look.deviceSubtitle && (
-          <Text size="xs" c="dimmed" truncate mt={2}>
+          <Text size="xs" truncate mt={2} style={{ color: colors.subtitle }}>
             {data.subtitle}
           </Text>
         )}

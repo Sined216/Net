@@ -25,6 +25,9 @@ export interface TopologyAppearance {
   devicePorts: boolean;
   /** Цветное свечение вокруг узла. Без него схема суше, но спокойнее. */
   deviceGlow: boolean;
+  /** Тёмная карточка узла. На светлом полотне цветная рамка модели читается
+   * заметно лучше, чем на белом узле, — ради этого вид и задумывался. */
+  deviceDark: boolean;
 
   edgeWidth: number;
   /** Подписи портов на концах линии. */
@@ -48,6 +51,7 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   deviceSubtitle: true,
   devicePorts: true,
   deviceGlow: true,
+  deviceDark: true,
 
   edgeWidth: 2,
   edgeLabels: true,
@@ -92,4 +96,16 @@ export function useAppearance(): TopologyAppearance {
  * справочника, и переменную темы, — в отличие от склейки hex + альфа. */
 export function tint(color: string, percent: number): string {
   return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+}
+
+/** Цвета карточки узла: тёмная своими, светлая — цветами темы. Обе схемы
+ * красят узел одинаково, поэтому набор один на двоих. */
+export function nodeColors(dark: boolean) {
+  return {
+    fill: dark ? '#1a1b1e' : '#ffffff',
+    code: dark ? '#f8f9fa' : '#212529',
+    subtitle: dark ? '#909296' : '#868e96',
+    portsIdle: dark ? '#909296' : '#868e96',
+    portsBusy: dark ? '#38d9a9' : '#0ca678',
+  };
 }

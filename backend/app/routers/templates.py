@@ -1,25 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import cables, models, ports, schemas, auth
+from app import cables, models, ports, schemas, auth, sites
 from app.audit import log_change
 
 router = APIRouter(prefix="/device-templates", tags=["device-templates"])
 
 
 @router.get("", response_model=list[schemas.DeviceTemplateOut])
-def list_templates(device_type_id: int | None = None, db: Session = Depends(get_db)):
+def list_templates(device_type_id: int | None = None, db: Session = Depends(get_db),
+                    site_id: int = Depends(sites.current_site_id)):
     q = db.query(models.DeviceTemplate).options(joinedload(models.DeviceTemplate.interfaces))
     if device_type_id is not None:
         q = q.filter(models.DeviceTemplate.device_type_id == device_type_id)
-    return q.order_by(models.DeviceTemplate.name).all()
+    templates = q.order_by(models.DeviceTemplate.name).all()
+
+    counts = _devices_count(db, site_id)
+    result = []
+    for template in templates:
+        out = schemas.DeviceTemplateOut.model_validate(template)
+        out.devices_count = counts.get(template.id, 0)
+        result.append(out)
+    return result
 
 
 @router.get("/{template_id}", response_model=schemas.DeviceTemplateOut)
-def get_template(template_id: int, db: Session = Depends(get_db)):
+def get_template(template_id: int, db: Session = Depends(get_db),
+                  site_id: int = Depends(sites.current_site_id)):
     template = (
         db.query(models.DeviceTemplate)
         .options(joinedload(models.DeviceTemplate.interfaces))
@@ -28,7 +38,21 @@ def get_template(template_id: int, db: Session = Depends(get_db)):
     )
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
-    return template
+    out = schemas.DeviceTemplateOut.model_validate(template)
+    out.devices_count = _devices_count(db, site_id).get(template.id, 0)
+    return out
+
+
+def _devices_count(db: Session, site_id: int) -> dict[int, int]:
+    """Сколько устройств заведено по каждому шаблону — одним запросом на весь
+    список: по запросу на шаблон это сотня запросов на открытие вкладки."""
+    rows = (
+        db.query(models.Device.template_id, func.count(models.Device.id))
+        .filter(models.Device.site_id == site_id)
+        .group_by(models.Device.template_id)
+        .all()
+    )
+    return {template_id: count for template_id, count in rows}
 
 
 @router.post("", response_model=schemas.DeviceTemplateOut, status_code=201)
@@ -59,7 +83,8 @@ def create_template(payload: schemas.DeviceTemplateCreate, db: Session = Depends
 
 @router.patch("/{template_id}", response_model=schemas.DeviceTemplateOut)
 def update_template(template_id: int, payload: schemas.DeviceTemplateUpdate, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.can_edit)):
+                     user: models.User = Depends(auth.can_edit),
+                     site_id: int = Depends(sites.current_site_id)):
     template = db.query(models.DeviceTemplate).filter(models.DeviceTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
@@ -71,7 +96,9 @@ def update_template(template_id: int, payload: schemas.DeviceTemplateUpdate, db:
     log_change(db, user.id, "update", "device_template", template.id, old=old_snapshot, new=template)
     db.commit()
     db.refresh(template)
-    return template
+    out = schemas.DeviceTemplateOut.model_validate(template)
+    out.devices_count = _devices_count(db, site_id).get(template.id, 0)
+    return out
 
 
 @router.delete("/{template_id}", status_code=204)

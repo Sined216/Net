@@ -247,6 +247,8 @@ export interface DeviceTemplateOut {
   color: string | null;
   ports_editable_on_device: boolean;
   interfaces: InterfaceTemplateOut[];
+  /** Сколько устройств этой модели заведено на текущей площадке. */
+  devices_count: number;
 }
 
 /** Что заденет правка портов модели. */
@@ -527,6 +529,11 @@ export interface DevicePage {
 }
 export interface DeviceQuery {
   q?: string;
+  /** Отбор по отдельной колонке таблицы — по куску текста, без учёта регистра. */
+  code?: string;
+  name?: string;
+  management_ip?: string;
+  location?: string;
   tag_id?: number;
   device_type_id?: number;
   template_id?: number;

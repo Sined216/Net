@@ -403,6 +403,10 @@ class DeviceTemplateOut(DeviceTemplateBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     interfaces: List[InterfaceTemplateOut] = []
+    # Сколько железок этой модели заведено на текущей площадке. Сам шаблон
+    # общий для всех площадок, а счёт — местный: он отвечает на вопрос «что
+    # у нас стоит», а не «что бывает на свете».
+    devices_count: int = 0
 
 
 # ---------- Interface ----------

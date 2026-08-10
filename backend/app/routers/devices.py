@@ -14,6 +14,7 @@ SORTS = {
     "code": models.Device.code,
     "name": models.Device.name,
     "location": models.Device.location,
+    "management_ip": models.Device.management_ip,
     "updated_at": models.Device.updated_at,
 }
 
@@ -21,7 +22,10 @@ SORTS = {
 @router.get("", response_model=schemas.DevicePage)
 def list_devices(tag_id: int | None = None, template_id: int | None = None,
                   device_type_id: int | None = None, topology_group_id: int | None = None,
-                  q: str | None = None, sort: str = "code", desc: bool = False,
+                  q: str | None = None,
+                  code: str | None = None, name: str | None = None,
+                  management_ip: str | None = None, location: str | None = None,
+                  sort: str = "code", desc: bool = False,
                   limit: int = Query(default=50, ge=1, le=500), offset: int = Query(default=0, ge=0),
                   db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
     """Список устройств — страницами и без портов.
@@ -46,16 +50,24 @@ def list_devices(tag_id: int | None = None, template_id: int | None = None,
             models.DeviceTemplate.device_type_id == device_type_id
         )
     if q:
-        # % и _ в ILIKE — шаблоны, а не символы: человек ищет текст, а не
-        # пишет шаблон (та же оговорка, что и в общем поиске).
-        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        like = f"%{escaped}%"
+        like = _like(q)
         query = query.filter(or_(
             models.Device.code.ilike(like),
             models.Device.name.ilike(like),
             models.Device.location.ilike(like),
             cast(models.Device.management_ip, Text).ilike(like),
         ))
+    # Отбор по отдельной колонке — для таблицы, где под каждым заголовком
+    # своё поле. Условия складываются: набрали «SW» в коде и «цех» в
+    # расположении — значит нужны коммутаторы в цехе.
+    if code:
+        query = query.filter(models.Device.code.ilike(_like(code)))
+    if name:
+        query = query.filter(models.Device.name.ilike(_like(name)))
+    if location:
+        query = query.filter(models.Device.location.ilike(_like(location)))
+    if management_ip:
+        query = query.filter(cast(models.Device.management_ip, Text).ilike(_like(management_ip)))
 
     total = query.count()
     column = SORTS.get(sort, models.Device.code)
@@ -66,6 +78,13 @@ def list_devices(tag_id: int | None = None, template_id: int | None = None,
         .limit(limit).offset(offset).all()
     )
     return schemas.DevicePage(items=serialize.serialize_device_list(db, devices), total=total)
+
+
+def _like(value: str) -> str:
+    """Отбор по куску текста. % и _ здесь — символы, а не шаблон: человек
+    ищет текст, а не пишет выражение (та же оговорка, что и в общем поиске)."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 @router.get("/{device_id}", response_model=schemas.DeviceOut)
