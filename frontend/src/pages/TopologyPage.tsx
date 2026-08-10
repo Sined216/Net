@@ -730,6 +730,14 @@ export function TopologyPage() {
           {/* Настройки вида — не правка данных: смотрящему они нужны так же,
               как и всем, и 403 за ними не стоит. */}
           <AppearanceMenu value={look} onChange={changeLook} />
+          {/* Проба другой библиотеки рисования — отдельным окном, чтобы
+              сравнить, не трогая рабочую схему. */}
+          <Button
+            variant="subtle" size="compact-sm" color="gray"
+            onClick={() => window.open(`/topology-joint?site=${searchParams.get('site') ?? ''}`, '_blank', 'noopener')}
+          >
+            JointJS
+          </Button>
           {canEdit && (
             <Button leftSection={<IconPlus size={16} />} onClick={() => setAddingDevice(true)}>
               Устройство
