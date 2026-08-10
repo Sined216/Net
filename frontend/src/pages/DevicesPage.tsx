@@ -1,48 +1,63 @@
-import { useMemo, useState } from 'react';
-import { Button, Group, Select, Stack, Text, Title } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { useEffect, useState } from 'react';
+import { Button, Group, Select, Stack, Text, TextInput, Title } from '@mantine/core';
+import { IconPlus, IconSearch } from '@tabler/icons-react';
+import { useDebouncedValue } from '@mantine/hooks';
 import { useDeviceTemplates, useDeviceTypes, useDevices, useTags, useVlans } from '../api/hooks';
 import { flattenTagsOrdered } from '../lib/utils';
 import { DeviceCard, typeNameForTemplate } from './devices/DeviceCard';
 import { DeviceFormModal } from './devices/DeviceFormModal';
-import type { FreeEntry } from './devices/InterfaceRow';
-import type { DeviceOut } from '../api/types';
+import type { DeviceListItem } from '../api/types';
 import { useCan } from '../auth/permissions';
 
+const PAGE = 50;
+
+/** Спецификация оборудования.
+ *
+ * Отбор, поиск и постраничность считает сервер: на тысяче устройств
+ * фильтровать в браузере можно, только сначала привезя туда всё вместе с
+ * портами — а это и делало страницу неподъёмной.
+ */
 export function DevicesPage() {
   const canEdit = useCan('edit');
-  const { data: devices = [] } = useDevices();
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  // Пока человек печатает, запрос не уходит на каждую букву.
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const [shown, setShown] = useState(PAGE);
+  const [editing, setEditing] = useState<DeviceListItem | 'new' | null>(null);
+
+  // Сменили условия отбора — начинаем показ заново, иначе «показать ещё»
+  // продолжало бы список, которого уже нет.
+  useEffect(() => setShown(PAGE), [tagFilter, typeFilter, debouncedSearch]);
+
+  const { data, isLoading } = useDevices({
+    q: debouncedSearch.trim() || undefined,
+    tag_id: tagFilter ? parseInt(tagFilter, 10) : undefined,
+    device_type_id: typeFilter ? parseInt(typeFilter, 10) : undefined,
+    limit: shown,
+  });
+  const devices = data?.items ?? [];
+  const total = data?.total ?? 0;
+
   const { data: templates = [] } = useDeviceTemplates();
   const { data: types = [] } = useDeviceTypes();
   const { data: vlans = [] } = useVlans();
   const { data: tags = [] } = useTags();
 
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [editing, setEditing] = useState<DeviceOut | 'new' | null>(null);
-
-  const freeEntries: FreeEntry[] = useMemo(() => {
-    const out: FreeEntry[] = [];
-    // Свободен тот порт, в котором нет кабеля вообще. Подвешенный кабель
-    // тоже воткнут — такой порт занят, хоть на другом конце и пусто.
-    for (const d of devices) for (const i of d.interfaces) if (!i.link_id) out.push({ device: d, iface: i });
-    return out;
-  }, [devices]);
-
-  const filtered = devices
-    .filter((d) => !tagFilter || d.tags.some((t) => String(t.id) === tagFilter))
-    .filter((d) => {
-      if (!typeFilter) return true;
-      const tpl = templates.find((t) => t.id === d.template_id);
-      return tpl ? String(tpl.device_type_id) === typeFilter : false;
-    })
-    .sort((a, b) => a.code.localeCompare(b.code));
-
   return (
     <Stack>
       <Group justify="space-between" wrap="wrap">
-        <Title order={2}>Устройства</Title>
+        <Group gap="xs">
+          <Title order={2}>Устройства</Title>
+          <Text c="dimmed">{total}</Text>
+        </Group>
         <Group>
+          <TextInput
+            placeholder="Код, имя, IP, расположение" w={260}
+            leftSection={<IconSearch size={16} />}
+            value={search} onChange={(e) => setSearch(e.currentTarget.value)}
+          />
           <Select
             placeholder="Все теги" clearable w={200}
             data={flattenTagsOrdered(tags).map(({ tag, depth }) => ({ value: String(tag.id), label: `${'—'.repeat(depth)} ${tag.name}` }))}
@@ -60,7 +75,7 @@ export function DevicesPage() {
       </Group>
 
       <Stack gap="xs">
-        {filtered.map((d) => {
+        {devices.map((d) => {
           const template = templates.find((t) => t.id === d.template_id);
           return (
             <DeviceCard
@@ -69,15 +84,29 @@ export function DevicesPage() {
               template={template}
               typeName={typeNameForTemplate(template, types)}
               vlans={vlans}
-              freeEntries={freeEntries}
               onEdit={() => setEditing(d)}
             />
           );
         })}
-        {filtered.length === 0 && <Text c="dimmed">Нет устройств по выбранным фильтрам.</Text>}
+        {devices.length === 0 && (
+          <Text c="dimmed">{isLoading ? 'Загрузка…' : 'Нет устройств по выбранным условиям.'}</Text>
+        )}
       </Stack>
 
-      {editing && <DeviceFormModal device={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+      {devices.length < total && (
+        <Group justify="center">
+          <Button variant="default" onClick={() => setShown((n) => n + PAGE)}>
+            Показать ещё ({total - devices.length})
+          </Button>
+        </Group>
+      )}
+
+      {editing && (
+        <DeviceFormModal
+          device={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </Stack>
   );
 }

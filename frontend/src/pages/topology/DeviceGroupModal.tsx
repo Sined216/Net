@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useDevices, useTopologyGroups, useUpdateDevice } from '../../api/hooks';
+import { useTopologyDevices, useTopologyGroups, useUpdateDevice } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { orderedGroups } from './groups';
 
@@ -11,7 +11,7 @@ import { orderedGroups } from './groups';
  * пустой, без единого устройства и потому без рамки.
  */
 export function DeviceGroupModal({ deviceId, onClose }: { deviceId: number; onClose: () => void }) {
-  const { data: devices = [] } = useDevices();
+  const { data: devices = [] } = useTopologyDevices();
   const { data: groups = [] } = useTopologyGroups();
   const updateDevice = useUpdateDevice();
 

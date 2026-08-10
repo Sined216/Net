@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, ColorInput, Group, Modal, MultiSelect, Select, Stack, Text, TextInput } from '@mantine/core';
 import {
-  useCreateTopologyGroup, useDevices, useTopologyGroups, useUpdateDevice, useUpdateTopologyGroup,
+  useCreateTopologyGroup, useTopologyDevices, useTopologyGroups, useUpdateDevice, useUpdateTopologyGroup,
 } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { orderedGroups } from './groups';
@@ -25,7 +25,7 @@ export function GroupEditModal({
 }) {
   const isEdit = !!group;
   const { data: groups = [] } = useTopologyGroups();
-  const { data: devices = [] } = useDevices();
+  const { data: devices = [] } = useTopologyDevices();
   const createGroup = useCreateTopologyGroup();
   const updateGroup = useUpdateTopologyGroup();
   const updateDevice = useUpdateDevice();

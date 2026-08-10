@@ -97,9 +97,9 @@ def test_row_moves_into_the_specification(client, headers, template):
 
 def test_import_does_not_touch_the_specification_by_itself(client, headers):
     """Пока строки не перенесли, устройств не прибавляется."""
-    before = len(client.get("/devices", headers=headers["viewer"]).json())
+    before = client.get("/devices", headers=headers["viewer"]).json()["total"]
     upload(client, headers, "устройства.csv", CSV_FILE)
-    assert len(client.get("/devices", headers=headers["viewer"]).json()) == before
+    assert client.get("/devices", headers=headers["viewer"]).json()["total"] == before
 
 
 def test_rows_can_be_dropped(client, headers):

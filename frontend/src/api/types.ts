@@ -404,6 +404,8 @@ export interface LinkUpdate {
 }
 
 export interface LinkOut {
+  end_a?: LinkEndOut | null;
+  end_b?: LinkEndOut | null;
   id: number;
   /** Пусто — конец «подвешен»: порт удалили, кабель остался. */
   interface_a_id: number | null;
@@ -495,4 +497,69 @@ export interface AuditQuery {
   since?: string;
   limit?: number;
   offset?: number;
+}
+
+// ---------- Список устройств (без портов) ----------
+export interface DeviceListItem {
+  id: number;
+  template_id: number;
+  code: string;
+  name: string | null;
+  management_ip: string | null;
+  location: string | null;
+  role: DeviceRole | null;
+  install_date: string | null;
+  notes: string | null;
+  topology_group_id: number | null;
+  topology_x: number | null;
+  topology_y: number | null;
+  ports_total: number;
+  ports_connected: number;
+  tags: TagOut[];
+}
+export interface DevicePage {
+  items: DeviceListItem[];
+  total: number;
+}
+export interface DeviceQuery {
+  q?: string;
+  tag_id?: number;
+  device_type_id?: number;
+  template_id?: number;
+  topology_group_id?: number;
+  sort?: string;
+  desc?: boolean;
+  limit?: number;
+  offset?: number;
+}
+export interface LinkEndOut {
+  device_id: number;
+  device_code: string;
+  device_name: string | null;
+  interface_id: number;
+  interface_label: string;
+  port_number: number;
+}
+export interface LinkPage {
+  items: LinkOut[];
+  total: number;
+}
+export interface LinkQuery {
+  device_id?: number;
+  dangling?: boolean;
+  limit?: number;
+  offset?: number;
+}
+export interface FreePortOut {
+  interface_id: number;
+  label: string;
+  port_number: number;
+  device_id: number;
+  device_code: string;
+  device_name: string | null;
+}
+export interface FreePortQuery {
+  q?: string;
+  exclude_device_id?: number;
+  limit?: number;
 }

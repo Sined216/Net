@@ -15,6 +15,7 @@ import type {
   TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox,
   SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
   SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
+  DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
 } from './types';
 
 // ---------- Auth ----------
@@ -96,8 +97,16 @@ export const deleteTemplateInterface = (templateId: number, ifaceId: number) =>
   apiFetch<void>(`/device-templates/${templateId}/interfaces/${ifaceId}`, { method: 'DELETE' });
 
 // ---------- Devices ----------
-export const listDevices = () => apiFetch<DeviceOut[]>('/devices');
+export const listDevices = (query: DeviceQuery = {}) =>
+  apiFetch<DevicePage>('/devices', { query: query as Record<string, string | number | undefined> });
+/** Устройства со всеми портами — только для схемы связей: она рисует
+ * площадку целиком и страницами не показывается. */
+export const listTopologyDevices = () => apiFetch<DeviceOut[]>('/topology/devices');
+export const listFreePorts = (query: FreePortQuery = {}) =>
+  apiFetch<FreePortOut[]>('/interfaces/free', { query: query as Record<string, string | number | undefined> });
 export const getDevice = (id: number) => apiFetch<DeviceOut>(`/devices/${id}`);
+export const listInterfaces = (deviceId: number) =>
+  apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces`);
 export const createDevice = (body: DeviceCreate) => apiFetch<DeviceOut>('/devices', { method: 'POST', body });
 export const updateDevice = (id: number, body: DeviceUpdate) => apiFetch<DeviceOut>(`/devices/${id}`, { method: 'PATCH', body });
 export const deleteDevice = (id: number) => apiFetch<void>(`/devices/${id}`, { method: 'DELETE' });
@@ -123,7 +132,8 @@ export const updateLinkTemplate = (id: number, body: LinkTemplateUpdate) => apiF
 export const deleteLinkTemplate = (id: number) => apiFetch<void>(`/link-templates/${id}`, { method: 'DELETE' });
 
 // ---------- Links ----------
-export const listLinks = () => apiFetch<LinkOut[]>('/links');
+export const listLinks = (query: LinkQuery = {}) =>
+  apiFetch<LinkPage>('/links', { query: query as Record<string, string | number | undefined> });
 export const createLink = (body: LinkCreate) => apiFetch<LinkOut>('/links', { method: 'POST', body });
 export const updateLink = (id: number, body: LinkUpdate) => apiFetch<LinkOut>(`/links/${id}`, { method: 'PATCH', body });
 export const deleteLink = (id: number) => apiFetch<void>(`/links/${id}`, { method: 'DELETE' });

@@ -102,6 +102,13 @@ cd frontend && npm install && npm run dev
 Откроется `http://localhost:5173`, запросы пойдут на `http://localhost:8000`
 (адрес по умолчанию для `npm run dev`, поменять можно на экране входа).
 
+Наполнить базу для проверки на настоящем объёме (тысяча устройств):
+
+```bash
+cd backend && python -m scripts.generate_data --devices 1000
+python -m scripts.generate_data --clean     # убрать сгенерированное
+```
+
 Подробности — в [`backend/README.md`](backend/README.md) и
 [`frontend/README.md`](frontend/README.md).
 

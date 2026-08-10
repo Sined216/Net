@@ -6,7 +6,7 @@ import {
 } from '../../api/hooks';
 import { flattenTagsOrdered, nn } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
-import type { DeviceOut, DeviceRole } from '../../api/types';
+import type { DeviceOut, DeviceRole, DeviceListItem } from '../../api/types';
 
 const ROLES: { value: DeviceRole; label: string }[] = [
   { value: 'core', label: 'core' },
@@ -27,7 +27,9 @@ export interface DeviceDraft {
 }
 
 export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId }: {
-  device: DeviceOut | null;
+  /** Правится существующее устройство или заводится новое. Хватает лёгкой
+   * записи из списка: в форме нет ни одного поля, которого в ней нет. */
+  device: DeviceOut | DeviceListItem | null;
   onClose: () => void;
   /** Позволяет вызвавшей странице доделать своё — например схеме поставить
    * новый узел туда, куда человек смотрит. */

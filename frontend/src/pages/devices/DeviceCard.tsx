@@ -2,20 +2,19 @@ import { useState } from 'react';
 import { ActionIcon, Badge, Button, Card, Collapse, Group, NumberInput, Table, Text, UnstyledButton } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconEdit, IconExternalLink, IconPlus, IconTrash } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
-import { useAddInterface, useAddInterfacesBulk, useDeleteDevice } from '../../api/hooks';
+import { useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDeviceInterfaces } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
-import { InterfaceRow, type FreeEntry } from './InterfaceRow';
-import type { DeviceOut, DeviceTemplateOut, DeviceTypeOut, VlanOut } from '../../api/types';
+import { InterfaceRow } from './InterfaceRow';
+import type { DeviceListItem, DeviceTemplateOut, DeviceTypeOut, VlanOut } from '../../api/types';
 import { useCan } from '../../auth/permissions';
 
 export function DeviceCard({
-  device, template, typeName, vlans, freeEntries, onEdit,
+  device, template, typeName, vlans, onEdit,
 }: {
-  device: DeviceOut;
+  device: DeviceListItem;
   template: DeviceTemplateOut | undefined;
   typeName: string;
   vlans: VlanOut[];
-  freeEntries: FreeEntry[];
   onEdit: () => void;
 }) {
   const canEdit = useCan('edit');
@@ -27,7 +26,9 @@ export function DeviceCard({
 
   const portsEditable = template?.ports_editable_on_device ?? false;
 
-  const ifaces = [...device.interfaces].sort((a, b) => a.port_number - b.port_number);
+  // Порты приезжают, только когда карточку раскрыли: в списке из тысячи
+  // устройств они и составляли почти весь вес страницы.
+  const { data: ifaces = [], isLoading: portsLoading } = useDeviceInterfaces(open ? device.id : null);
   const displayName = device.name || template?.name || '—';
 
   function handleDelete() {
@@ -36,7 +37,7 @@ export function DeviceCard({
   }
 
   function addPort() {
-    const n = device.interfaces.length + 1;
+    const n = device.ports_total + 1;
     addInterface.mutate({ deviceId: device.id, body: { label: `Порт ${n}` } }, { onError: notifyError });
   }
 
@@ -58,7 +59,9 @@ export function DeviceCard({
             <Badge variant="light">{typeName}</Badge>
             {device.name && template && <Badge variant="light" color="grape">{template.name}</Badge>}
             {device.management_ip && <Badge variant="light" color="gray">{device.management_ip}</Badge>}
-            <Badge variant="light" color="gray">{ifaces.length} порт(ов)</Badge>
+            <Badge variant="light" color="gray">
+              {device.ports_connected}/{device.ports_total} порт(ов)
+            </Badge>
             {device.tags.map((t) => (
               <Badge key={t.id} variant="outline" color={t.color ?? 'gray'} title={t.name}>
                 {t.name}
@@ -93,10 +96,14 @@ export function DeviceCard({
             </Table.Thead>
             <Table.Tbody>
               {ifaces.map((i) => (
-                <InterfaceRow key={i.id} iface={i} vlans={vlans} freeEntries={freeEntries} portsEditable={portsEditable} />
+                <InterfaceRow key={i.id} iface={i} vlans={vlans} portsEditable={portsEditable} />
               ))}
               {ifaces.length === 0 && (
-                <Table.Tr><Table.Td colSpan={9}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>
+                <Table.Tr>
+                  <Table.Td colSpan={10}>
+                    <Text c="dimmed" size="sm">{portsLoading ? 'Загрузка портов…' : 'Портов ещё нет'}</Text>
+                  </Table.Td>
+                </Table.Tr>
               )}
             </Table.Tbody>
           </Table>

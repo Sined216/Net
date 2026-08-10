@@ -1,15 +1,14 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import {
   ActionIcon, Anchor, Badge, Button, Card, Group, NumberInput, Paper, Stack, Table, Text, Title,
 } from '@mantine/core';
 import { IconArrowLeft, IconPlus, IconTopologyStar, IconTrash } from '@tabler/icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDeviceTemplates, useDeviceTypes, useDevices, useVlans,
+  useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDevice, useDeviceTemplates, useDeviceTypes, useVlans,
 } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
-import { InterfaceRow, type FreeEntry } from './devices/InterfaceRow';
-import { useState } from 'react';
+import { InterfaceRow } from './devices/InterfaceRow';
 import { useCan } from '../auth/permissions';
 import { DeviceHistory } from '../history/DeviceHistory';
 
@@ -24,7 +23,8 @@ export function DevicePage() {
   const canEdit = useCan('edit');
   const { deviceId } = useParams();
   const navigate = useNavigate();
-  const { data: devices = EMPTY, isLoading } = useDevices();
+  const id = Number(deviceId);
+  const { data: device, isLoading } = useDevice(id);
   const { data: templates = EMPTY } = useDeviceTemplates();
   const { data: types = EMPTY } = useDeviceTypes();
   const { data: vlans = EMPTY } = useVlans();
@@ -33,19 +33,8 @@ export function DevicePage() {
   const deleteDevice = useDeleteDevice();
   const [bulkCount, setBulkCount] = useState<number | ''>(24);
 
-  const id = Number(deviceId);
-  const device = devices.find((d) => d.id === id);
   const template = templates.find((t) => t.id === device?.template_id);
   const typeName = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '—' : '—';
-
-  // Свободные порты всех устройств — из них выбирают, куда подключить порт.
-  const freeEntries: FreeEntry[] = useMemo(() => {
-    const out: FreeEntry[] = [];
-    // Свободен тот порт, в котором нет кабеля вообще. Подвешенный кабель
-    // тоже воткнут — такой порт занят, хоть на другом конце и пусто.
-    for (const d of devices) for (const i of d.interfaces) if (!i.link_id) out.push({ device: d, iface: i });
-    return out;
-  }, [devices]);
 
   if (isLoading) return <Text c="dimmed">Загрузка…</Text>;
   if (!device) {
@@ -150,7 +139,7 @@ export function DevicePage() {
           </Table.Thead>
           <Table.Tbody>
             {interfaces.map((i) => (
-              <InterfaceRow key={i.id} iface={i} vlans={vlans} freeEntries={freeEntries} portsEditable={portsEditable} />
+              <InterfaceRow key={i.id} iface={i} vlans={vlans} portsEditable={portsEditable} />
             ))}
             {interfaces.length === 0 && (
               <Table.Tr><Table.Td colSpan={9}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>

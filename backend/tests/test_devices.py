@@ -87,7 +87,7 @@ def test_filter_devices_by_tag(client, headers, make_device):
     make_device()
 
     response = client.get("/devices", params={"tag_id": tag["id"]}, headers=headers["viewer"])
-    assert [d["id"] for d in response.json()] == [tagged["id"]]
+    assert [d["id"] for d in response.json()["items"]] == [tagged["id"]]
 
 
 def test_ports_cannot_be_added_to_device_by_default(client, headers, make_device):

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import Text, cast, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -10,27 +10,62 @@ from app.codegen import next_device_code
 router = APIRouter(prefix="/devices", tags=["devices"])
 
 
-@router.get("", response_model=list[schemas.DeviceOut])
+SORTS = {
+    "code": models.Device.code,
+    "name": models.Device.name,
+    "location": models.Device.location,
+    "updated_at": models.Device.updated_at,
+}
+
+
+@router.get("", response_model=schemas.DevicePage)
 def list_devices(tag_id: int | None = None, template_id: int | None = None,
                   device_type_id: int | None = None, topology_group_id: int | None = None,
+                  q: str | None = None, sort: str = "code", desc: bool = False,
+                  limit: int = Query(default=50, ge=1, le=500), offset: int = Query(default=0, ge=0),
                   db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
-    q = (
-        db.query(models.Device)
-        .options(joinedload(models.Device.interfaces), joinedload(models.Device.tags))
-        .filter(models.Device.site_id == site_id)
-    )
+    """Список устройств — страницами и без портов.
+
+    Порты в списке не нужны и составляют почти весь его вес: на тысяче
+    устройств по 24 порта это двадцать четыре тысячи вложенных объектов.
+    Здесь вместо них два числа — всего и занято, — а сами порты подтягивает
+    раскрытая карточка (`GET /devices/{id}/interfaces`).
+
+    Отбор и поиск считает база, а не интерфейс: фильтровать тысячу записей на
+    стороне клиента можно, только сначала их туда привезя.
+    """
+    query = db.query(models.Device).filter(models.Device.site_id == site_id)
     if tag_id is not None:
-        q = q.filter(models.Device.tags.any(models.Tag.id == tag_id))
+        query = query.filter(models.Device.tags.any(models.Tag.id == tag_id))
     if topology_group_id is not None:
-        q = q.filter(models.Device.topology_group_id == topology_group_id)
+        query = query.filter(models.Device.topology_group_id == topology_group_id)
     if template_id is not None:
-        q = q.filter(models.Device.template_id == template_id)
+        query = query.filter(models.Device.template_id == template_id)
     if device_type_id is not None:
-        q = q.join(models.DeviceTemplate, models.Device.template_id == models.DeviceTemplate.id).filter(
+        query = query.join(models.DeviceTemplate, models.Device.template_id == models.DeviceTemplate.id).filter(
             models.DeviceTemplate.device_type_id == device_type_id
         )
-    devices = q.order_by(models.Device.code).all()
-    return serialize.serialize_devices(db, devices)
+    if q:
+        # % и _ в ILIKE — шаблоны, а не символы: человек ищет текст, а не
+        # пишет шаблон (та же оговорка, что и в общем поиске).
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
+        query = query.filter(or_(
+            models.Device.code.ilike(like),
+            models.Device.name.ilike(like),
+            models.Device.location.ilike(like),
+            cast(models.Device.management_ip, Text).ilike(like),
+        ))
+
+    total = query.count()
+    column = SORTS.get(sort, models.Device.code)
+    order = column.desc() if desc else column.asc()
+    devices = (
+        query.options(joinedload(models.Device.tags))
+        .order_by(order, models.Device.id)
+        .limit(limit).offset(offset).all()
+    )
+    return schemas.DevicePage(items=serialize.serialize_device_list(db, devices), total=total)
 
 
 @router.get("/{device_id}", response_model=schemas.DeviceOut)

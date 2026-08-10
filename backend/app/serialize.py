@@ -5,7 +5,7 @@
 
 from dataclasses import dataclass
 from typing import Iterable, Dict, List, Optional
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -123,3 +123,79 @@ def serialize_devices(db: Session, devices: List[models.Device]) -> List[schemas
     all_iface_ids = [i.id for d in devices for i in d.interfaces]
     link_map = build_link_map(db, all_iface_ids)
     return [serialize_device(d, link_map) for d in devices]
+
+
+def serialize_device_list(db: Session, devices: List[models.Device]) -> List[schemas.DeviceListItem]:
+    """Устройства для списка: без портов, но с их счётчиком.
+
+    Счётчики считаются двумя групповыми запросами на всю страницу, а не
+    обращением к портам каждого устройства: пятьдесят устройств — это
+    пятьдесят лишних запросов, и именно из таких мелочей список и становился
+    медленным.
+    """
+    ids = [d.id for d in devices]
+    if not ids:
+        return []
+
+    totals = dict(
+        db.query(models.Interface.device_id, func.count(models.Interface.id))
+        .filter(models.Interface.device_id.in_(ids))
+        .group_by(models.Interface.device_id)
+        .all()
+    )
+    # Занятым считается и порт с подвешенным кабелем: кабель-то в него воткнут.
+    connected = dict(
+        db.query(models.Interface.device_id, func.count(models.Interface.id))
+        .join(models.Link, or_(models.Link.interface_a_id == models.Interface.id,
+                               models.Link.interface_b_id == models.Interface.id))
+        .filter(models.Interface.device_id.in_(ids))
+        .group_by(models.Interface.device_id)
+        .all()
+    )
+
+    return [
+        schemas.DeviceListItem(
+            id=d.id, template_id=d.template_id, code=d.code, name=d.name,
+            management_ip=d.management_ip, location=d.location, role=d.role,
+            install_date=d.install_date, notes=d.notes,
+            topology_group_id=d.topology_group_id,
+            topology_x=d.topology_x, topology_y=d.topology_y,
+            ports_total=totals.get(d.id, 0),
+            ports_connected=connected.get(d.id, 0),
+            tags=[schemas.TagOut.model_validate(t) for t in d.tags],
+        )
+        for d in devices
+    ]
+
+
+def serialize_links(db: Session, links: List[models.Link]) -> List[schemas.LinkOut]:
+    """Связи с подписями концов.
+
+    Без них страница связей вынуждена держать в памяти все устройства со
+    всеми портами только ради того, чтобы вместо «интерфейс 4312» написать
+    «SW-0003 · №2 Gi0/2».
+    """
+    iface_ids = [i for link in links for i in (link.interface_a_id, link.interface_b_id) if i]
+    ends: Dict[int, schemas.LinkEndOut] = {}
+    if iface_ids:
+        rows = (
+            db.query(models.Interface, models.Device)
+            .join(models.Device, models.Device.id == models.Interface.device_id)
+            .filter(models.Interface.id.in_(set(iface_ids)))
+            .all()
+        )
+        ends = {
+            iface.id: schemas.LinkEndOut(
+                device_id=device.id, device_code=device.code, device_name=device.name,
+                interface_id=iface.id, interface_label=iface.label, port_number=iface.port_number,
+            )
+            for iface, device in rows
+        }
+
+    result = []
+    for link in links:
+        item = schemas.LinkOut.model_validate(link)
+        item.end_a = ends.get(link.interface_a_id) if link.interface_a_id else None
+        item.end_b = ends.get(link.interface_b_id) if link.interface_b_id else None
+        result.append(item)
+    return result

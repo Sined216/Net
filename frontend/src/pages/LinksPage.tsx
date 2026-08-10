@@ -1,35 +1,31 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ActionIcon, Badge, Button, ColorInput, Group, Modal, Select,
   Stack, Table, Text, TextInput, Title,
 } from '@mantine/core';
 import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import {
-  useCreateLinkTemplate, useDeleteLink, useDeleteLinkTemplate, useDevices,
+  useCreateLinkTemplate, useDeleteLink, useDeleteLinkTemplate,
   useLinkTemplates, useLinks, useUpdateLinkTemplate,
 } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { LinkFormModal } from './links/LinkFormModal';
-import type { DeviceOut, LinkOut, LinkTemplateOut, MediaType, LineStyle } from '../api/types';
+import type { LinkOut, LinkTemplateOut, MediaType, LineStyle } from '../api/types';
 import { useCan } from '../auth/permissions';
 
 const MEDIA_TYPES: MediaType[] = ['copper', 'fiber', 'wireless', 'dac', 'other'];
 const LINE_STYLES: LineStyle[] = ['solid', 'dashed', 'dotted'];
-
-function useIfaceMap(devices: DeviceOut[]) {
-  return useMemo(() => {
-    const map = new Map<number, { device: DeviceOut; label: string }>();
-    for (const d of devices) for (const i of d.interfaces) map.set(i.id, { device: d, label: i.label });
-    return map;
-  }, [devices]);
-}
+const PAGE = 100;
 
 export function LinksPage() {
   const { data: linkTemplates = [] } = useLinkTemplates();
-  const { data: links = [] } = useLinks();
-  const { data: devices = [] } = useDevices();
-  const ifaceMap = useIfaceMap(devices);
+  // Концы приходят уже с подписями: раньше страница везла все устройства со
+  // всеми портами только ради того, чтобы вместо номера порта показать «Gi0/2».
+  const [shown, setShown] = useState(PAGE);
+  const { data: linkPage } = useLinks({ limit: shown });
+  const links = linkPage?.items ?? [];
+  const total = linkPage?.total ?? 0;
   const [ltModalOpen, setLtModalOpen] = useState(false);
   const [editingLt, setEditingLt] = useState<LinkTemplateOut | null>(null);
   const [editingLink, setEditingLink] = useState<LinkOut | null>(null);
@@ -115,16 +111,16 @@ export function LinksPage() {
           {links.map((l) => {
             // Конец может пустовать: порт удалили (сняли сетевую карту), а
             // кабель остался проложен.
-            const a = l.interface_a_id != null ? ifaceMap.get(l.interface_a_id) : undefined;
-            const b = l.interface_b_id != null ? ifaceMap.get(l.interface_b_id) : undefined;
+            const a = l.end_a ?? undefined;
+            const b = l.end_b ?? undefined;
             const dangling = l.interface_a_id == null || l.interface_b_id == null;
             const lt = l.template_id ? linkTemplates.find((t) => t.id === l.template_id) : null;
             return (
               <Table.Tr key={l.id}>
-                <Table.Td>{a?.device.code ?? <DanglingEnd />}</Table.Td>
-                <Table.Td>{a?.label ?? '—'}</Table.Td>
-                <Table.Td>{b?.device.code ?? <DanglingEnd />}</Table.Td>
-                <Table.Td>{b?.label ?? '—'}</Table.Td>
+                <Table.Td>{a?.device_code ?? <DanglingEnd />}</Table.Td>
+                <Table.Td>{a ? `№${a.port_number} · ${a.interface_label}` : '—'}</Table.Td>
+                <Table.Td>{b?.device_code ?? <DanglingEnd />}</Table.Td>
+                <Table.Td>{b ? `№${b.port_number} · ${b.interface_label}` : '—'}</Table.Td>
                 <Table.Td>
                   {lt ? (<><span className="tag-badge-dot" style={{ background: lt.color }} />{lt.name}</>) : <Text c="dimmed">— без шаблона —</Text>}
                 </Table.Td>
@@ -162,6 +158,13 @@ export function LinksPage() {
           )}
         </Table.Tbody>
       </Table>
+      {links.length < total && (
+        <Group justify="center">
+          <Button variant="default" onClick={() => setShown((n) => n + PAGE)}>
+            Показать ещё ({total - links.length})
+          </Button>
+        </Group>
+      )}
 
       {(ltModalOpen || editingLt) && (
         <LinkTemplateFormModal template={editingLt} onClose={() => { setLtModalOpen(false); setEditingLt(null); }} />

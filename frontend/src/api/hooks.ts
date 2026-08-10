@@ -14,7 +14,7 @@ import type {
   LinkCreate, LinkUpdate,
   TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
   UserCreate, UserUpdate, PasswordReset,
-  SiteCreate, SiteUpdate, AuditQuery,
+  SiteCreate, SiteUpdate, AuditQuery, DeviceQuery, LinkQuery, FreePortQuery,
 } from './types';
 
 // ---------- Queries ----------
@@ -25,8 +25,28 @@ export const useModules = () => useQuery({ queryKey: ['modules'], queryFn: api.l
 export const useImportRows = () => useQuery({ queryKey: ['importRows'], queryFn: api.listImportRows });
 export const useVlans = () => useQuery({ queryKey: ['vlans'], queryFn: api.listVlans });
 export const useDeviceTemplates = () => useQuery({ queryKey: ['deviceTemplates'], queryFn: api.listDeviceTemplates });
-export const useDevices = () => useQuery({ queryKey: ['devices'], queryFn: api.listDevices });
-export const useLinks = () => useQuery({ queryKey: ['links'], queryFn: api.listLinks });
+/** Список устройств — страницами и без портов. */
+export const useDevices = (query: DeviceQuery = {}) =>
+  useQuery({ queryKey: ['devices', query], queryFn: () => api.listDevices(query) });
+/** Одно устройство целиком — для его страницы. Раньше она искала нужное
+ * среди всех устройств, то есть везла всю спецификацию ради одной железки. */
+export const useDevice = (id: number | null) =>
+  useQuery({ queryKey: ['device', id], queryFn: () => api.getDevice(id!), enabled: id != null && !Number.isNaN(id) });
+/** Устройства со всеми портами — для схемы связей и её окон. */
+export const useTopologyDevices = () =>
+  useQuery({ queryKey: ['topologyDevices'], queryFn: api.listTopologyDevices });
+/** Порты одного устройства — подтягиваются, когда карточку раскрывают. */
+export const useDeviceInterfaces = (deviceId: number | null) =>
+  useQuery({
+    queryKey: ['deviceInterfaces', deviceId],
+    queryFn: () => api.listInterfaces(deviceId!),
+    enabled: deviceId != null,
+  });
+/** Свободные порты для подключения — ищет база, а не браузер. */
+export const useFreePorts = (query: FreePortQuery, enabled = true) =>
+  useQuery({ queryKey: ['freePorts', query], queryFn: () => api.listFreePorts(query), enabled });
+export const useLinks = (query: LinkQuery = {}) =>
+  useQuery({ queryKey: ['links', query], queryFn: () => api.listLinks(query) });
 export const useLinkTemplates = () => useQuery({ queryKey: ['linkTemplates'], queryFn: api.listLinkTemplates });
 export const useTopologyGroups = () => useQuery({ queryKey: ['topologyGroups'], queryFn: api.listTopologyGroups });
 export const useDatabaseSchema = () => useQuery({ queryKey: ['schema'], queryFn: api.getDatabaseSchema });
@@ -40,7 +60,7 @@ export const useTemplateImpact = (id: number | null) =>
 
 /** Ключи, которые нужно освежить после почти любой мутации — статус портов
  * (connected_to) и списки живут в devices/links одновременно. */
-const CORE_KEYS = ['devices', 'links'] as const;
+const CORE_KEYS = ['devices', 'links', 'deviceInterfaces', 'freePorts', 'topologyDevices'] as const;
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>, keys: readonly string[]) {
   return Promise.all(keys.map((k) => qc.invalidateQueries({ queryKey: [k] })));

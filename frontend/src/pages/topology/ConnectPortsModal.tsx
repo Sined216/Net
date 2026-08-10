@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useCreateLink, useDevices, useLinkTemplates } from '../../api/hooks';
+import { useCreateLink, useTopologyDevices, useLinkTemplates } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { nnInt } from '../../lib/utils';
 import type { DeviceOut, InterfaceOut } from '../../api/types';
@@ -15,7 +15,7 @@ export function ConnectPortsModal({
   targetId: number;
   onClose: () => void;
 }) {
-  const { data: devices = [] } = useDevices();
+  const { data: devices = [] } = useTopologyDevices();
   const { data: linkTemplates = [] } = useLinkTemplates();
   const createLink = useCreateLink();
 

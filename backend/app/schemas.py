@@ -497,6 +497,62 @@ class DeviceUpdate(BaseModel):
     topology_group_id: Optional[int] = None
 
 
+class DeviceListItem(BaseModel):
+    """Устройство в списке — без портов.
+
+    Порты составляют почти весь вес ответа: на тысяче устройств по 24 порта
+    это двадцать четыре тысячи вложенных объектов, и список открывается
+    минутами. В списке они не нужны: видно, сколько всего и сколько занято, а
+    сами порты подтягиваются, когда карточку раскрывают.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    template_id: int
+    code: str
+    name: Optional[str] = None
+    management_ip: Optional[str] = None
+    location: Optional[str] = None
+    role: Optional[DeviceRole] = None
+    install_date: Optional[date] = None
+    notes: Optional[str] = None
+    topology_group_id: Optional[int] = None
+    topology_x: Optional[float] = None
+    topology_y: Optional[float] = None
+    ports_total: int = 0
+    ports_connected: int = 0
+    tags: List[TagOut] = []
+
+
+class DevicePage(BaseModel):
+    items: List[DeviceListItem]
+    total: int
+
+
+class LinkEndOut(BaseModel):
+    """Конец кабеля — сразу с подписями.
+
+    Иначе страница связей вынуждена держать в памяти все устройства со всеми
+    портами только ради того, чтобы вместо «интерфейс 4312» написать
+    «SW-0003 · №2 Gi0/2».
+    """
+    device_id: int
+    device_code: str
+    device_name: Optional[str] = None
+    interface_id: int
+    interface_label: str
+    port_number: int
+
+
+class FreePortOut(BaseModel):
+    """Свободный порт для выпадающего списка подключения."""
+    interface_id: int
+    label: str
+    port_number: int
+    device_id: int
+    device_code: str
+    device_name: Optional[str] = None
+
+
 class DeviceTagsUpdate(BaseModel):
     tag_ids: List[int]
 
@@ -584,6 +640,9 @@ class LinkAttach(BaseModel):
 class LinkOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    # Концы с подписями: пусто, если конец подвешен.
+    end_a: Optional["LinkEndOut"] = None
+    end_b: Optional["LinkEndOut"] = None
     # Пустой конец — «подвешенный»: порт, в который был воткнут кабель,
     # удалили, а сам кабель остался.
     interface_a_id: Optional[int] = None
@@ -628,6 +687,11 @@ class TopologyEdge(BaseModel):
 class TopologyOut(BaseModel):
     nodes: List[TopologyNode]
     edges: List[TopologyEdge]
+
+
+class LinkPage(BaseModel):
+    items: List[LinkOut]
+    total: int
 
 
 # ---------- Структура БД ----------

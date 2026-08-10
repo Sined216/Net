@@ -119,7 +119,7 @@ def test_deleting_device_removes_its_links(client, headers, two_devices):
 
     client.delete(f"/devices/{b['id']}", headers=headers["editor"])
 
-    assert client.get("/links", headers=headers["viewer"]).json() == []
+    assert client.get("/links", headers=headers["viewer"]).json()["items"] == []
     refreshed = client.get(f"/devices/{a['id']}", headers=headers["viewer"]).json()
     assert all(i["connected_to"] is None for i in refreshed["interfaces"])
 
@@ -150,7 +150,7 @@ def test_link_template_can_be_assigned_and_survives_template_deletion(client, he
     # Удаление шаблона не должно удалять сами связи — у них просто пропадёт
     # оформление на топологии (ON DELETE SET NULL).
     client.delete(f"/link-templates/{link_template['id']}", headers=headers["editor"])
-    survived = client.get("/links", headers=headers["viewer"]).json()
+    survived = client.get("/links", headers=headers["viewer"]).json()["items"]
     assert len(survived) == 1
     assert survived[0]["template_id"] is None
 

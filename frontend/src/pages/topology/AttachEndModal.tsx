@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useAttachLinkEnd, useDevices } from '../../api/hooks';
+import { useAttachLinkEnd, useTopologyDevices } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { portLabel } from './ConnectPortsModal';
 
@@ -18,7 +18,7 @@ export function AttachEndModal({
   deviceId: number;
   onClose: () => void;
 }) {
-  const { data: devices = [] } = useDevices();
+  const { data: devices = [] } = useTopologyDevices();
   const attach = useAttachLinkEnd();
   const device = devices.find((d) => d.id === deviceId);
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, schemas, sites
+from app import models, schemas, serialize, sites
 
 router = APIRouter(tags=["topology"])
 
@@ -73,3 +73,25 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
         )
 
     return schemas.TopologyOut(nodes=nodes, edges=edges)
+
+
+@router.get("/topology/devices", response_model=list[schemas.DeviceOut])
+def topology_devices(db: Session = Depends(get_db),
+                      site_id: int = Depends(sites.current_site_id)):
+    """Устройства со всеми портами — для схемы связей.
+
+    Схема рисует площадку целиком: страницами её не покажешь, и порты нужны
+    все — по ним подписываются концы кабелей и заглушки подвешенных концов.
+    Поэтому у схемы свой маршрут, а список устройств остаётся лёгким.
+
+    Когда схему научат собираться на сервере (задача 1.2 ТЗ), этот маршрут
+    уйдёт вместе с ней: браузеру перестанет быть нужен полный набор данных.
+    """
+    devices = (
+        db.query(models.Device)
+        .options(joinedload(models.Device.interfaces), joinedload(models.Device.tags))
+        .filter(models.Device.site_id == site_id)
+        .order_by(models.Device.code)
+        .all()
+    )
+    return serialize.serialize_devices(db, devices)

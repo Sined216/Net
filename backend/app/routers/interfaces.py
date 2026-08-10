@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import Text, cast, or_
 
@@ -81,6 +81,52 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db),
     # пропущенного номера — гнезда с таким номером у железки нет.
     ports.renumber(db, models.Interface, "device_id", device_id)
     db.commit()
+
+
+@router.get("/interfaces/free", response_model=list[schemas.FreePortOut])
+def free_interfaces(q: str | None = None, exclude_device_id: int | None = None,
+                     limit: int = Query(default=50, ge=1, le=200),
+                     db: Session = Depends(get_db),
+                     site_id: int = Depends(sites.current_site_id)):
+    """Свободные порты — для выпадающего списка «куда воткнуть».
+
+    Раньше этот список собирался в браузере из всех устройств со всеми
+    портами: чтобы предложить десяток вариантов, приходилось привезти
+    двадцать четыре тысячи. Теперь свободные порты ищет база, а сколько их
+    показать — решает limit.
+
+    Занятым считается и порт с подвешенным кабелем: кабель в него воткнут,
+    второй его конец просто некуда включить.
+    """
+    busy = db.query(models.Link.interface_a_id).filter(models.Link.interface_a_id.isnot(None)).union(
+        db.query(models.Link.interface_b_id).filter(models.Link.interface_b_id.isnot(None))
+    ).subquery()
+
+    query = (
+        db.query(models.Interface, models.Device)
+        .join(models.Device, models.Device.id == models.Interface.device_id)
+        .filter(models.Interface.site_id == site_id)
+        .filter(models.Interface.id.notin_(db.query(busy)))
+    )
+    if exclude_device_id is not None:
+        query = query.filter(models.Interface.device_id != exclude_device_id)
+    if q:
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
+        query = query.filter(or_(
+            models.Device.code.ilike(like),
+            models.Device.name.ilike(like),
+            models.Interface.label.ilike(like),
+        ))
+
+    rows = query.order_by(models.Device.code, models.Interface.port_number).limit(limit).all()
+    return [
+        schemas.FreePortOut(
+            interface_id=iface.id, label=iface.label, port_number=iface.port_number,
+            device_id=device.id, device_code=device.code, device_name=device.name,
+        )
+        for iface, device in rows
+    ]
 
 
 @router.get("/search", response_model=list[schemas.SearchResult])

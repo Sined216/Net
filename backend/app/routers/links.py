@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
 from app.database import get_db
-from app import models, schemas, auth, sites
+from app import models, schemas, auth, serialize, sites
 from app.audit import log_change
 
 router = APIRouter(prefix="/links", tags=["links"])
@@ -23,9 +23,23 @@ def _busy(db: Session, interface_ids: list[int], exclude_link_id: int | None = N
     return q.first() is not None
 
 
-@router.get("", response_model=list[schemas.LinkOut])
-def list_links(db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
-    return db.query(models.Link).filter(models.Link.site_id == site_id).order_by(models.Link.id).all()
+@router.get("", response_model=schemas.LinkPage)
+def list_links(device_id: int | None = None, dangling: bool | None = None,
+                limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0),
+                db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
+    """Кабели — страницами и сразу с подписями концов."""
+    query = db.query(models.Link).filter(models.Link.site_id == site_id)
+    if device_id is not None:
+        ends = select(models.Interface.id).where(models.Interface.device_id == device_id)
+        query = query.filter(or_(models.Link.interface_a_id.in_(ends),
+                                 models.Link.interface_b_id.in_(ends)))
+    if dangling is not None:
+        empty = or_(models.Link.interface_a_id.is_(None), models.Link.interface_b_id.is_(None))
+        query = query.filter(empty if dangling else ~empty)
+
+    total = query.count()
+    links = query.order_by(models.Link.id).limit(limit).offset(offset).all()
+    return schemas.LinkPage(items=serialize.serialize_links(db, links), total=total)
 
 
 @router.post("", response_model=schemas.LinkOut, status_code=201)
@@ -69,7 +83,7 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
     log_change(db, user.id, "create", "link", link.id, old=None, new=link)
     db.commit()
     db.refresh(link)
-    return link
+    return serialize.serialize_links(db, [link])[0]
 
 
 @router.patch("/{link_id}", response_model=schemas.LinkOut)
@@ -95,7 +109,7 @@ def update_link(link_id: int, payload: schemas.LinkUpdate, db: Session = Depends
     log_change(db, user.id, "update", "link", link.id, old=old_snapshot, new=link)
     db.commit()
     db.refresh(link)
-    return link
+    return serialize.serialize_links(db, [link])[0]
 
 
 @router.post("/{link_id}/attach", response_model=schemas.LinkOut)
@@ -136,7 +150,7 @@ def attach_link_end(link_id: int, payload: schemas.LinkAttach, db: Session = Dep
     log_change(db, user.id, "update", "link", link.id, old=old_snapshot, new=link)
     db.commit()
     db.refresh(link)
-    return link
+    return serialize.serialize_links(db, [link])[0]
 
 
 @router.delete("/{link_id}", status_code=204)

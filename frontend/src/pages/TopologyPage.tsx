@@ -8,8 +8,9 @@ import { Button, Group, Paper, Select, Stack, Text, Title } from '@mantine/core'
 import { IconPlus, IconUsersGroup } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  useDeviceTemplates, useDeviceTypes, useDevices, useLinkTemplates, useLinks, useTags,
+  useDeviceTemplates, useDeviceTypes, useLinkTemplates, useLinks, useTags,
   useTopologyGroups, useUpdateDevicePosition, useDeleteDevice, useDeleteLink, useCreateDevice,
+  useTopologyDevices,
   useDeleteTopologyGroup, useSetTopologyGroupBox,
 } from '../api/hooks';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
@@ -82,10 +83,13 @@ const GROUP_HEADER = GROUP_HEADER_HEIGHT;
 const EMPTY: never[] = [];
 
 export function TopologyPage() {
-  const { data: devices = EMPTY } = useDevices();
+  // Схема рисует площадку целиком, поэтому берёт устройства со всеми
+  // портами отдельным маршрутом: список устройств теперь лёгкий и страничный.
+  const { data: devices = EMPTY } = useTopologyDevices();
   const { data: templates = EMPTY } = useDeviceTemplates();
   const { data: types = EMPTY } = useDeviceTypes();
-  const { data: links = EMPTY } = useLinks();
+  const { data: linkPage } = useLinks({ limit: 500 });
+  const links = linkPage?.items ?? EMPTY;
   const { data: linkTemplates = EMPTY } = useLinkTemplates();
   const { data: tags = EMPTY } = useTags();
   const { data: topologyGroups = EMPTY } = useTopologyGroups();

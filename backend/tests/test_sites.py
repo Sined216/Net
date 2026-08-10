@@ -54,7 +54,7 @@ def test_devices_of_another_site_are_invisible(client, headers, template, two_si
     theirs = client.post("/devices", json={"template_id": template.id, "name": "Чужое"},
                          headers=at(second, headers["admin"])).json()
 
-    listed = client.get("/devices", headers=at(first, headers["admin"])).json()
+    listed = client.get("/devices", headers=at(first, headers["admin"])).json()["items"]
     assert [d["id"] for d in listed] == [mine["id"]]
 
     # Прямая ссылка на чужое устройство — 404, а не 403: чужие данные не
@@ -147,7 +147,7 @@ def test_dangling_end_survives_port_removal(db, client, headers, device_type, tw
     removed = client.delete(f"/interfaces/{one['interfaces'][0]['id']}", headers=at(first, headers["admin"]))
     assert removed.status_code == 204, removed.text
 
-    remaining = client.get("/links", headers=at(first, headers["admin"])).json()
+    remaining = client.get("/links", headers=at(first, headers["admin"])).json()["items"]
     assert len(remaining) == 1
     assert remaining[0]["interface_a_id"] is None or remaining[0]["interface_b_id"] is None
 

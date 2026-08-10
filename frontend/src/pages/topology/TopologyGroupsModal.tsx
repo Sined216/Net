@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActionIcon, Button, Group, Modal, Stack, Table, Text } from '@mantine/core';
 import { IconFolderPlus, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
-import { useDeleteTopologyGroup, useDevices, useTopologyGroups } from '../../api/hooks';
+import { useDeleteTopologyGroup, useTopologyDevices, useTopologyGroups } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { GroupEditModal } from './GroupEditModal';
 import { orderedGroups } from './groups';
@@ -15,7 +15,7 @@ import type { TopologyGroupOut } from '../../api/types';
  */
 export function TopologyGroupsModal({ onClose }: { onClose: () => void }) {
   const { data: groups = [] } = useTopologyGroups();
-  const { data: devices = [] } = useDevices();
+  const { data: devices = [] } = useTopologyDevices();
   const deleteGroup = useDeleteTopologyGroup();
   const [editing, setEditing] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
 

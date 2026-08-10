@@ -2,31 +2,28 @@ import { useState } from 'react';
 import { ActionIcon, Badge, Group, Select, Table, Text, TextInput } from '@mantine/core';
 import { IconCheck, IconPlugConnected, IconTrash } from '@tabler/icons-react';
 import {
-  useAttachLinkEnd, useCreateLink, useDeleteInterface, useDeleteLink, useModules, useUpdateInterface,
+  useAttachLinkEnd, useCreateLink, useDeleteInterface, useDeleteLink, useFreePorts, useModules,
+  useUpdateInterface,
 } from '../../api/hooks';
 import { nn, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
-import { portLabel } from '../topology/ConnectPortsModal';
-import type { DeviceOut, InterfaceOut, PortMode, VlanOut } from '../../api/types';
+import type { FreePortOut, InterfaceOut, PortMode, VlanOut } from '../../api/types';
 import { useCan } from '../../auth/permissions';
 
 // Режим — настройка конкретной железки; в модели техники его нет.
 const PORT_MODES: PortMode[] = ['access', 'trunk', 'uplink'];
 
-export interface FreeEntry {
-  device: DeviceOut;
-  iface: InterfaceOut;
-}
-
 export function InterfaceRow({
-  iface, vlans, freeEntries, portsEditable = false,
+  iface, vlans, portsEditable = false,
 }: {
   iface: InterfaceOut;
   vlans: VlanOut[];
-  freeEntries: FreeEntry[];
   /** Разрешает удалять порт — только у моделей со съёмными картами. */
   portsEditable?: boolean;
 }) {
+  // Смотрящему поля показываются, но не правятся: пустая строка вместо
+  // данных сбивала бы с толку, а кнопка, за которой стоит 403, — обманывает.
+  const canEdit = useCan('edit');
   const [mode, setMode] = useState<string | null>(iface.mode);
   const [moduleId, setModuleId] = useState<string | null>(
     iface.module ? String(iface.module.id) : null,
@@ -38,6 +35,13 @@ export function InterfaceRow({
   const [connectTarget, setConnectTarget] = useState<string | null>(null);
 
   const { data: modules = [] } = useModules();
+  // Свободные порты ищет база. Раньше этот список собирался в браузере из
+  // всех устройств со всеми портами: чтобы предложить десяток вариантов,
+  // приходилось привезти двадцать четыре тысячи.
+  const { data: freePorts = [] } = useFreePorts(
+    { exclude_device_id: iface.device_id, limit: 100 },
+    canEdit,
+  );
   const updateInterface = useUpdateInterface();
   const deleteInterface = useDeleteInterface();
   const createLink = useCreateLink();
@@ -94,14 +98,10 @@ export function InterfaceRow({
     deleteLink.mutate(linkId, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
   }
 
-  const connectData = groupFreeEntries(freeEntries, iface.id);
+  const connectData = groupFreePorts(freePorts);
   const isCage = !!iface.connector?.is_cage;
   // Клетка без модуля: гнездо есть, а воткнуть в него физически нечего.
   const emptyCage = iface.empty_cage;
-  // Смотрящему поля показываются, но не правятся: пустая строка вместо
-  // данных сбивала бы с толку, а кнопка, за которой стоит 403, — обманывает.
-  const canEdit = useCan('edit');
-
   // Модули для этой клетки: остальные сюда не вставляются.
   const moduleOptions = modules
     .filter((m) => m.cage_connector_id == null || m.cage_connector_id === iface.connector?.id)
@@ -198,17 +198,22 @@ export function InterfaceRow({
   );
 }
 
-/** Группирует свободные порты по устройству (устройство -> порт), уже
- * подключённые порты сюда не попадают вовсе. */
-function groupFreeEntries(entries: FreeEntry[], excludeIfaceId: number) {
-  const byDevice = new Map<number, { device: DeviceOut; items: { value: string; label: string }[] }>();
-  for (const e of entries) {
-    if (e.iface.id === excludeIfaceId) continue;
-    if (!byDevice.has(e.device.id)) byDevice.set(e.device.id, { device: e.device, items: [] });
-    // С разъёмом: подключать порт, не зная, RJ45 там или оптика, — гадание.
-    byDevice.get(e.device.id)!.items.push({ value: String(e.iface.id), label: portLabel(e.iface) });
+/** Группирует свободные порты по устройству — так список читается, когда в
+ * нём порты десятка железок. Разъём в подписи не показывается: сервер отдаёт
+ * только то, что нужно для выбора, а разъём виден в самой строке порта. */
+function groupFreePorts(ports: FreePortOut[]) {
+  const byDevice = new Map<number, { title: string; items: { value: string; label: string }[] }>();
+  for (const port of ports) {
+    if (!byDevice.has(port.device_id)) {
+      byDevice.set(port.device_id, {
+        title: port.device_name ? `${port.device_code} — ${port.device_name}` : port.device_code,
+        items: [],
+      });
+    }
+    byDevice.get(port.device_id)!.items.push({
+      value: String(port.interface_id),
+      label: `№${port.port_number} · ${port.label}`,
+    });
   }
-  return [...byDevice.values()]
-    .sort((a, b) => a.device.code.localeCompare(b.device.code))
-    .map(({ device, items }) => ({ group: device.name ? `${device.code} — ${device.name}` : device.code, items }));
+  return [...byDevice.values()].map(({ title, items }) => ({ group: title, items }));
 }
