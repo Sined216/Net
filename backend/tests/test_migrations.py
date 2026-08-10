@@ -237,6 +237,61 @@ def _head_revision() -> str:
     return ScriptDirectory.from_config(config).get_current_head()
 
 
+def test_trunk_vlans_move_to_their_own_table(legacy_database):
+    """Перенос транковых VLAN из массива в таблицу.
+
+    Значения, за которыми не стоит настоящий VLAN этой же площадки, при
+    переносе отбрасываются — ради них таблица и заводится.
+    """
+    # Останавливаемся на шаге до переноса: именно так выглядит база,
+    # которую предстоит обновить.
+    _run([sys.executable, "-m", "alembic", "upgrade", "0013_audit_readable"], LEGACY_DB)
+
+    with legacy_database.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO device_types (id, name, code_prefix) VALUES (1, 'Коммутатор', 'SW')
+        """))
+        conn.execute(text("""
+            INSERT INTO device_templates (id, name, device_type_id) VALUES (1, 'Модель', 1)
+        """))
+        site_id = conn.execute(text("SELECT id FROM sites ORDER BY id LIMIT 1")).scalar()
+        conn.execute(text("""
+            INSERT INTO sites (name) VALUES ('Вторая фабрика')
+        """))
+        other_site = conn.execute(
+            text("SELECT id FROM sites WHERE name = 'Вторая фабрика'")
+        ).scalar()
+        conn.execute(
+            text("INSERT INTO vlans (id, site_id, vlan_number) VALUES (1, :s, 10), (2, :s, 20), (3, :o, 30)"),
+            {"s": site_id, "o": other_site},
+        )
+        conn.execute(
+            text("INSERT INTO devices (id, site_id, template_id, code) VALUES (1, :s, 1, 'SW-0001')"),
+            {"s": site_id},
+        )
+        conn.execute(
+            text("""
+                INSERT INTO interfaces (id, site_id, device_id, port_number, label, trunk_vlan_ids)
+                VALUES (1, :s, 1, 1, 'Порт 1', ARRAY[1, 2, 3, 999999])
+            """),
+            {"s": site_id},
+        )
+
+    _run([sys.executable, "-m", "alembic", "upgrade", "head"], LEGACY_DB)
+
+    with legacy_database.connect() as conn:
+        moved = conn.execute(
+            text("SELECT vlan_id FROM interface_trunk_vlans WHERE interface_id = 1 ORDER BY vlan_id")
+        ).scalars().all()
+        columns = conn.execute(text("""
+            SELECT column_name FROM information_schema.columns
+             WHERE table_name = 'interfaces' AND column_name = 'trunk_vlan_ids'
+        """)).all()
+
+    assert moved == [1, 2], "переезжают только настоящие VLAN своей площадки"
+    assert columns == [], "колонка-массив после переноса не нужна"
+
+
 def test_upgrade_is_idempotent(legacy_database):
     """Контейнер перезапускается часто — повторный накат не должен ничего
     ломать."""

@@ -278,7 +278,6 @@ export interface InterfaceCreate {
   mode?: PortMode | null;
   module_id?: number | null;
   vlan_id?: number | null;
-  trunk_vlan_ids?: number[] | null;
   ip?: string | null;
   mac?: string | null;
   notes?: string | null;
@@ -307,6 +306,8 @@ export interface InterfaceOut {
   /** Клетка без модуля: порт есть, а воткнуть в него нечего. */
   empty_cage: boolean;
   vlan_id: number | null;
+  /** Транковые VLAN — списком номеров записей. Хранятся отдельной таблицей,
+   * наружу отдаются так же, как раньше. */
   trunk_vlan_ids: number[] | null;
   ip: string | null;
   mac: string | null;

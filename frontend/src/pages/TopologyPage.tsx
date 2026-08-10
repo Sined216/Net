@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button, Group, Paper, SegmentedControl, Select, Stack, Text, Title, useComputedColorScheme,
 } from '@mantine/core';
-import { IconFocusCentered, IconPlus, IconUsersGroup } from '@tabler/icons-react';
+import {
+  IconFocusCentered, IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup,
+} from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { dia, highlighters, shapes } from '@joint/core';
 import {
@@ -785,12 +787,26 @@ export function TopologyPage() {
             </Button>
           )}
           <AppearanceMenu value={look} onChange={changeLook} />
+          {/* Разложить и вписать — разные жесты: первое пересчитывает
+              расположение узлов, второе только подгоняет масштаб под то,
+              что уже разложено. Раньше это была одна кнопка, и вписать
+              схему, не растеряв ручную раскладку, было нельзя. */}
+          {canEdit && (
+            <Button
+              variant="default" leftSection={<IconLayoutDistributeHorizontal size={16} />}
+              onClick={() => {
+                if (!confirm('Разложить схему заново? Расположение узлов, выставленное руками, будет пересчитано.')) return;
+                setRelayout((n) => n + 1);
+              }}
+            >
+              Разложить
+            </Button>
+          )}
           <Button
             variant="default" leftSection={<IconFocusCentered size={16} />}
-            // Масштаб подгоняет само наполнение схемы — после того как узлы
-            // встанут по новой раскладке. Сделать это здесь значило бы
-            // вписывать ещё старое расположение.
-            onClick={() => setRelayout((n) => n + 1)}
+            onClick={() => paperRef.current?.transformToFitContent({
+              padding: 60, maxScale: 1.1, useModelGeometry: true,
+            })}
           >
             Вписать
           </Button>

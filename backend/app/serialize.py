@@ -60,7 +60,30 @@ def build_link_map(db: Session, interface_ids: Iterable[int]) -> Dict[int, "Link
     return result
 
 
-def serialize_interface(iface: models.Interface, link_map: Dict[int, LinkEnd]) -> schemas.InterfaceOut:
+def build_trunk_map(db: Session, interface_ids: Iterable[int]) -> Dict[int, List[int]]:
+    """Транковые VLAN для набора портов — одним запросом на весь набор.
+
+    Наружу они по-прежнему отдаются списком чисел: для клиента ничего не
+    изменилось, изменилось только то, что теперь этот список не может
+    содержать несуществующий VLAN.
+    """
+    ids = list(interface_ids)
+    if not ids:
+        return {}
+    rows = (
+        db.query(models.InterfaceTrunkVlan.interface_id, models.InterfaceTrunkVlan.vlan_id)
+        .filter(models.InterfaceTrunkVlan.interface_id.in_(ids))
+        .order_by(models.InterfaceTrunkVlan.vlan_id)
+        .all()
+    )
+    result: Dict[int, List[int]] = {}
+    for interface_id, vlan_id in rows:
+        result.setdefault(interface_id, []).append(vlan_id)
+    return result
+
+
+def serialize_interface(iface: models.Interface, link_map: Dict[int, LinkEnd],
+                         trunk_map: Optional[Dict[int, List[int]]] = None) -> schemas.InterfaceOut:
     end = link_map.get(iface.id)
     connector = iface.connector
     module = iface.module
@@ -81,7 +104,7 @@ def serialize_interface(iface: models.Interface, link_map: Dict[int, LinkEnd]) -
         connector_effective=schemas.ConnectorTypeOut.model_validate(effective) if effective else None,
         empty_cage=empty_cage,
         vlan_id=iface.vlan_id,
-        trunk_vlan_ids=iface.trunk_vlan_ids,
+        trunk_vlan_ids=(trunk_map or {}).get(iface.id) or None,
         ip=iface.ip,
         mac=iface.mac,
         notes=iface.notes,
@@ -92,13 +115,17 @@ def serialize_interface(iface: models.Interface, link_map: Dict[int, LinkEnd]) -
 
 def serialize_interfaces(db: Session, interfaces: List[models.Interface]) -> List[schemas.InterfaceOut]:
     link_map = build_link_map(db, (i.id for i in interfaces))
-    return [serialize_interface(i, link_map) for i in interfaces]
+    trunk_map = build_trunk_map(db, (i.id for i in interfaces))
+    return [serialize_interface(i, link_map, trunk_map) for i in interfaces]
 
 
 def serialize_device(device: models.Device, link_map: Optional[Dict[int, LinkEnd]] = None,
-                      db: Optional[Session] = None) -> schemas.DeviceOut:
+                      db: Optional[Session] = None,
+                      trunk_map: Optional[Dict[int, List[int]]] = None) -> schemas.DeviceOut:
     if link_map is None:
         link_map = build_link_map(db, (i.id for i in device.interfaces))
+    if trunk_map is None and db is not None:
+        trunk_map = build_trunk_map(db, (i.id for i in device.interfaces))
     return schemas.DeviceOut(
         id=device.id,
         template_id=device.template_id,
@@ -114,7 +141,7 @@ def serialize_device(device: models.Device, link_map: Optional[Dict[int, LinkEnd
         topology_y=device.topology_y,
         created_at=device.created_at,
         updated_at=device.updated_at,
-        interfaces=[serialize_interface(i, link_map) for i in device.interfaces],
+        interfaces=[serialize_interface(i, link_map, trunk_map) for i in device.interfaces],
         tags=[schemas.TagOut.model_validate(t) for t in device.tags],
     )
 
@@ -122,7 +149,8 @@ def serialize_device(device: models.Device, link_map: Optional[Dict[int, LinkEnd
 def serialize_devices(db: Session, devices: List[models.Device]) -> List[schemas.DeviceOut]:
     all_iface_ids = [i.id for d in devices for i in d.interfaces]
     link_map = build_link_map(db, all_iface_ids)
-    return [serialize_device(d, link_map) for d in devices]
+    trunk_map = build_trunk_map(db, all_iface_ids)
+    return [serialize_device(d, link_map, trunk_map=trunk_map) for d in devices]
 
 
 def serialize_device_list(db: Session, devices: List[models.Device]) -> List[schemas.DeviceListItem]:

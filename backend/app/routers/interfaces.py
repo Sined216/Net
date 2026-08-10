@@ -21,6 +21,9 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
         raise HTTPException(status_code=404, detail="Интерфейс не найден")
 
     data = payload.model_dump(exclude_unset=True)
+    # Транковые VLAN живут отдельной таблицей и правятся не присваиванием
+    # поля, а заменой набора строк — поэтому вынимаются из общего разбора.
+    trunk_ids = data.pop("trunk_vlan_ids", "не задано")
     if data.get("vlan_id") is not None and not db.query(models.Vlan).filter(
         models.Vlan.id == data["vlan_id"], models.Vlan.site_id == site_id
     ).first():
@@ -41,14 +44,56 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
             )
 
     old_snapshot = {c.name: getattr(iface, c.name) for c in iface.__table__.columns}
+    old_snapshot["trunk_vlan_ids"] = sorted(t.vlan_id for t in iface.trunk_vlans)
     for field, value in data.items():
         setattr(iface, field, value)
 
-    log_change(db, user.id, "update", "interface", iface.id, old=old_snapshot, new=iface)
+    if trunk_ids != "не задано":
+        _set_trunk_vlans(db, iface, trunk_ids or [], site_id)
+
+    new_snapshot = {c.name: getattr(iface, c.name) for c in iface.__table__.columns}
+    new_snapshot["trunk_vlan_ids"] = sorted(t.vlan_id for t in iface.trunk_vlans)
+    log_change(db, user.id, "update", "interface", iface.id, old=old_snapshot, new=new_snapshot,
+               site_id=site_id)
     db.commit()
     db.refresh(iface)
     link_map = serialize.build_link_map(db, [iface.id])
-    return serialize.serialize_interface(iface, link_map)
+    trunk_map = serialize.build_trunk_map(db, [iface.id])
+    return serialize.serialize_interface(iface, link_map, trunk_map)
+
+
+def _set_trunk_vlans(db: Session, iface: models.Interface, vlan_ids: list[int], site_id: int) -> None:
+    """Заменить набор транковых VLAN порта.
+
+    Проверка «VLAN существует и он этой площадки» есть и в базе — составными
+    ключами, — но там она даёт 500 с текстом про нарушение ограничения.
+    Здесь то же самое сказано человеческим языком; база остаётся последней
+    линией, а не единственной.
+    """
+    wanted = sorted(set(vlan_ids))
+    if wanted:
+        found = {
+            v.id for v in db.query(models.Vlan.id).filter(
+                models.Vlan.id.in_(wanted), models.Vlan.site_id == site_id,
+            )
+        }
+        missing = [v for v in wanted if v not in found]
+        if missing:
+            raise HTTPException(
+                status_code=404,
+                detail=f"VLAN не найден на этой площадке: {', '.join(map(str, missing))}",
+            )
+
+    current = {t.vlan_id: t for t in iface.trunk_vlans}
+    for vlan_id, row in current.items():
+        if vlan_id not in wanted:
+            iface.trunk_vlans.remove(row)
+    for vlan_id in wanted:
+        if vlan_id not in current:
+            iface.trunk_vlans.append(
+                models.InterfaceTrunkVlan(vlan_id=vlan_id, site_id=site_id)
+            )
+    db.flush()
 
 
 @router.delete("/interfaces/{interface_id}", status_code=204)

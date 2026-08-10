@@ -8,7 +8,7 @@ from sqlalchemy.exc import DataError, IntegrityError
 
 from app.config import settings
 from app.database import SessionLocal
-from app import models, auth
+from app import codegen, models, auth
 from app.routers import (
     auth_router, tags, catalog, templates, devices, interfaces, links, link_templates,
     topology, topology_groups, schema, imports, sites, audit,
@@ -118,6 +118,10 @@ def prepare_reference_data():
         if db.query(models.Site).count() == 0:
             db.add(models.Site(name="Основная площадка"))
             db.commit()
+
+        # Счётчик кодов не должен отставать от фактических кодов: иначе
+        # первое же заведение устройства упрётся в занятый код.
+        codegen.sync_sequences(db)
 
         # первый администратор, если пользователей ещё нет
         if db.query(models.User).count() == 0:

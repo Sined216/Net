@@ -131,4 +131,4 @@ Backend — FastAPI, SQLAlchemy, PostgreSQL 16, JWT + Argon2id. Версия б�
 ниже 15: изоляция площадок опирается на `ON DELETE SET NULL (колонка)`,
 появившийся в 15-й.
 Frontend — React 19, TypeScript, Vite, Mantine, TanStack Query, JointJS
-(схема связей), React Flow (структура БД).
+(обе схемы: связи и структура базы).

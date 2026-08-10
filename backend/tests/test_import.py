@@ -121,6 +121,28 @@ def test_row_moves_into_the_specification(client, headers, template):
     assert again.status_code == 409
 
 
+def test_moved_row_is_visible_in_the_device_history(client, headers, template):
+    """Заведение из импорта пишется в журнал с идентификатором устройства.
+
+    Раньше записывалось с пустым: блок «последние изменения» на карточке
+    отбирает по нему, и появление железки в спецификации нигде не
+    показывалось."""
+    upload(client, headers, "устройства.csv", CSV_FILE)
+    row = client.get("/import/rows", headers=headers["viewer"]).json()[0]
+    device = client.post(
+        f"/import/rows/{row['id']}/move",
+        json={"template_id": template.id, "name": "Станок 1"},
+        headers=headers["editor"],
+    ).json()
+
+    history = client.get(
+        "/audit", params={"entity_type": "device", "entity_id": device["id"]},
+        headers=headers["viewer"],
+    ).json()
+    assert history["total"] >= 1
+    assert any(entry["action"] == "create" for entry in history["items"])
+
+
 def test_import_does_not_touch_the_specification_by_itself(client, headers):
     """Пока строки не перенесли, устройств не прибавляется."""
     before = client.get("/devices", headers=headers["viewer"]).json()["total"]

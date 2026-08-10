@@ -437,7 +437,6 @@ class InterfaceCreate(BaseModel):
     mode: Optional[PortMode] = None
     module_id: Optional[int] = None
     vlan_id: Optional[int] = None
-    trunk_vlan_ids: Optional[List[int]] = None
     ip: Optional[IPAddressStr] = None
     mac: Optional[MacAddressStr] = None
     notes: Optional[str] = None

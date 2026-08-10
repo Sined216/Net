@@ -30,6 +30,28 @@ def test_codes_increment_per_prefix(client, headers, template, db):
     assert response.json()["code"] == "SRV-0001"
 
 
+def test_code_sequence_catches_up_with_existing_devices(client, headers, template, db, site):
+    """Счётчик кодов сверяется с фактическими кодами при старте.
+
+    Так бывает после восстановления из дампа, снятого без `code_sequences`,
+    или после заливки устройств прямым SQL: счётчик отстал, и следующее
+    заведённое устройство упиралось в занятый код — заводить их было нельзя
+    вовсе, пока кто-нибудь не поправит счётчик руками.
+    """
+    from app import codegen, models
+
+    # Устройство мимо приложения — со своим кодом далеко впереди счётчика.
+    db.add(models.Device(site_id=site.id, template_id=template.id, code="SW-0042"))
+    db.commit()
+    assert db.query(models.CodeSequence).filter_by(prefix="SW").first() is None
+
+    codegen.sync_sequences(db)
+
+    response = client.post("/devices", json={"template_id": template.id}, headers=headers["editor"])
+    assert response.status_code == 201, response.text
+    assert response.json()["code"] == "SW-0043", "код должен продолжать фактический ряд"
+
+
 def test_unknown_template_is_rejected(client, headers):
     response = client.post("/devices", json={"template_id": 9999}, headers=headers["editor"])
     assert response.status_code == 404

@@ -3,7 +3,7 @@ from sqlalchemy import Text, cast, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, ports, schemas, auth, serialize, sites
+from app import models, ports, provisioning, schemas, auth, serialize, sites
 from app.audit import log_change
 from app.codegen import next_device_code
 
@@ -132,19 +132,9 @@ def create_device(payload: schemas.DeviceCreate, db: Session = Depends(get_db),
     else:
         tags = []
 
-    code = next_device_code(db, template.device_type.code_prefix)
-    device = models.Device(template_id=template.id, code=code, created_by=user.id, tags=tags,
-                           site_id=site_id, **data)
-    db.add(device)
-    db.flush()  # получить device.id
-
-    for tpl_iface in template.interfaces:
-        db.add(models.Interface(
-            device_id=device.id, site_id=site_id, port_number=tpl_iface.port_number,
-            label=tpl_iface.label, connector_id=tpl_iface.connector_id,
-            template_interface_id=tpl_iface.id,
-        ))
-
+    device = provisioning.create_device(
+        db, template=template, site_id=site_id, user_id=user.id, data=data, tags=tags,
+    )
     log_change(db, user.id, "create", "device", device.id, old=None, new=device)
     db.commit()
     db.refresh(device)
@@ -312,8 +302,10 @@ def add_interface(device_id: int, payload: schemas.InterfaceCreate, db: Session 
         raise HTTPException(status_code=404, detail="VLAN не найден")
 
     number = ports.next_number(db, models.Interface, "device_id", device_id)
-    iface = models.Interface(device_id=device_id, site_id=site_id, port_number=number,
-                             **payload.model_dump())
+    # Транковые VLAN живут отдельной таблицей: у нового порта их не бывает,
+    # они назначаются правкой уже заведённого.
+    fields = payload.model_dump(exclude={"trunk_vlan_ids"})
+    iface = models.Interface(device_id=device_id, site_id=site_id, port_number=number, **fields)
     db.add(iface)
     db.flush()
     log_change(db, user.id, "create", "interface", iface.id, old=None, new=iface)

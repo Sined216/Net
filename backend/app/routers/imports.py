@@ -13,9 +13,8 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app import auth, importer, models, schemas, serialize, sites
+from app import auth, importer, models, provisioning, schemas, serialize, sites
 from app.audit import log_change
-from app.codegen import next_device_code
 from app.database import get_db
 
 router = APIRouter(prefix="/import", tags=["import"])
@@ -148,25 +147,16 @@ def move_row(row_id: int, payload: schemas.DeviceCreate, db: Session = Depends(g
             raise HTTPException(status_code=404, detail="Один из тегов не найден")
 
     data = payload.model_dump(exclude={"template_id", "tag_ids"})
-    device = models.Device(
-        template_id=template.id, site_id=site_id,
-        code=next_device_code(db, template.device_type.code_prefix),
-        created_by=user.id, tags=tags, **data,
+    device = provisioning.create_device(
+        db, template=template, site_id=site_id, user_id=user.id, data=data, tags=tags,
     )
-    db.add(device)
-    db.flush()
-
-    for tpl_iface in template.interfaces:
-        db.add(models.Interface(
-            device_id=device.id, site_id=site_id, port_number=tpl_iface.port_number,
-            label=tpl_iface.label, connector_id=tpl_iface.connector_id,
-            template_interface_id=tpl_iface.id,
-        ))
 
     row.status = "moved"
     row.device_id = device.id
-    log_change(db, user.id, "create", "device", None, old=None,
-               new={"из импорта": row.source_file, "строка": row.row_number})
+    # Идентификатор устройства обязателен: история самой железки отбирается
+    # по нему, и без него её появление в спецификации нигде не показывалось.
+    log_change(db, user.id, "create", "device", device.id, old=None,
+               new={"из импорта": row.source_file, "строка": row.row_number, "site_id": site_id})
     db.commit()
     db.refresh(device)
     return serialize.serialize_device(device, db=db)

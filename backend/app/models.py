@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Index, Integer, BigInteger, Text, Boolean, Float, ForeignKey, ForeignKeyConstraint,
-    CheckConstraint, UniqueConstraint, Numeric, Date, DateTime, ARRAY, JSON, Table,
+    CheckConstraint, UniqueConstraint, Numeric, Date, DateTime, JSON, Table,
     func,
 )
 from sqlalchemy.dialects.postgresql import CIDR, INET, MACADDR
@@ -364,7 +364,6 @@ class Interface(Base):
     # называлось port_type и жило ещё и в шаблоне, где ничего не значило.
     mode = Column(Text)
     vlan_id = Column(Integer)
-    trunk_vlan_ids = Column(ARRAY(Integer))
     ip = Column(INET)
     mac = Column(MACADDR)
     notes = Column(Text)
@@ -389,6 +388,39 @@ class Interface(Base):
     template_interface = relationship("InterfaceTemplate")
     connector = relationship("ConnectorType")
     module = relationship("TransceiverModule")
+    trunk_vlans = relationship(
+        "InterfaceTrunkVlan", cascade="all, delete-orphan", back_populates="interface",
+    )
+
+
+class InterfaceTrunkVlan(Base):
+    """VLAN, разрешённый в транке порта.
+
+    Отдельной таблицей, а не массивом чисел в колонке порта. Массив был
+    единственным местом схемы, где ничего не проверялось: в него ложился и
+    удалённый VLAN, и VLAN чужой площадки — база о таких значениях не знала
+    вовсе. Здесь работают те же составные ключи, что и везде: `site_id`
+    один на строку и сверяется сразу с портом и с VLAN, поэтому «транк
+    только своей площадки» держит сама база, а удаление VLAN убирает его из
+    транков само.
+    """
+    __tablename__ = "interface_trunk_vlans"
+    interface_id = Column(Integer, primary_key=True)
+    vlan_id = Column(Integer, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["interface_id", "site_id"], ["interfaces.id", "interfaces.site_id"],
+            ondelete="CASCADE", name="fk_trunk_interface_site",
+        ),
+        ForeignKeyConstraint(
+            ["vlan_id", "site_id"], ["vlans.id", "vlans.site_id"],
+            ondelete="CASCADE", name="fk_trunk_vlan_site",
+        ),
+    )
+
+    interface = relationship("Interface", back_populates="trunk_vlans")
 
 
 class LinkTemplate(Base):

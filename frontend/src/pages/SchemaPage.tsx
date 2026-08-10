@@ -1,16 +1,12 @@
-import { useEffect, useMemo } from 'react';
-import {
-  ReactFlow, Background, Controls, MiniMap, MarkerType, useNodesState, useEdgesState,
-  type Edge,
-} from '@xyflow/react';
-import { Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Button, Group, Paper, Stack, Text, Title, useComputedColorScheme } from '@mantine/core';
+import { IconFocusCentered, IconLayoutDistributeHorizontal } from '@tabler/icons-react';
+import { dia, shapes } from '@joint/core';
 import { useDatabaseSchema } from '../api/hooks';
 import {
-  TableNode, TABLE_NODE_WIDTH, tableNodeHeight, type TableNodeType,
-} from './schema/TableNode';
+  buildTable, rowCenter, tableHeight, tablePaint, TABLE_WIDTH,
+} from './schema/joint/tableShape';
 import type { SchemaTable } from '../api/types';
-
-const nodeTypes = { table: TableNode };
 
 const COLUMN_GAP = 90;
 const ROW_GAP = 34;
@@ -24,69 +20,212 @@ const ROW_GAP = 34;
  *
  * Рисуется не списком, а схемой со стрелками внешних ключей: по списку
  * колонок не видно, что во что упирается, а именно это и нужно понять,
- * открывая незнакомую базу.
+ * открывая незнакомую базу. Полотно — то же самое, что у схемы связей
+ * (JointJS): один способ рисовать схемы на весь проект вместо двух.
  */
 export function SchemaPage() {
   const { data, isLoading, error } = useDatabaseSchema();
   const tables = useMemo(() => data?.tables ?? [], [data]);
+  const scheme = useComputedColorScheme('light');
 
-  const { initialNodes, initialEdges } = useMemo(() => buildDiagram(tables), [tables]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const holder = useRef<HTMLDivElement>(null);
+  const paperRef = useRef<dia.Paper | null>(null);
+  const graphRef = useRef<dia.Graph | null>(null);
 
-  // Схема приходит запросом, а начальное состояние React Flow берётся один
-  // раз при монтировании — без этого страница осталась бы пустой.
+  const fit = useCallback(() => {
+    paperRef.current?.transformToFitContent({ padding: 40, maxScale: 1, useModelGeometry: true });
+  }, []);
+
+  // ---------- полотно ----------
   useEffect(() => {
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-  }, [initialNodes, initialEdges, setNodes, setEdges]);
+    const element = holder.current;
+    if (!element) return;
 
-  if (isLoading) return <Text c="dimmed">Загрузка…</Text>;
-  if (error) return <Text c="red">{(error as Error).message}</Text>;
+    const graph = new dia.Graph({}, { cellNamespace: shapes });
+    const paper = new dia.Paper({
+      model: graph,
+      cellViewNamespace: shapes,
+      width: Math.max(element.clientWidth, 320),
+      height: Math.max(element.clientHeight, 320),
+      gridSize: 10,
+      // Схему только рассматривают: карточки двигают, а рисовать на ней
+      // нечего — ни связей, ни правки.
+      interactive: { linkMove: false, labelMove: false },
+      defaultConnectionPoint: { name: 'boundary', args: { offset: 1 } },
+    });
+    element.appendChild(paper.el);
+    paper.unfreeze();
+
+    const observer = new ResizeObserver(() => {
+      paper.setDimensions(Math.max(element.clientWidth, 320), Math.max(element.clientHeight, 320));
+    });
+    observer.observe(element);
+
+    // Панорама тягой за пустое место и масштаб колесом — вокруг курсора,
+    // как на схеме связей.
+    let panning: { x: number; y: number } | null = null;
+    paper.on('blank:pointerdown', (event: dia.Event) => {
+      panning = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
+    });
+    paper.on('blank:pointermove cell:pointermove', (event: dia.Event) => {
+      if (!panning) return;
+      const t = paper.translate();
+      paper.translate(t.tx + ((event.clientX ?? 0) - panning.x), t.ty + ((event.clientY ?? 0) - panning.y));
+      panning = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
+    });
+    paper.on('blank:pointerup cell:pointerup', () => { panning = null; });
+    paper.on('blank:mousewheel cell:mousewheel', (...args: unknown[]) => {
+      const delta = args[args.length - 1] as number;
+      const y = args[args.length - 2] as number;
+      const x = args[args.length - 3] as number;
+      const from = paper.scale().sx;
+      const to = Math.min(2.5, Math.max(0.15, from * (delta > 0 ? 1.1 : 0.9)));
+      if (to === from) return;
+      const t = paper.translate();
+      const screenX = x * from + t.tx;
+      const screenY = y * from + t.ty;
+      paper.scale(to);
+      paper.translate(screenX - x * to, screenY - y * to);
+    });
+
+    paperRef.current = paper;
+    graphRef.current = graph;
+    return () => {
+      observer.disconnect();
+      paper.remove();
+      paperRef.current = null;
+      graphRef.current = null;
+    };
+  }, []);
+
+  // ---------- наполнение ----------
+  useEffect(() => {
+    const graph = graphRef.current;
+    const paper = paperRef.current;
+    if (!graph || !paper || tables.length === 0) return;
+
+    const paint = tablePaint(scheme === 'dark');
+    graph.clear();
+
+    const positions = layout(tables);
+    const cells = new Map<string, dia.Element>();
+    for (const table of tables) {
+      const at = positions.get(table.name);
+      if (!at) continue;
+      const cell = buildTable(table, at, paint);
+      graph.addCell(cell);
+      cells.set(table.name, cell);
+    }
+
+    // Стрелка идёт от колонки со ссылкой к первичному ключу той таблицы, на
+    // которую она указывает: концы цепляются к строкам, а не к краю
+    // карточки — иначе на полутора десятках таблиц по линиям уже не понять,
+    // что с чем связано.
+    const byName = new Map(tables.map((t) => [t.name, t]));
+    const line = scheme === 'dark' ? '#4dabf7' : '#339af0';
+    for (const table of tables) {
+      const source = cells.get(table.name);
+      if (!source) continue;
+      const hasNote = !!table.note;
+      table.columns.forEach((column, index) => {
+        if (!column.references) return;
+        const [targetName, targetColumn] = column.references.split('.');
+        const target = cells.get(targetName);
+        const targetTable = byName.get(targetName);
+        if (!target || !targetTable || target === source) return;
+        const targetIndex = targetTable.columns.findIndex((c) => c.name === targetColumn);
+        const targetHasNote = !!targetTable.note;
+
+        graph.addCell(new shapes.standard.Link({
+          source: {
+            id: source.id,
+            anchor: { name: 'left', args: { dy: rowCenter(index, hasNote) - source.size().height / 2 } },
+          },
+          target: {
+            id: target.id,
+            anchor: {
+              name: 'right',
+              args: {
+                dy: targetIndex >= 0
+                  ? rowCenter(targetIndex, targetHasNote) - target.size().height / 2
+                  : 0,
+              },
+            },
+          },
+          router: { name: 'manhattan', args: { step: 10, padding: 18 } },
+          connector: { name: 'jumpover', args: { size: 4, jump: 'arc' } },
+          z: 1,
+          attrs: {
+            line: {
+              stroke: line, strokeWidth: 1.3, opacity: 0.75,
+              targetMarker: { type: 'path', d: 'M 8 -4 0 0 8 4 z', fill: line, stroke: 'none' },
+            },
+          },
+        }));
+      });
+    }
+
+    fit();
+  }, [tables, scheme, fit]);
 
   return (
     <Stack h="100%" gap="sm">
-      <Title order={2}>Структура базы данных</Title>
+      <Group justify="space-between">
+        <Title order={2}>Структура базы данных</Title>
+        <Group>
+          <Button
+            variant="default" leftSection={<IconLayoutDistributeHorizontal size={16} />}
+            onClick={() => { relayout(graphRef.current, tables); fit(); }}
+          >
+            Разложить
+          </Button>
+          <Button variant="default" leftSection={<IconFocusCentered size={16} />} onClick={fit}>
+            Вписать
+          </Button>
+        </Group>
+      </Group>
       <Text c="dimmed" size="sm">
         Читается прямо из работающей базы: типы, ограничения и число строк — фактические, а не из описания в
         репозитории. Стрелка идёт от колонки со ссылкой к первичному ключу таблицы, на которую она указывает.
-        Таблиц: {tables.length}. Карточки можно перетаскивать, схему — двигать и масштабировать.
+        Таблиц: {tables.length}. Карточки можно перетаскивать, схему — двигать и масштабировать; «Разложить»
+        возвращает автоматическую раскладку по слоям. ◆ — первичный ключ, • — обязательное поле.
       </Text>
-      {/* Схема на полтора десятка таблиц не влезает в маленькое окно: во
-          весь экран её видно целиком и текст в карточках ещё читается. */}
-      <Paper withBorder style={{ height: 'calc(100vh - 230px)', minHeight: 520 }}>
-        {nodes.length === 0 ? (
-          <Group h="100%" justify="center"><Text c="dimmed">Таблиц нет</Text></Group>
-        ) : (
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            nodesConnectable={false}
-            fitView
-            fitViewOptions={{ padding: 0.06 }}
-            minZoom={0.15}
-            maxZoom={2.5}
-          >
-            <Background />
-            <Controls />
-            <MiniMap pannable zoomable />
-          </ReactFlow>
+      {/* Полотно живёт в разметке всегда, даже пока схема грузится: раньше
+          страница до ответа возвращала одну строку «Загрузка…», контейнера
+          не существовало, и полотно, создаваемое один раз при монтировании,
+          оставалось пустым навсегда. */}
+      <Paper withBorder style={{ height: 'calc(100vh - 250px)', minHeight: 520, overflow: 'hidden', position: 'relative' }}>
+        <div ref={holder} style={{ width: '100%', height: '100%' }} />
+        {(isLoading || error) && (
+          <Group justify="center" style={{ position: 'absolute', inset: 0 }}>
+            <Text c={error ? 'red' : 'dimmed'}>
+              {error ? (error as Error).message : 'Загрузка…'}
+            </Text>
+          </Group>
         )}
       </Paper>
     </Stack>
   );
 }
 
-/** Раскладка по слоям: таблица стоит правее всех, на которые ссылается.
+/** Разложить заново уже нарисованные карточки — не перерисовывая схему. */
+function relayout(graph: dia.Graph | null, tables: SchemaTable[]) {
+  if (!graph) return;
+  const positions = layout(tables);
+  for (const cell of graph.getElements()) {
+    const at = positions.get(cell.get('tableName'));
+    if (at) cell.position(at.x, at.y);
+  }
+}
+
+/** Автоматическая раскладка по слоям: таблица стоит правее всех, на которые
+ * ссылается.
  *
  * Пружинная симуляция здесь хуже — у карточек сильно разная высота, и она
  * их накладывает; а связи между таблицами почти дерево, так что слои дают
  * читаемую схему без случайности.
  */
-function buildDiagram(tables: SchemaTable[]) {
+function layout(tables: SchemaTable[]): Map<string, { x: number; y: number }> {
   const byName = new Map(tables.map((t) => [t.name, t]));
 
   const referencedTables = (table: SchemaTable) => {
@@ -127,10 +266,12 @@ function buildDiagram(tables: SchemaTable[]) {
   // без этого стрелки идут наискосок через всю схему. Слои считаются слева
   // направо, поэтому положение «родителей» к этому моменту уже известно.
   const centerY = new Map<string, number>();
-  const initialNodes: TableNodeType[] = [];
+  const result = new Map<string, { x: number; y: number }>();
   for (const [depth, group] of [...columns.entries()].sort((a, b) => a[0] - b[0])) {
     const anchor = (table: SchemaTable) => {
-      const parents = referencedTables(table).map((name) => centerY.get(name)).filter((y): y is number => y != null);
+      const parents = referencedTables(table)
+        .map((name) => centerY.get(name))
+        .filter((y): y is number => y != null);
       // Таблице без ссылок держаться не за что — такие уходят вниз слоя.
       return parents.length ? parents.reduce((a, b) => a + b, 0) / parents.length : Number.MAX_SAFE_INTEGER;
     };
@@ -138,43 +279,14 @@ function buildDiagram(tables: SchemaTable[]) {
       ? [...group].sort((a, b) => a.name.localeCompare(b.name))
       : [...group].sort((a, b) => anchor(a) - anchor(b) || a.name.localeCompare(b.name));
 
-    const heights = ordered.map((t) => tableNodeHeight(t.columns.length, !!t.note));
+    const heights = ordered.map((t) => tableHeight(t.columns.length, !!t.note));
     const total = heights.reduce((a, b) => a + b, 0) + ROW_GAP * (ordered.length - 1);
     let y = -total / 2;  // слои центрируются друг относительно друга
     ordered.forEach((table, index) => {
-      initialNodes.push({
-        id: table.name,
-        type: 'table',
-        position: { x: depth * (TABLE_NODE_WIDTH + COLUMN_GAP), y },
-        data: {
-          name: table.name,
-          note: table.note,
-          rowCount: table.row_count,
-          columns: table.columns,
-        },
-      });
+      result.set(table.name, { x: depth * (TABLE_WIDTH + COLUMN_GAP), y });
       centerY.set(table.name, y + heights[index] / 2);
       y += heights[index] + ROW_GAP;
     });
   }
-
-  const initialEdges: Edge[] = [];
-  for (const table of tables) {
-    for (const column of table.columns) {
-      if (!column.references) continue;
-      const [target, targetColumn] = column.references.split('.');
-      if (!byName.has(target)) continue;
-      initialEdges.push({
-        id: `${table.name}.${column.name}`,
-        source: table.name,
-        sourceHandle: column.name,
-        target,
-        targetHandle: targetColumn,
-        style: { stroke: 'var(--mantine-color-blue-4)', strokeWidth: 1.4 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--mantine-color-blue-4)', width: 14, height: 14 },
-      });
-    }
-  }
-
-  return { initialNodes, initialEdges };
+  return result;
 }
