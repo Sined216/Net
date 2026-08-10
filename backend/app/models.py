@@ -87,6 +87,11 @@ class User(Base):
     # Взводится администратору, созданному при первом запуске, и после сброса
     # пароля другим админом: пока флаг стоит, интерфейс требует сменить пароль.
     must_change_password = Column(Boolean, nullable=False, server_default="false")
+    # Подряд идущие неудачные попытки входа и время, до которого вход
+    # закрыт. Внутренняя сеть — не повод раздавать неограниченный перебор:
+    # подобрать пароль к учётке админа иначе можно скриптом за вечер.
+    failed_logins = Column(Integer, nullable=False, server_default="0")
+    locked_until = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (CheckConstraint("role IN ('admin','editor','viewer')"),)

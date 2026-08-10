@@ -24,8 +24,48 @@ ph = PasswordHasher()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
+# Сколько промахов подряд прощается и как быстро растёт пауза. Пять — это
+# заметно больше, чем опечатки живого человека, и заметно меньше, чем нужно
+# перебору: после них каждая следующая попытка отодвигает вход вдвое, до
+# получаса. Насовсем не запирает никогда — иначе достаточно поколотить чужой
+# логин, чтобы человек не смог войти вовсе.
+FREE_ATTEMPTS = 5
+FIRST_LOCK_SECONDS = 60
+MAX_LOCK_SECONDS = 30 * 60
+
+
 def hash_password(password: str) -> str:
     return ph.hash(password)
+
+
+def lock_seconds_left(user: models.User) -> int:
+    """Сколько ещё ждать этой учётной записи. 0 — вход открыт."""
+    if user.locked_until is None:
+        return 0
+    left = (user.locked_until - datetime.now(timezone.utc)).total_seconds()
+    return max(0, int(left + 0.999))
+
+
+def register_failed_login(db: Session, user: models.User) -> None:
+    """Промах: счётчик растёт, и после порога вход закрывается на паузу.
+
+    Считается по учётной записи, а не по адресу: адрес в локальной сети
+    меняется одной командой, а перебор идёт по конкретному логину.
+    """
+    user.failed_logins = (user.failed_logins or 0) + 1
+    over = user.failed_logins - FREE_ATTEMPTS
+    if over > 0:
+        seconds = min(FIRST_LOCK_SECONDS * (2 ** (over - 1)), MAX_LOCK_SECONDS)
+        user.locked_until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    db.commit()
+
+
+def reset_failed_logins(db: Session, user: models.User) -> None:
+    """Удачный вход стирает историю промахов: они шли не от подбора."""
+    if user.failed_logins or user.locked_until:
+        user.failed_logins = 0
+        user.locked_until = None
+        db.commit()
 
 
 def verify_password(plain: str, hashed: str) -> bool:

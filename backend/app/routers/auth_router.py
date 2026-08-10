@@ -44,7 +44,23 @@ def _assert_not_last_admin(db: Session, user: models.User) -> None:
 @router.post("/login", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
+
+    # Перебор паролей упирается в паузу. Несуществующий логин не считается:
+    # заводить счётчик на выдуманное имя — значит копить мусор от любого
+    # сканера, а подбирать пароль всё равно можно только к существующей
+    # учётной записи.
+    if user:
+        wait = auth.lock_seconds_left(user)
+        if wait:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Слишком много неудачных попыток входа. Повторите через {_human(wait)}",
+                headers={"Retry-After": str(wait)},
+            )
+
     if not user or not auth.verify_password(form_data.password, user.password_hash):
+        if user:
+            auth.register_failed_login(db, user)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный логин или пароль",
@@ -56,8 +72,16 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный логин или пароль",
         )
+    auth.reset_failed_logins(db, user)
     token = auth.create_access_token({"sub": str(user.id), "role": user.role})
     return schemas.Token(access_token=token)
+
+
+def _human(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} с"
+    minutes = (seconds + 59) // 60
+    return f"{minutes} мин"
 
 
 @router.get("/me", response_model=schemas.UserOut)
