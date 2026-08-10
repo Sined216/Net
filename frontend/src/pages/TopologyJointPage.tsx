@@ -19,7 +19,9 @@ import { groupDepth } from './topology/groups';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { AppearanceMenu } from './topology/AppearanceMenu';
 import { loadAppearance, saveAppearance, tint, type TopologyAppearance } from './topology/appearance';
-import { DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, STUB_SIZE } from './topology/joint/shapes';
+import {
+  DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, STUB_SIZE, withAlpha,
+} from './topology/joint/shapes';
 import { deviceTools, groupTools } from './topology/joint/tools';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
@@ -258,6 +260,10 @@ export function TopologyJointPage() {
         // сохранение позиции.
         return parent ? parent.getBBox().toJSON() : false;
       },
+      // Линия начинается на границе узла, а не в его середине. Иначе путь
+      // кабеля уходит внутрь карточки, и подписи портов, отмеряемые от его
+      // начала, оказываются под ней.
+      defaultConnectionPoint: { name: 'boundary', args: { offset: 2 } },
       interactive: (cellView) => {
         if (!canEdit) return false;
         // Заглушку свободного конца не двигают: за неё тянут кабель, и жест
@@ -464,30 +470,46 @@ export function TopologyJointPage() {
     for (const device of filteredDevices) {
       const template = templates.find((t) => t.id === device.template_id);
       const accent = template?.color ?? NEUTRAL;
-      const at = positions.get(device.id)!;
+      const raw = positions.get(device.id)!;
       const connected = device.interfaces.filter((i) => i.link_id).length;
       const typeName = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '' : '';
+      const groupCell = device.topology_group_id != null ? groupCells.get(device.topology_group_id) : undefined;
+      const frame = device.topology_group_id != null ? boxes.get(device.topology_group_id) : undefined;
+      // Узел не должен торчать из своей рамки. Перетаскивание за неё не
+      // выпускает само полотно, но координаты, пришедшие из базы, оно не
+      // подрезает: рамку могли сузить, а устройство — перенести в группу
+      // из другого угла схемы.
+      const at = clampToFrame({ x: raw.x - NODE.width / 2, y: raw.y - NODE.height / 2 }, frame);
+
       const cell = new DeviceShape({
-        position: { x: at.x - NODE.width / 2, y: at.y - NODE.height / 2 },
+        position: at,
         kind: 'device',
         deviceId: device.id,
         z: 10,
         attrs: {
-          body: {
+          // Рамка-градиент по цвету модели — как на основной схеме.
+          border: {
+            fill: {
+              type: 'linearGradient',
+              stops: [{ offset: '0%', color: accent }, { offset: '100%', color: withAlpha(accent, 0.25) }],
+              attrs: { x1: 0, y1: 0, x2: 1, y2: 1 },
+            },
             filter: look.deviceGlow
-              ? { name: 'dropShadow', args: { dx: 0, dy: 1, blur: 4, color: tint(accent, 45) } }
+              ? { name: 'dropShadow', args: { dx: 0, dy: 1, blur: 5, color: withAlpha(accent, 0.35) } }
               : null,
           },
-          stripe: { fill: accent },
+          dot: { fill: accent },
           code: { text: device.code },
+          ports: {
+            text: look.devicePorts ? `${connected}/${device.interfaces.length}` : '',
+            fill: connected > 0 ? '#0ca678' : '#868e96',
+          },
           name: { text: look.deviceSubtitle ? cut(device.name || template?.name || typeName || '—', 26) : '' },
-          ports: { text: look.devicePorts ? `${connected}/${device.interfaces.length}` : '' },
         },
       });
       graph.addCell(cell);
       deviceCells.set(device.id, cell);
 
-      const groupCell = device.topology_group_id != null ? groupCells.get(device.topology_group_id) : undefined;
       if (groupCell) groupCell.embed(cell);
     }
 
@@ -500,9 +522,44 @@ export function TopologyJointPage() {
       }
     }
 
-    const routerOption = router === 'orthogonal'
-      ? { name: 'manhattan', args: { step: 20, padding: 20 } }
-      : undefined;
+    // Кабели, приходящие в одно устройство, должны входить в него в разных
+    // точках, иначе при ортогональной разводке они ложатся друг на друга и
+    // видно одну линию вместо пяти. Считаем каждому концу его номер у своей
+    // железки и разносим точки входа по высоте узла.
+    const endsOfDevice = new Map<number, number[]>();
+    for (const link of links) {
+      for (const ifaceId of [link.interface_a_id, link.interface_b_id]) {
+        const deviceId = ifaceId != null ? deviceOfInterface.get(ifaceId) : undefined;
+        if (deviceId == null) continue;
+        if (!endsOfDevice.has(deviceId)) endsOfDevice.set(deviceId, []);
+        endsOfDevice.get(deviceId)!.push(link.id);
+      }
+    }
+    const anchorFor = (deviceId: number, linkId: number) => {
+      const ends = endsOfDevice.get(deviceId) ?? [];
+      const index = ends.indexOf(linkId);
+      const spread = Math.min(ends.length, 5);
+      const dy = spread <= 1 ? 0 : ((index % spread) - (spread - 1) / 2) * 18;
+      return { name: 'center', args: { dy } };
+    };
+    // Коридоры разводки тоже разные: одинаковый отступ сводит соседние
+    // кабели в одну линию ровно так же, как одинаковая точка входа. Шаг
+    // подобран так, чтобы соседние коридоры было видно как отдельные, а не
+    // как утолщённую линию.
+    const linkOrder = new Map(links.map((l, index) => [l.id, index]));
+    const routerFor = (linkId: number) => (router === 'orthogonal'
+      ? { name: 'manhattan', args: { step: 16, padding: 22 + ((linkOrder.get(linkId) ?? 0) % 4) * 18 } }
+      : undefined);
+    // Пересечения показываем «мостиком»: без него две пересекающиеся линии
+    // читаются как одна с ответвлением.
+    const connectorFor = () => (router === 'orthogonal'
+      ? { name: 'jumpover', args: { size: 5, jump: 'arc' } }
+      : { name: 'rounded', args: { radius: 8 } });
+    // При ортогональной разводке линия обходит узлы стороной, поэтому её
+    // можно класть поверх карточек — иначе подписи портов у самого узла
+    // прячутся под ним. Прямая линия узлы пересекает, и там она остаётся
+    // под ними.
+    const linkZ = router === 'orthogonal' ? 20 : 5;
 
     for (const link of links) {
       const aDevice = link.interface_a_id != null ? deviceOfInterface.get(link.interface_a_id) : undefined;
@@ -515,11 +572,12 @@ export function TopologyJointPage() {
         const target = deviceCells.get(bDevice);
         if (!source || !target) continue;
         graph.addCell(new shapes.standard.Link({
-          source: { id: source.id }, target: { id: target.id },
+          source: { id: source.id, anchor: anchorFor(aDevice, link.id) },
+          target: { id: target.id, anchor: anchorFor(bDevice, link.id) },
           linkId: link.id,
-          router: routerOption,
-          connector: { name: 'rounded', args: { radius: 8 } },
-          z: 5,
+          router: routerFor(link.id),
+          connector: connectorFor(),
+          z: linkZ,
           attrs: {
             line: {
               stroke: template?.color ?? '#9aa1ab',
@@ -531,8 +589,10 @@ export function TopologyJointPage() {
             },
           },
           labels: look.edgeLabels ? [
-            portLabelCell(portText(portOfInterface.get(link.interface_a_id!), look), 34),
-            portLabelCell(portText(portOfInterface.get(link.interface_b_id!), look), -34),
+            portLabelCell(portText(portOfInterface.get(link.interface_a_id!), look), 46,
+                          labelShift(endsOfDevice.get(aDevice), link.id)),
+            portLabelCell(portText(portOfInterface.get(link.interface_b_id!), look), -46,
+                          labelShift(endsOfDevice.get(bDevice), link.id)),
           ] : [],
         }));
         continue;
@@ -556,7 +616,7 @@ export function TopologyJointPage() {
       graph.addCell(new shapes.standard.Link({
         source: { id: deviceCell.id }, target: { id: stub.id },
         linkId: link.id,
-        z: 5,
+        z: linkZ,
         attrs: {
           line: {
             stroke: '#f76707', strokeWidth: look.edgeWidth, strokeDasharray: '4 4',
@@ -697,6 +757,24 @@ export function TopologyJointPage() {
   );
 }
 
+/** Сдвиг подписи поперёк линии: у устройства с несколькими кабелями подписи
+ * сходятся в одну точку и наезжают друг на друга. */
+function labelShift(ends: number[] | undefined, linkId: number): number {
+  if (!ends || ends.length <= 1) return 0;
+  const index = ends.indexOf(linkId);
+  return (index % 2 === 0 ? -1 : 1) * (10 + Math.floor(index / 2) * 4);
+}
+
+/** Загнать узел внутрь рамки: рамка — это область, за которую он не выходит. */
+function clampToFrame(at: { x: number; y: number }, frame: Box | undefined) {
+  if (!frame) return at;
+  const pad = 8;
+  return {
+    x: Math.min(Math.max(at.x, frame.x + pad), Math.max(frame.x + pad, frame.x + frame.width - NODE.width - pad)),
+    y: Math.min(Math.max(at.y, frame.y + 24), Math.max(frame.y + 24, frame.y + frame.height - NODE.height - pad)),
+  };
+}
+
 function cut(text: string, limit: number): string {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
@@ -709,9 +787,9 @@ function portText(port: { number: number; label: string } | undefined, look: Top
 /** Подпись конца кабеля: в нескольких десятках точек от своего конца линии.
  * Целые числа JointJS понимает как расстояние в точках от начала, а
  * отрицательные — от конца; доли прижимали бы подпись вплотную к узлу. */
-function portLabelCell(text: string, distance: number) {
+function portLabelCell(text: string, distance: number, offset = 0) {
   return {
-    position: { distance, offset: 0 },
+    position: { distance, offset },
     attrs: {
       labelBody: { fill: '#ffffff', stroke: '#dee2e6', strokeWidth: 1, rx: 4, ry: 4 },
       labelText: { text, fontSize: 10, fill: '#495057', fontFamily: 'inherit' },
