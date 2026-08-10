@@ -17,7 +17,7 @@ export interface TopologyAppearance {
   /** Показывать число устройств рядом с названием группы. */
   groupCount: boolean;
 
-  /** Вторая строка узла — название устройства под кодом. */
+  /** Вторая строка узла — код устройства под названием. */
   deviceSubtitle: boolean;
   /** Счётчик «занято/всего» портов. */
   devicePorts: boolean;
@@ -88,14 +88,47 @@ export function tint(color: string, percent: number): string {
   return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 }
 
-/** Цвета карточки узла. Тёмная — своими цветами, а не переменными темы:
- * полотно схемы светлое независимо от темы интерфейса. */
-export function nodeColors(dark: boolean) {
+/** Цвета карточки узла.
+ *
+ * Считаются от двух вещей сразу: от настройки «тёмная карточка» и от темы
+ * интерфейса, потому что полотно схемы — это фон страницы. Тёмная карточка
+ * цвета фона на тёмной теме просто растворилась бы в нём, поэтому там она
+ * на ступень светлее полотна, а на светлой теме остаётся почти чёрной.
+ */
+export function nodeColors(dark: boolean, scheme: ColorScheme) {
+  if (!dark) {
+    return {
+      fill: '#ffffff',
+      title: '#212529',
+      subtitle: '#868e96',
+      portsIdle: '#868e96',
+      portsBusy: '#0ca678',
+    };
+  }
   return {
-    fill: dark ? '#1a1b1e' : '#ffffff',
-    code: dark ? '#f8f9fa' : '#212529',
-    subtitle: dark ? '#909296' : '#868e96',
-    portsIdle: dark ? '#909296' : '#868e96',
-    portsBusy: dark ? '#38d9a9' : '#0ca678',
+    fill: scheme === 'dark' ? '#25262b' : '#1a1b1e',
+    title: '#f8f9fa',
+    subtitle: '#909296',
+    portsIdle: '#909296',
+    portsBusy: '#38d9a9',
+  };
+}
+
+export type ColorScheme = 'light' | 'dark';
+
+/** Цвета того, что лежит на полотне поверх линий: подписи портов, врезка
+ * подписи группы, кнопки панелей. Своими значениями, а не переменными темы:
+ * в атрибутах SVG переменные CSS работают не везде. */
+export function canvasColors(scheme: ColorScheme) {
+  const dark = scheme === 'dark';
+  return {
+    /** Фон полотна — им закрашивается врезка подписи группы. */
+    canvas: dark ? '#1a1b1e' : '#ffffff',
+    /** Подложка подписи и кнопки. */
+    plate: dark ? '#2c2e33' : '#ffffff',
+    plateBorder: dark ? '#5c5f66' : '#dee2e6',
+    plateText: dark ? '#c1c2c5' : '#495057',
+    /** Значок на кнопке панели. */
+    icon: dark ? '#c1c2c5' : '#495057',
   };
 }

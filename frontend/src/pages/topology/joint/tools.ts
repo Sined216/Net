@@ -1,5 +1,6 @@
 import { dia, elementTools, linkTools } from '@joint/core';
 import { GROUP_MIN } from './shapes';
+import type { canvasColors } from '../appearance';
 
 /** Панели действий на узле и на рамке — то же, что NodeToolbar в React Flow.
  *
@@ -9,6 +10,19 @@ import { GROUP_MIN } from './shapes';
  */
 
 type Action = (id: number) => void;
+type Paint = ReturnType<typeof canvasColors>;
+
+/** Как рисовать панель: цвета темы и поправка на масштаб полотна.
+ *
+ * Поправка нужна потому, что инструменты живут в системе координат схемы:
+ * отдалили схему вдвое — и кнопки стали вдвое мельче, попасть в них уже
+ * нечем. Здесь они растут обратно, оставаясь одного размера на экране.
+ */
+export interface ToolsLook {
+  paint: Paint;
+  /** 1 при обычном масштабе, больше — когда схему отдалили. */
+  zoom: number;
+}
 
 /** Иконки — контуры из того же набора, что и во всём интерфейсе (Tabler),
  * вписанные в квадрат 24×24 с масштабом 0.7. */
@@ -21,19 +35,24 @@ const ICONS: Record<string, string> = {
   plug: 'M7 12h10M9.5 8.5V5M14.5 8.5V5M7 12v2a5 5 0 0 0 5 5v3',
 };
 
-function button(icon: string, title: string, color: string, index: number, action: () => void) {
+function button(icon: string, title: string, color: string, index: number, look: ToolsLook,
+                 action: () => void) {
+  const k = look.zoom;
   return new elementTools.Button({
     focusOpacity: 0.5,
-    // Панель висит над узлом одной строкой — как и в React Flow.
+    // Панель висит над узлом одной строкой. Отступы умножаются на поправку
+    // вместе с самой кнопкой — иначе при отдалении кнопки налезали бы друг
+    // на друга.
     x: 0, y: 0,
-    offset: { x: 18 + index * 30, y: -20 },
+    scale: k,
+    offset: { x: (18 + index * 30) * k, y: -20 * k },
     markup: [
       {
         tagName: 'rect',
         selector: 'plate',
         attributes: {
           x: -13, y: -13, width: 26, height: 26, rx: 6, ry: 6,
-          fill: '#ffffff', stroke: '#dee2e6', 'stroke-width': 1, cursor: 'pointer',
+          fill: look.paint.plate, stroke: look.paint.plateBorder, 'stroke-width': 1, cursor: 'pointer',
         },
       },
       {
@@ -61,6 +80,7 @@ const ResizeControl = elementTools.Control.extend({
       attributes: {
         x: -6, y: -6, width: 12, height: 12, rx: 3, ry: 3,
         fill: '#ffffff', stroke: '#4dabf7', 'stroke-width': 2, cursor: 'nwse-resize',
+        // Цвета приходят из панели: ручка красится под тему и цвет группы.
       },
     },
   ],
@@ -78,26 +98,29 @@ const ResizeControl = elementTools.Control.extend({
 
 export function deviceTools(deviceId: number, actions: {
   edit: Action; copy: Action; regroup: Action; remove: Action;
-}): dia.ToolsView {
+}, look: ToolsLook): dia.ToolsView {
+  const icon = look.paint.icon;
   return new dia.ToolsView({
     name: 'device',
     tools: [
-      button(ICONS.pencil, 'Редактировать', '#495057', 0, () => actions.edit(deviceId)),
-      button(ICONS.copy, 'Копировать — новое устройство по той же модели', '#495057', 1,
+      button(ICONS.pencil, 'Редактировать', icon, 0, look, () => actions.edit(deviceId)),
+      button(ICONS.copy, 'Копировать — новое устройство по той же модели', icon, 1, look,
              () => actions.copy(deviceId)),
-      button(ICONS.group, 'В группу — или из неё', '#495057', 2, () => actions.regroup(deviceId)),
-      button(ICONS.trash, 'Удалить', '#e03131', 3, () => actions.remove(deviceId)),
+      button(ICONS.group, 'В группу — или из неё', icon, 2, look, () => actions.regroup(deviceId)),
+      button(ICONS.trash, 'Удалить', '#e03131', 3, look, () => actions.remove(deviceId)),
       // Кабель тянут отсюда: своей «точки подключения» у узла нет, и это
       // честнее, чем делать магнитом весь корпус — иначе перетаскивание узла
       // и протягивание кабеля были бы одним жестом.
       new elementTools.Connect({
-        x: 0, y: 0, offset: { x: 18 + 4 * 30, y: -20 },
+        x: 0, y: 0, scale: look.zoom,
+        offset: { x: (18 + 4 * 30) * look.zoom, y: -20 * look.zoom },
         markup: [
           {
             tagName: 'rect',
             attributes: {
               x: -13, y: -13, width: 26, height: 26, rx: 6, ry: 6,
-              fill: '#ffffff', stroke: '#dee2e6', 'stroke-width': 1, cursor: 'crosshair',
+              fill: look.paint.plate, stroke: look.paint.plateBorder, 'stroke-width': 1,
+              cursor: 'crosshair',
             },
           },
           {
@@ -117,15 +140,16 @@ export function deviceTools(deviceId: number, actions: {
 
 export function groupTools(groupId: number, actions: {
   editGroup: Action; addSubgroup: Action; removeGroup: Action;
-}, color: string): dia.ToolsView {
+}, color: string, look: ToolsLook): dia.ToolsView {
+  const icon = look.paint.icon;
   return new dia.ToolsView({
     name: 'group',
     tools: [
-      button(ICONS.pencil, 'Название, цвет и состав группы', '#495057', 0, () => actions.editGroup(groupId)),
-      button(ICONS.folderPlus, 'Добавить подгруппу', '#495057', 1, () => actions.addSubgroup(groupId)),
-      button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', 2,
+      button(ICONS.pencil, 'Название, цвет и состав группы', icon, 0, look, () => actions.editGroup(groupId)),
+      button(ICONS.folderPlus, 'Добавить подгруппу', icon, 1, look, () => actions.addSubgroup(groupId)),
+      button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', 2, look,
              () => actions.removeGroup(groupId)),
-      new ResizeControl({ handleAttributes: { stroke: color } }),
+      new ResizeControl({ handleAttributes: { fill: look.paint.plate, stroke: color } }),
     ],
   });
 }

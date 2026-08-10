@@ -87,7 +87,7 @@ export function AppearanceMenu({ value, onChange }: Props) {
             <Divider my={4} />
             <Section title="Узлы устройств" />
             <Switch
-              size="xs" label="Название под кодом" checked={value.deviceSubtitle}
+              size="xs" label="Код устройства под названием" checked={value.deviceSubtitle}
               onChange={(e) => set('deviceSubtitle', e.currentTarget.checked)}
             />
             <Switch

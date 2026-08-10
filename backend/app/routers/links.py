@@ -153,6 +153,59 @@ def attach_link_end(link_id: int, payload: schemas.LinkAttach, db: Session = Dep
     return serialize.serialize_links(db, [link])[0]
 
 
+@router.post("/{link_id}/reconnect", response_model=schemas.LinkOut)
+def reconnect_link_end(link_id: int, payload: schemas.LinkReconnect, db: Session = Depends(get_db),
+                        user: models.User = Depends(auth.can_edit),
+                        site_id: int = Depends(sites.current_site_id)):
+    """Переставить конец кабеля в другой порт.
+
+    Сценарий: кабель записали не в тот порт, или железку перекоммутировали в
+    соседнее гнездо. Кабель тот же самый — у него та же длина, разъём и
+    заметки, — поэтому связь не пересоздаётся: переезжает один её конец.
+
+    От `attach` отличается тем, что здесь конец не подвешен, а сидит в
+    порту: `attach` подключает потерянный конец, `reconnect` переставляет
+    рабочий.
+    """
+    link = db.query(models.Link).filter(
+        models.Link.id == link_id, models.Link.site_id == site_id
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Связь не найдена")
+
+    ends = [link.interface_a_id, link.interface_b_id]
+    if payload.from_interface_id not in ends:
+        raise HTTPException(status_code=400, detail="Этот порт не является концом связи")
+    if payload.from_interface_id == payload.to_interface_id:
+        return serialize.serialize_links(db, [link])[0]
+
+    iface = db.query(models.Interface).filter(
+        models.Interface.id == payload.to_interface_id, models.Interface.site_id == site_id
+    ).first()
+    if not iface:
+        raise HTTPException(status_code=404, detail="Интерфейс не найден")
+
+    other_id = ends[1] if ends[0] == payload.from_interface_id else ends[0]
+    if other_id == iface.id:
+        raise HTTPException(status_code=400, detail="Нельзя соединить интерфейс сам с собой")
+    if _busy(db, [iface.id], exclude_link_id=link.id):
+        raise HTTPException(status_code=409, detail="Этот порт уже занят другой связью")
+
+    old_snapshot = {c.name: getattr(link, c.name) for c in link.__table__.columns}
+    if other_id is None:
+        # Второй конец подвешен: занятой стороной остаётся только новая.
+        link.interface_a_id, link.interface_b_id = iface.id, None
+    else:
+        # Стороны хранятся по возрастанию id — иначе не пройдёт ограничение базы.
+        link.interface_a_id, link.interface_b_id = sorted([other_id, iface.id])
+    link.updated_by = user.id
+
+    log_change(db, user.id, "update", "link", link.id, old=old_snapshot, new=link)
+    db.commit()
+    db.refresh(link)
+    return serialize.serialize_links(db, [link])[0]
+
+
 @router.delete("/{link_id}", status_code=204)
 def delete_link(link_id: int, db: Session = Depends(get_db),
                  user: models.User = Depends(auth.can_edit),

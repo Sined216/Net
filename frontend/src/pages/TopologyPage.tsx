@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Group, Paper, SegmentedControl, Select, Stack, Text, Title } from '@mantine/core';
+import {
+  Button, Group, Paper, SegmentedControl, Select, Stack, Text, Title, useComputedColorScheme,
+} from '@mantine/core';
 import { IconFocusCentered, IconPlus, IconUsersGroup } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { dia, highlighters, shapes } from '@joint/core';
@@ -18,7 +20,9 @@ import { DeviceFormModal } from './devices/DeviceFormModal';
 import { groupDepth } from './topology/groups';
 import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { AppearanceMenu } from './topology/AppearanceMenu';
-import { loadAppearance, nodeColors, saveAppearance, tint, type TopologyAppearance } from './topology/appearance';
+import {
+  canvasColors, loadAppearance, nodeColors, saveAppearance, tint, type TopologyAppearance,
+} from './topology/appearance';
 import {
   DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, STUB_SIZE, withAlpha,
 } from './topology/joint/shapes';
@@ -56,6 +60,7 @@ const GRID: Record<TopologyAppearance['background'], dia.Paper.GridOptions | fal
 };
 
 type Box = { x: number; y: number; width: number; height: number };
+type CanvasPaint = ReturnType<typeof canvasColors>;
 type Selection = { kind: 'device' | 'group'; id: number } | null;
 
 /** Что панель действий умеет делать с узлом и с рамкой. */
@@ -91,6 +96,9 @@ export function TopologyPage() {
   const deleteGroup = useDeleteTopologyGroup();
   const setGroupBox = useSetTopologyGroupBox();
 
+  // Полотно схемы — это фон страницы, поэтому подписи, врезки и кнопки
+  // красятся от темы интерфейса, а не наугад.
+  const scheme = useComputedColorScheme('light');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [look, setLook] = useState<TopologyAppearance>(loadAppearance);
   const [router, setRouter] = useState<'orthogonal' | 'straight'>('orthogonal');
@@ -210,6 +218,13 @@ export function TopologyPage() {
    * без восстановления панель пропадала сама собой — например когда правка
    * устройства обновляла список, а человек ждал, что панель на месте. */
   const showTools = useCallback((paper: dia.Paper, target: Selection) => {
+    // Кнопки живут в координатах схемы: отдалили её — и попасть в них нечем.
+    // Поправка возвращает им экранный размер, но только при отдалении: при
+    // приближении кнопки растут вместе с узлом, и это никому не мешает.
+    const look = {
+      paint: canvasColors(scheme),
+      zoom: Math.min(Math.max(1 / paper.scale().sx, 1), 4),
+    };
     paper.removeTools();
     highlighters.stroke.removeAll(paper);
     if (!target) return;
@@ -223,11 +238,16 @@ export function TopologyPage() {
       highlighters.stroke.add(view, 'body', 'selected', {
         padding: 3, rx: 12, ry: 12, attrs: { stroke: '#1971c2', 'stroke-width': 2 },
       });
-      if (canEdit) view.addTools(deviceTools(target.id, toolActions()));
+      if (canEdit) view.addTools(deviceTools(target.id, toolActions(), look));
     } else if (canEdit) {
-      view.addTools(groupTools(target.id, toolActions(), cell.get('accent') ?? '#4dabf7'));
+      view.addTools(groupTools(target.id, toolActions(), cell.get('accent') ?? '#4dabf7', look));
     }
-  }, [canEdit, toolActions]);
+  }, [canEdit, scheme, toolActions]);
+
+  /** Обработчики полотна ставятся один раз, а показ панели зависит от темы
+   * и масштаба — поэтому он берётся через ссылку, а не замыкается. */
+  const showToolsRef = useRef(showTools);
+  showToolsRef.current = showTools;
 
   handlers.current = {
     onConnect: (source, target) => {
@@ -348,10 +368,26 @@ export function TopologyPage() {
       panning = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
     });
     paper.on('blank:pointerup cell:pointerup', () => { panning = null; });
+    // Масштаб колесом — вокруг курсора, а не вокруг угла полотна. Иначе
+    // при отдалении схема уезжает в левый верхний угол, и то место, куда
+    // человек смотрел, приходится искать заново.
     paper.on('blank:mousewheel cell:mousewheel', (...args: unknown[]) => {
       const delta = args[args.length - 1] as number;
-      paper.scale(Math.min(2.5, Math.max(0.2, paper.scale().sx * (delta > 0 ? 1.1 : 0.9))));
+      const y = args[args.length - 2] as number;
+      const x = args[args.length - 3] as number;
+      const from = paper.scale().sx;
+      const to = Math.min(2.5, Math.max(0.2, from * (delta > 0 ? 1.1 : 0.9)));
+      if (to === from) return;
+      const t = paper.translate();
+      // Экранная точка под курсором до масштабирования — после него она
+      // должна остаться там же.
+      const screenX = x * from + t.tx;
+      const screenY = y * from + t.ty;
+      paper.scale(to);
+      paper.translate(screenX - x * to, screenY - y * to);
     });
+    // Масштаб изменился — панель действий пересобирается с новой поправкой.
+    paper.on('scale', () => showToolsRef.current(paper, selection.current));
 
     // Выделение: панель действий появляется по клику, как и на основной схеме.
     paper.on('element:pointerclick', (view: dia.ElementView) => {
@@ -458,7 +494,8 @@ export function TopologyPage() {
     graph.clear();
     if (filteredDevices.length === 0) return;
 
-    const colors = nodeColors(look.deviceDark);
+    const colors = nodeColors(look.deviceDark, scheme);
+    const paint = canvasColors(scheme);
     const positions = computePositions(filteredDevices, links, placed, relayout);
     const boxes = computeBoxes(groups, filteredDevices, positions);
 
@@ -491,7 +528,7 @@ export function TopologyPage() {
           label: { text: look.groupTitle === 'hidden' ? '' : title, fill: accent },
           labelBack: {
             width: look.groupTitle === 'hidden' ? 0 : title.length * 7 + 14,
-            fill: look.groupTitle === 'onFrame' ? '#ffffff' : 'transparent',
+            fill: look.groupTitle === 'onFrame' ? paint.canvas : 'transparent',
             y: look.groupTitle === 'onFrame' ? -9 : 2,
           },
         },
@@ -537,13 +574,15 @@ export function TopologyPage() {
           },
           body: { fill: colors.fill },
           dot: { fill: accent },
-          code: { text: device.code, fill: colors.code },
+          // Крупная строка — название железки, мелкая под ней — её код:
+          // на схеме ищут «станок №7», а не «PLC-0002».
+          title: { text: device.name || template?.name || typeName || device.code, fill: colors.title },
           ports: {
             text: look.devicePorts ? `${connected}/${device.interfaces.length}` : '',
             fill: connected > 0 ? colors.portsBusy : colors.portsIdle,
           },
-          name: {
-            text: look.deviceSubtitle ? cut(device.name || template?.name || typeName || '—', 26) : '',
+          subtitle: {
+            text: look.deviceSubtitle ? device.code : '',
             fill: colors.subtitle,
           },
         },
@@ -630,9 +669,9 @@ export function TopologyPage() {
             },
           },
           labels: look.edgeLabels ? [
-            portLabelCell(portText(portOfInterface.get(link.interface_a_id!), look), 46,
+            portLabelCell(portText(portOfInterface.get(link.interface_a_id!), look), paint, 46,
                           labelShift(endsOfDevice.get(aDevice), link.id)),
-            portLabelCell(portText(portOfInterface.get(link.interface_b_id!), look), -46,
+            portLabelCell(portText(portOfInterface.get(link.interface_b_id!), look), paint, -46,
                           labelShift(endsOfDevice.get(bDevice), link.id)),
           ] : [],
         }));
@@ -652,6 +691,7 @@ export function TopologyPage() {
         kind: 'stub',
         linkId: link.id,
         z: 10,
+        attrs: { body: { fill: paint.plate } },
       });
       graph.addCell(stub);
       graph.addCell(new shapes.standard.Link({
@@ -665,7 +705,7 @@ export function TopologyPage() {
           },
         },
         labels: look.edgeLabels ? [
-          portLabelCell(portText(portOfInterface.get(liveInterface), look), 34),
+          portLabelCell(portText(portOfInterface.get(liveInterface), look), paint, 34),
         ] : [],
       }));
     }
@@ -712,7 +752,7 @@ export function TopologyPage() {
       setSearchParams(rest, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredDevices, links, templates, types, linkTemplates, groups, look, router, relayout, canEdit]);
+  }, [filteredDevices, links, templates, types, linkTemplates, groups, look, router, relayout, canEdit, scheme]);
 
   /** Новое устройство появляется в середине видимой области. */
   function placeNewDevice(deviceId: number) {
@@ -825,10 +865,6 @@ function clampToFrame(at: { x: number; y: number }, frame: Box | undefined) {
   };
 }
 
-function cut(text: string, limit: number): string {
-  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
-}
-
 function portText(port: { number: number; label: string } | undefined, look: TopologyAppearance): string {
   if (!port) return '';
   return look.edgeLabelName && port.label ? `№${port.number} · ${port.label}` : `№${port.number}`;
@@ -836,13 +872,18 @@ function portText(port: { number: number; label: string } | undefined, look: Top
 
 /** Подпись конца кабеля: в нескольких десятках точек от своего конца линии.
  * Целые числа JointJS понимает как расстояние в точках от начала, а
- * отрицательные — от конца; доли прижимали бы подпись вплотную к узлу. */
-function portLabelCell(text: string, distance: number, offset = 0) {
+ * отрицательные — от конца; доли прижимали бы подпись вплотную к узлу.
+ *
+ * Подложка с контуром обязательна: без неё номер порта ложится прямо на
+ * линию и на фон полотна и читается только при удачном стечении цветов. */
+function portLabelCell(text: string, paint: CanvasPaint, distance: number, offset = 0) {
   return {
     position: { distance, offset },
     attrs: {
-      labelBody: { fill: '#ffffff', stroke: '#dee2e6', strokeWidth: 1, rx: 4, ry: 4 },
-      labelText: { text, fontSize: 10, fill: '#495057', fontFamily: 'inherit' },
+      labelBody: {
+        fill: paint.plate, stroke: paint.plateBorder, strokeWidth: 1, rx: 4, ry: 4,
+      },
+      labelText: { text, fontSize: 10, fontWeight: 600, fill: paint.plateText, fontFamily: 'inherit' },
     },
     markup: [
       { tagName: 'rect', selector: 'labelBody' },

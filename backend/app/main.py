@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +17,15 @@ from app.routers import (
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("netdoc")
 
-app = FastAPI(title="Network Documentation API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Наполнение справочников при старте. Пришло на смену `on_event`:
+    тот объявлен устаревшим и в новых версиях FastAPI перестанет работать."""
+    prepare_reference_data()
+    yield
+
+
+app = FastAPI(title="Network Documentation API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,8 +91,7 @@ DEFAULT_DEVICE_TYPES = [
 ]
 
 
-@app.on_event("startup")
-def on_startup():
+def prepare_reference_data():
     """Наполнение справочников. Схему создаёт не приложение, а миграции
     (`python -m app.db_upgrade` перед стартом uvicorn) — create_all умел
     только досоздавать таблицы и не замечал изменений в существующих."""

@@ -137,7 +137,7 @@ def test_renamed_device_type_survives_restart(client, headers, db):
     имени не находится, и раньше повторная вставка упиралась в занятый
     префикс — бэкенд не поднимался вовсе."""
     from app import models
-    from app.main import on_startup
+    from app.main import prepare_reference_data
 
     db.add(models.DeviceType(name="Коммутатор", code_prefix="SW"))
     db.commit()
@@ -145,7 +145,7 @@ def test_renamed_device_type_survives_restart(client, headers, db):
     renamed = client.get("/device-types", headers=headers["viewer"]).json()[0]
     client.patch(f"/device-types/{renamed['id']}", json={"name": "Коммутатор доступа"}, headers=headers["editor"])
 
-    on_startup()  # то же, что делает контейнер при запуске
+    prepare_reference_data()  # то же, что делает контейнер при запуске
 
     types = client.get("/device-types", headers=headers["viewer"]).json()
     prefixes = [t["code_prefix"] for t in types]

@@ -122,6 +122,73 @@ def test_cannot_attach_to_a_link_with_both_ends_connected(client, headers, linke
     assert response.status_code == 409
 
 
+def test_connected_end_moves_to_another_port(client, headers, linked_pair, make_device):
+    """Кабель записали не в тот порт. Перекладываем конец — связь та же,
+    её длина и заметки остаются, прежний порт освобождается."""
+    link_id = linked_pair["link"]["id"]
+    client.patch(f"/links/{link_id}", json={"length_m": 7.5}, headers=headers["editor"])
+
+    switch_port = linked_pair["switch"]["interfaces"][0]["id"]
+    other_port = linked_pair["switch"]["interfaces"][1]["id"]
+
+    response = client.post(
+        f"/links/{link_id}/reconnect",
+        json={"from_interface_id": switch_port, "to_interface_id": other_port},
+        headers=headers["editor"],
+    )
+    assert response.status_code == 200
+    link = response.json()
+    assert link["id"] == link_id, "должна быть та же связь, а не новая"
+    assert link["length_m"] == 7.5
+    assert other_port in (link["interface_a_id"], link["interface_b_id"])
+    assert switch_port not in (link["interface_a_id"], link["interface_b_id"])
+    # Освободившийся порт снова доступен для подключения.
+    free = client.get("/interfaces/free", headers=headers["viewer"]).json()
+    assert switch_port in [p["interface_id"] for p in free]
+
+
+def test_moving_an_end_to_a_busy_port_is_rejected(client, headers, linked_pair, make_device):
+    other = make_device()
+    busy = other["interfaces"][0]["id"]
+    client.post(
+        "/links",
+        json={"interface_a_id": busy, "interface_b_id": other["interfaces"][1]["id"]},
+        headers=headers["editor"],
+    )
+    response = client.post(
+        f"/links/{linked_pair['link']['id']}/reconnect",
+        json={"from_interface_id": linked_pair["pc_port"], "to_interface_id": busy},
+        headers=headers["editor"],
+    )
+    assert response.status_code == 409
+
+
+def test_moving_an_end_onto_the_other_end_is_rejected(client, headers, linked_pair):
+    """Оба конца в одном порту — это не кабель."""
+    response = client.post(
+        f"/links/{linked_pair['link']['id']}/reconnect",
+        json={
+            "from_interface_id": linked_pair["pc_port"],
+            "to_interface_id": linked_pair["switch"]["interfaces"][0]["id"],
+        },
+        headers=headers["editor"],
+    )
+    assert response.status_code == 400
+
+
+def test_moving_a_port_that_is_not_an_end_is_rejected(client, headers, linked_pair, make_device):
+    other = make_device()
+    response = client.post(
+        f"/links/{linked_pair['link']['id']}/reconnect",
+        json={
+            "from_interface_id": other["interfaces"][0]["id"],
+            "to_interface_id": other["interfaces"][1]["id"],
+        },
+        headers=headers["editor"],
+    )
+    assert response.status_code == 400
+
+
 def test_dangling_link_can_be_deleted(client, headers, linked_pair):
     """Кабель всё-таки вынули — подвешенную связь убирают целиком."""
     client.delete(f"/interfaces/{linked_pair['pc_port']}", headers=headers["editor"])

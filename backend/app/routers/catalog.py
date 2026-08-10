@@ -67,7 +67,7 @@ def update_device_type(type_id: int, payload: schemas.DeviceTypeUpdate, db: Sess
 @router.delete("/device-types/{type_id}", status_code=204)
 def delete_device_type(type_id: int, db: Session = Depends(get_db),
                         user: models.User = Depends(auth.can_edit)):
-    device_type = db.query(models.DeviceType).get(type_id)
+    device_type = db.get(models.DeviceType, type_id)
     if not device_type:
         raise HTTPException(status_code=404, detail="Тип устройства не найден")
     try:

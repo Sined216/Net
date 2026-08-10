@@ -647,6 +647,15 @@ class LinkAttach(BaseModel):
     interface_id: int
 
 
+class LinkReconnect(BaseModel):
+    """Перестановка конца кабеля в другой порт: воткнули не туда, или
+    железку перекоммутировали. Конец называется портом, в котором он сейчас
+    сидит, а не буквой «A»/«B»: стороны хранятся по возрастанию id и при
+    перестановке могут поменяться местами."""
+    from_interface_id: int
+    to_interface_id: int
+
+
 class LinkOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

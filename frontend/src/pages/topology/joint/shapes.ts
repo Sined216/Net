@@ -13,9 +13,11 @@ export const STUB_SIZE = 26;
 export const GROUP_MIN = { width: 240, height: 140 };
 export const NEUTRAL = '#adb5bd';
 
-/** Узел устройства — тот же, что на основной схеме: карточка с цветной
- * рамкой-градиентом по модели техники, кружок цвета модели, код, счётчик
- * портов и название под ним.
+/** Узел устройства: карточка с цветной рамкой-градиентом по модели техники,
+ * кружок цвета модели, название крупно, счётчик портов и код под ним.
+ *
+ * Крупно именно название: на схему смотрят, чтобы найти «станок №7», а код
+ * нужен уже потом — переписать в заявку или найти наклейку на корпусе.
  *
  * Рамка сделана двумя прямоугольниками: нижний залит градиентом, верхний —
  * цветом фона и на полтора пиксела меньше. В SVG это единственный простой
@@ -32,12 +34,21 @@ export const DeviceShape = dia.Element.define(
         fill: '#ffffff',
       },
       dot: { cx: 17, cy: 22, r: 4, fill: NEUTRAL },
-      code: { x: 28, y: 26, fontSize: 14, fontWeight: 700, fill: '#212529', fontFamily: 'inherit' },
+      title: {
+        x: 28, y: 26, fontSize: 14, fontWeight: 700, fill: '#212529', fontFamily: 'inherit',
+        // Длинное название обрезается многоточием по месту, а не по числу
+        // букв: ширину меряет браузер, и «Коммутатор цеха 1» не наезжает на
+        // счётчик портов справа.
+        textWrap: { width: -74, maxLineCount: 1, ellipsis: true },
+      },
       ports: {
         x: 'calc(w-11)', y: 26, fontSize: 12, fontWeight: 600, textAnchor: 'end',
         fill: '#868e96', fontFamily: 'inherit',
       },
-      name: { x: 11, y: 45, fontSize: 12, fill: '#868e96', fontFamily: 'inherit' },
+      subtitle: {
+        x: 11, y: 45, fontSize: 12, fill: '#868e96', fontFamily: 'inherit',
+        textWrap: { width: -22, maxLineCount: 1, ellipsis: true },
+      },
     },
   },
   {
@@ -45,9 +56,9 @@ export const DeviceShape = dia.Element.define(
       { tagName: 'rect', selector: 'border' },
       { tagName: 'rect', selector: 'body' },
       { tagName: 'circle', selector: 'dot' },
-      { tagName: 'text', selector: 'code' },
+      { tagName: 'text', selector: 'title' },
       { tagName: 'text', selector: 'ports' },
-      { tagName: 'text', selector: 'name' },
+      { tagName: 'text', selector: 'subtitle' },
     ],
   },
 );

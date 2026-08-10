@@ -437,6 +437,14 @@ export function useAttachLinkEnd() {
     onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
+export function useReconnectLinkEnd() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, from, to }: { id: number; from: number; to: number }) =>
+      api.reconnectLinkEnd(id, from, to),
+    onSuccess: () => invalidateAll(qc, CORE_KEYS),
+  });
+}
 export function useDeleteLink() {
   const qc = useQueryClient();
   return useMutation({

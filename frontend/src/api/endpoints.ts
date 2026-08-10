@@ -139,6 +139,12 @@ export const updateLink = (id: number, body: LinkUpdate) => apiFetch<LinkOut>(`/
 export const deleteLink = (id: number) => apiFetch<void>(`/links/${id}`, { method: 'DELETE' });
 export const attachLinkEnd = (id: number, interfaceId: number) =>
   apiFetch<LinkOut>(`/links/${id}/attach`, { method: 'POST', body: { interface_id: interfaceId } });
+/** Переставить конец кабеля в другой порт: связь та же, переезжает конец. */
+export const reconnectLinkEnd = (id: number, fromInterfaceId: number, toInterfaceId: number) =>
+  apiFetch<LinkOut>(`/links/${id}/reconnect`, {
+    method: 'POST',
+    body: { from_interface_id: fromInterfaceId, to_interface_id: toInterfaceId },
+  });
 export const templateImpact = (id: number) => apiFetch<TemplateImpact>(`/device-templates/${id}/impact`);
 
 // ---------- Search ----------
