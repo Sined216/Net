@@ -95,6 +95,8 @@ export function ImportPage() {
         Строки из файла попадают сюда, а не сразу в спецификацию оборудования. «Добавить» открывает обычное окно
         устройства с тем, что удалось разобрать: шаблон, IP, расположение. Чего в файле нет — заполняется руками.
         Связи из файла не заводятся: кабель соединяет порты, а портов до заведения устройства ещё нет.
+        Зелёным подсвечены название и адрес, которые в спецификации уже есть, — такую строку, скорее всего,
+        переносить не нужно.
       </Text>
 
       {templates.length === 0 && (
@@ -138,7 +140,7 @@ export function ImportPage() {
                       <Text size="sm" c="dimmed">№{row.row_number}</Text>
                     </Tooltip>
                   </Table.Td>
-                  <Table.Td>{row.name ?? <Text c="dimmed" size="sm">—</Text>}</Table.Td>
+                  <SameAsExisting value={row.name} deviceId={row.same_name_device_id} what="названием" />
                   <Table.Td>
                     {row.template_name ? (
                       <Group gap={6} wrap="nowrap">
@@ -151,7 +153,7 @@ export function ImportPage() {
                       </Group>
                     ) : <Text c="dimmed" size="sm">—</Text>}
                   </Table.Td>
-                  <Table.Td><Text size="sm">{row.management_ip ?? '—'}</Text></Table.Td>
+                  <SameAsExisting value={row.management_ip} deviceId={row.same_ip_device_id} what="адресом" />
                   <Table.Td><Text size="sm">{row.location ?? '—'}</Text></Table.Td>
                   <Table.Td>
                     {row.group_name && (
@@ -229,6 +231,30 @@ export function ImportPage() {
         />
       )}
     </Stack>
+  );
+}
+
+/** Ячейка, которая подсвечивается, если такое же значение в спецификации
+ * уже есть.
+ *
+ * Файлы приносят повторно — с доливкой пары строк или после правки, — и без
+ * пометки человек заводит второе такое же устройство. Это не запрет: тёзки
+ * бывают и настоящие, поэтому строка остаётся переносимой, а зелёный лишь
+ * говорит «посмотри, это уже заведено» и ведёт на найденное устройство.
+ */
+function SameAsExisting({ value, deviceId, what }: {
+  value: string | null;
+  deviceId: number | null;
+  what: string;
+}) {
+  if (!value) return <Table.Td><Text c="dimmed" size="sm">—</Text></Table.Td>;
+  if (deviceId == null) return <Table.Td><Text size="sm">{value}</Text></Table.Td>;
+  return (
+    <Table.Td bg="var(--mantine-color-green-light)">
+      <Tooltip label={`Устройство с таким ${what} уже заведено — открыть`}>
+        <Text size="sm" component={Link} to={`/devices/${deviceId}`} c="green.9">{value}</Text>
+      </Tooltip>
+    </Table.Td>
   );
 }
 

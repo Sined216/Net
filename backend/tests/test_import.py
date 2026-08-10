@@ -68,6 +68,32 @@ def test_known_model_is_suggested(client, headers, template):
     assert unknown["suggested_template_id"] is None
 
 
+def test_existing_name_and_ip_are_marked(client, headers, template):
+    """Файлы приносят повторно, и в них попадает уже заведённое. Строка
+    остаётся переносимой, но совпадение видно до переноса."""
+    device = client.post(
+        "/devices",
+        json={"template_id": template.id, "name": "Станок 1", "management_ip": "10.10.9.9"},
+        headers=headers["editor"],
+    ).json()
+
+    content = (
+        "Имя;IP-адрес\n"
+        "станок 1;10.10.1.5\n"        # то же название (регистр не в счёт), адрес другой
+        "Станок 42;10.10.9.9\n"       # название другое, адрес занят
+        "Станок 43;10.10.1.7\n"       # ничего общего
+    ).encode("utf-8")
+    upload(client, headers, "устройства.csv", content)
+
+    rows = {r["name"]: r for r in client.get("/import/rows", headers=headers["viewer"]).json()}
+    assert rows["станок 1"]["same_name_device_id"] == device["id"]
+    assert rows["станок 1"]["same_ip_device_id"] is None
+    assert rows["Станок 42"]["same_ip_device_id"] == device["id"]
+    assert rows["Станок 42"]["same_name_device_id"] is None
+    assert rows["Станок 43"]["same_name_device_id"] is None
+    assert rows["Станок 43"]["same_ip_device_id"] is None
+
+
 def test_row_moves_into_the_specification(client, headers, template):
     """Перенос заводит устройство и помечает строку — с ссылкой на него."""
     upload(client, headers, "устройства.csv", CSV_FILE)

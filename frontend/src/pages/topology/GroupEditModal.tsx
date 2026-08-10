@@ -15,12 +15,14 @@ import type { TopologyGroupOut } from '../../api/types';
  * данные.
  */
 export function GroupEditModal({
-  group, parentId = null, onClose,
+  group, parentId = null, draftName, onClose,
 }: {
   /** Правим существующую группу или заводим новую (null). */
   group: TopologyGroupOut | null;
   /** Родитель для новой группы — «добавить подгруппу» из панели. */
   parentId?: number | null;
+  /** Название для новой группы — например взятое из строки файла импорта. */
+  draftName?: string;
   onClose: () => void;
 }) {
   const isEdit = !!group;
@@ -30,7 +32,7 @@ export function GroupEditModal({
   const updateGroup = useUpdateTopologyGroup();
   const updateDevice = useUpdateDevice();
 
-  const [name, setName] = useState(group?.name ?? '');
+  const [name, setName] = useState(group?.name ?? draftName ?? '');
   const [color, setColor] = useState(group?.color ?? '#94a3b8');
   const [parent, setParent] = useState<string | null>(
     group ? (group.parent_id != null ? String(group.parent_id) : null) : (parentId != null ? String(parentId) : null),

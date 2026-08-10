@@ -113,6 +113,9 @@ export function TopologyJointPage() {
    * изменение данных значит гонять узлы по экрану под руками у человека. */
   const placed = useRef(new Map<number, { x: number; y: number }>());
   const autoSaved = useRef(new Set<number>());
+  /** Для какого по счёту «Вписать» уже подгоняли масштаб. −1 — ещё ни разу,
+   * то есть первое наполнение схемы. */
+  const fitted = useRef(-1);
   const [relayout, setRelayout] = useState(0);
   /** Свежие действия для панелей: обработчики полотна ставятся один раз, а
    * данные под ними меняются. */
@@ -180,6 +183,44 @@ export function TopologyJointPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Панели действий берут обработчики в момент нажатия — так в них не
+   * застывает состояние того рендера, на котором рисовали узел. */
+  const toolActions = useCallback((): JointActions => ({
+    edit: (id) => actionsRef.current.edit(id),
+    copy: (id) => actionsRef.current.copy(id),
+    regroup: (id) => actionsRef.current.regroup(id),
+    remove: (id) => actionsRef.current.remove(id),
+    editGroup: (id) => actionsRef.current.editGroup(id),
+    addSubgroup: (id) => actionsRef.current.addSubgroup(id),
+    removeGroup: (id) => actionsRef.current.removeGroup(id),
+  }), []);
+
+  /** Показать панель действий и подсветку у выделенного.
+   *
+   * Отдельной функцией, потому что вызывается дважды: по щелчку и после
+   * перерисовки схемы. Перерисовка сносит все ячейки вместе с панелями, и
+   * без восстановления панель пропадала сама собой — например когда правка
+   * устройства обновляла список, а человек ждал, что панель на месте. */
+  const showTools = useCallback((paper: dia.Paper, target: Selection) => {
+    paper.removeTools();
+    highlighters.stroke.removeAll(paper);
+    if (!target) return;
+    const key = target.kind === 'device' ? 'deviceId' : 'groupId';
+    const cell = paper.model.getElements().find(
+      (el) => el.get('kind') === target.kind && el.get(key) === target.id,
+    );
+    const view = cell?.findView(paper) as dia.ElementView | undefined;
+    if (!cell || !view) return;
+    if (target.kind === 'device') {
+      highlighters.stroke.add(view, 'body', 'selected', {
+        padding: 3, rx: 12, ry: 12, attrs: { stroke: '#1971c2', 'stroke-width': 2 },
+      });
+      if (canEdit) view.addTools(deviceTools(target.id, toolActions()));
+    } else if (canEdit) {
+      view.addTools(groupTools(target.id, toolActions(), cell.get('accent') ?? '#4dabf7'));
+    }
+  }, [canEdit, toolActions]);
+
   handlers.current = {
     onConnect: (source, target) => {
       const sourceKind = source.get('kind');
@@ -229,6 +270,12 @@ export function TopologyJointPage() {
       width: Math.max(element.clientWidth, 320),
       height: Math.max(element.clientHeight, 320),
       gridSize: 10,
+      // Сколько движений мыши между нажатием и отпусканием ещё считается
+      // щелчком. По умолчанию — ноль: дрогнула рука на пиксель, и JointJS
+      // считает это перетаскиванием, а клика не было вовсе. Из-за этого
+      // панель действий у узла и правка связи открывались с третьего-пятого
+      // раза.
+      clickThreshold: 6,
       // Кабель тянут от кнопки на панели узла, поэтому «висящих» концов у
       // временной линии быть не должно: отпустил мимо — линия исчезла.
       linkPinning: false,
@@ -301,25 +348,14 @@ export function TopologyJointPage() {
     paper.on('element:pointerclick', (view: dia.ElementView) => {
       const model = view.model;
       const kind = model.get('kind');
-      paper.removeTools();
-      highlighters.stroke.removeAll(paper);
-      if (kind === 'device') {
-        selection.current = { kind: 'device', id: model.get('deviceId') };
-        highlighters.stroke.add(view, 'body', 'selected', {
-          padding: 3, rx: 12, ry: 12, attrs: { stroke: '#1971c2', 'stroke-width': 2 },
-        });
-        if (canEdit) view.addTools(deviceTools(model.get('deviceId'), actionsProxy()));
-      } else if (kind === 'group') {
-        selection.current = { kind: 'group', id: model.get('groupId') };
-        if (canEdit) view.addTools(groupTools(model.get('groupId'), actionsProxy(), model.get('accent') ?? '#4dabf7'));
-      } else {
-        selection.current = null;
-      }
+      selection.current = kind === 'device' ? { kind: 'device', id: model.get('deviceId') }
+        : kind === 'group' ? { kind: 'group', id: model.get('groupId') }
+          : null;
+      showTools(paper, selection.current);
     });
     paper.on('blank:pointerclick', () => {
       selection.current = null;
-      paper.removeTools();
-      highlighters.stroke.removeAll(paper);
+      showTools(paper, null);
     });
     paper.on('link:pointerclick', (view: dia.LinkView) => {
       const linkId = view.model.get('linkId');
@@ -381,20 +417,6 @@ export function TopologyJointPage() {
       paperRef.current = null;
       graphRef.current = null;
     };
-
-    /** Панели действий берут обработчики в момент клика — так в них не
-     * застывает состояние того рендера, на котором рисовали узел. */
-    function actionsProxy() {
-      return {
-        edit: (id: number) => actionsRef.current.edit(id),
-        copy: (id: number) => actionsRef.current.copy(id),
-        regroup: (id: number) => actionsRef.current.regroup(id),
-        remove: (id: number) => actionsRef.current.remove(id),
-        editGroup: (id: number) => actionsRef.current.editGroup(id),
-        addSubgroup: (id: number) => actionsRef.current.addSubgroup(id),
-        removeGroup: (id: number) => actionsRef.current.removeGroup(id),
-      };
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit]);
 
@@ -641,7 +663,16 @@ export function TopologyJointPage() {
       });
     }
 
-    if (graph.getCells().length > 0) {
+    // Панель действий и подсветка переживают перерисовку: ячейки создаются
+    // заново, а выделенным остаётся то же устройство.
+    showTools(paper, selection.current);
+
+    // Вписывать содержимое в окно можно только тогда, когда человек этого
+    // просит: схема перерисовывается на каждое изменение данных, и подгонка
+    // масштаба на каждое из них выглядела как прыжок всей схемы под руками —
+    // особенно заметный после перетаскивания рамки группы.
+    if (graph.getCells().length > 0 && fitted.current !== relayout) {
+      fitted.current = relayout;
       paper.transformToFitContent({ padding: 60, maxScale: 1.1, useModelGeometry: true });
     }
 
@@ -697,10 +728,10 @@ export function TopologyJointPage() {
           <AppearanceMenu value={look} onChange={changeLook} />
           <Button
             variant="default" leftSection={<IconFocusCentered size={16} />}
-            onClick={() => {
-              setRelayout((n) => n + 1);
-              paperRef.current?.transformToFitContent({ padding: 60, maxScale: 1.1, useModelGeometry: true });
-            }}
+            // Масштаб подгоняет само наполнение схемы — после того как узлы
+            // встанут по новой раскладке. Сделать это здесь значило бы
+            // вписывать ещё старое расположение.
+            onClick={() => setRelayout((n) => n + 1)}
           >
             Вписать
           </Button>
@@ -810,10 +841,14 @@ function computePositions(
   relayout: number,
 ) {
   const nodes: LayoutNode[] = devices.map((d) => {
+    // Сложившееся в этой сессии важнее сохранённого: запись позиции нарочно
+    // не обновляет список устройств (иначе схема дёргалась бы на каждое
+    // перетаскивание), поэтому в нём ещё лежат прежние координаты. Брать их
+    // после перетаскивания рамки группы значило бы вернуть узлы туда, откуда
+    // человек их только что увёз, — рамка уехала, а узлы прыгнули назад.
     const saved = relayout > 0 ? undefined
-      : (d.topology_x != null && d.topology_y != null
-        ? { x: d.topology_x, y: d.topology_y }
-        : placed.current!.get(d.id));
+      : (placed.current!.get(d.id)
+        ?? (d.topology_x != null && d.topology_y != null ? { x: d.topology_x, y: d.topology_y } : undefined));
     return {
       id: String(d.id),
       x: saved?.x ?? Math.random() * 1100,

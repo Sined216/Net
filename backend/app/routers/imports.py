@@ -83,6 +83,18 @@ def list_rows(status: str | None = None, db: Session = Depends(get_db),
         for t in db.query(models.Tag).filter(models.Tag.site_id == site_id)
     }
 
+    # Уже заведённые названия и адреса — чтобы в таблице было видно, что
+    # строка в спецификации уже есть. Тем же одним запросом на весь список.
+    by_name: dict[str, int] = {}
+    by_ip: dict[str, int] = {}
+    for device_id, name, ip in db.query(
+        models.Device.id, models.Device.name, models.Device.management_ip
+    ).filter(models.Device.site_id == site_id):
+        if name:
+            by_name.setdefault(_key(name), device_id)
+        if ip:
+            by_ip.setdefault(_key(ip), device_id)
+
     result = []
     for row in rows:
         out = schemas.ImportRowOut.model_validate(row)
@@ -91,6 +103,8 @@ def list_rows(status: str | None = None, db: Session = Depends(get_db),
         out.suggested_tag_ids = [
             tags[key] for key in (_key(part) for part in _split_tags(row.tags_text)) if key in tags
         ]
+        out.same_name_device_id = by_name.get(_key(row.name)) if row.name else None
+        out.same_ip_device_id = by_ip.get(_key(row.management_ip)) if row.management_ip else None
         result.append(out)
     return result
 

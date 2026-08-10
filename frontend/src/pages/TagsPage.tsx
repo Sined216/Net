@@ -85,9 +85,15 @@ export function TagsPage() {
   );
 }
 
-function TagFormModal({ tag, tags, onClose }: { tag: TagOut | null; tags: TagOut[]; onClose: () => void }) {
+export function TagFormModal({ tag, tags, draftName, onClose }: {
+  tag: TagOut | null;
+  tags: TagOut[];
+  /** Название для нового тега — например взятое из строки файла импорта. */
+  draftName?: string;
+  onClose: () => void;
+}) {
   const isEdit = !!tag;
-  const [name, setName] = useState(tag?.name ?? '');
+  const [name, setName] = useState(tag?.name ?? draftName ?? '');
   const [parentId, setParentId] = useState<string | null>(tag?.parent_id ? String(tag.parent_id) : null);
   const [color, setColor] = useState(tag?.color ?? '#94a3b8');
   const createTag = useCreateTag();

@@ -118,6 +118,10 @@ export interface ImportRowOut {
   suggested_template_id: number | null;
   suggested_group_id: number | null;
   suggested_tag_ids: number[];
+  /** Уже заведённое устройство с тем же названием (или тем же адресом):
+   * строка из файла, похоже, в спецификации уже есть. */
+  same_name_device_id: number | null;
+  same_ip_device_id: number | null;
 }
 
 export interface ImportSummary {

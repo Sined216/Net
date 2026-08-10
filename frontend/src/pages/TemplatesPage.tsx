@@ -138,12 +138,17 @@ interface DraftPort {
 /** Форма шаблона — создание и редактирование в одном месте. В режиме
  * создания порты копятся в черновике и уходят одним запросом при сабмите;
  * в режиме редактирования каждое изменение порта сразу летит на бэкенд. */
-function TemplateFormModal({ template, onClose }: { template: DeviceTemplateOut | null; onClose: () => void }) {
+export function TemplateFormModal({ template, draftName, onClose }: {
+  template: DeviceTemplateOut | null;
+  /** Название для нового шаблона — например взятое из строки файла импорта. */
+  draftName?: string;
+  onClose: () => void;
+}) {
   const isEdit = !!template;
   const { data: types = [] } = useDeviceTypes();
   const { data: templates = [] } = useDeviceTemplates();
   const { data: connectors = [] } = useConnectorTypes();
-  const [name, setName] = useState(template?.name ?? '');
+  const [name, setName] = useState(template?.name ?? draftName ?? '');
   const [typeId, setTypeId] = useState<string | null>(template ? String(template.device_type_id) : null);
   const [manufacturer, setManufacturer] = useState(template?.manufacturer ?? '');
   const [notes, setNotes] = useState(template?.notes ?? '');
