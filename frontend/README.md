@@ -1,4 +1,4 @@
-# NetDoc — фронтенд (React)
+# WireMap — фронтенд (React)
 
 React + TypeScript + Vite поверх API из `backend/`. Пришёл на замену пробному
 `frontend-vanilla-prototype/` (чистый JS без сборки) — тот был одноразовым

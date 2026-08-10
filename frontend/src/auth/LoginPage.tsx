@@ -37,7 +37,7 @@ export function LoginPage() {
   return (
     <Center mih="100vh">
       <Paper component="form" onSubmit={handleSubmit} withBorder shadow="md" p="xl" radius="md" w={340}>
-        <Title order={2}>NetDoc</Title>
+        <Title order={2}>WireMap</Title>
         <Text c="dimmed" size="sm" mb="md">
           Документация сетевой инфраструктуры
         </Text>

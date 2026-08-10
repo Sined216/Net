@@ -92,4 +92,4 @@ except ValidationError as exc:
     # Наружу отдаём только сам текст проблемы: в логе контейнера трассировка
     # pydantic поверх «смените SECRET_KEY» только мешает читать.
     reasons = "\n".join(str(error["msg"]).removeprefix("Value error, ") for error in exc.errors())
-    raise SystemExit(f"NetDoc не запущен — проверьте настройки.\n{reasons}") from None
+    raise SystemExit(f"WireMap не запущен — проверьте настройки.\n{reasons}") from None

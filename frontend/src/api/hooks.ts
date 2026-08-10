@@ -58,8 +58,13 @@ export const useUsers = (enabled = true) =>
 export const useTemplateImpact = (id: number | null) =>
   useQuery({ queryKey: ['templateImpact', id], queryFn: () => api.templateImpact(id!), enabled: id != null });
 
-/** Ключи, которые нужно освежить после почти любой мутации — статус портов
- * (connected_to) и списки живут в devices/links одновременно. */
+/** Ключи, которые нужно освежить после почти любой мутации.
+ *
+ * Одного `devices` мало: тот же набор данных живёт в нескольких запросах —
+ * лёгкий список, порты раскрытой карточки, свободные порты для подключения
+ * и полный набор для схемы связей. Пока схема была тем же запросом, что и
+ * список, это сходило с рук; после разделения заведённое устройство
+ * появлялось на схеме только после перезагрузки страницы. */
 const CORE_KEYS = ['devices', 'links', 'deviceInterfaces', 'freePorts', 'topologyDevices'] as const;
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>, keys: readonly string[]) {
@@ -259,7 +264,7 @@ export function useAddInterfacesBulk() {
   return useMutation({
     mutationFn: ({ deviceId, body }: { deviceId: number; body: PortsBulkCreate }) =>
       api.addInterfacesBulk(deviceId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
 export function useCopyDeviceTemplate() {
@@ -284,14 +289,14 @@ export function useCreateDevice() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: DeviceCreate) => api.createDevice(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
 export function useUpdateDevice() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: DeviceUpdate }) => api.updateDevice(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
 export function useDeleteDevice() {
@@ -305,14 +310,14 @@ export function useSetDeviceTags() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: DeviceTagsUpdate }) => api.setDeviceTags(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
 export function useAddInterface() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ deviceId, body }: { deviceId: number; body: InterfaceCreate }) => api.addInterface(deviceId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
 export function useUpdateInterface() {
@@ -329,11 +334,14 @@ export function useDeleteInterface() {
     onSuccess: () => invalidateAll(qc, CORE_KEYS),
   });
 }
+/** Положение узла на схеме.
+ *
+ * Намеренно ничего не освежает: схема уже показывает узел там, куда его
+ * отпустили, а перечитывание всех устройств на каждое перетаскивание — это
+ * мегабайты трафика ради того, что и так на экране. */
 export function useUpdateDevicePosition() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: DevicePositionUpdate }) => api.updateDevicePosition(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
   });
 }
 

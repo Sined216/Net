@@ -37,7 +37,7 @@ export function AppLayout() {
     <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="md">
       <AppShell.Navbar p="sm">
         <Text fw={700} size="lg" px="xs" mb={6}>
-          NetDoc
+          WireMap
         </Text>
         {/* Площадка — контекст всего, что видно ниже, поэтому стоит над
             меню, а не теряется в настройках. Одна площадка — выбирать не из
