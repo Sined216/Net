@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActionIcon, Button, Group, Modal, Stack, Table, Text } from '@mantine/core';
 import { IconFolderPlus, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
-import { useDeleteTopologyGroup, useTopologyDevices, useTopologyGroups } from '../../api/hooks';
+import { useDeleteTopologyGroup, useTopologyGroups } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { GroupEditModal } from './GroupEditModal';
 import { orderedGroups } from './groups';
@@ -15,7 +15,6 @@ import type { TopologyGroupOut } from '../../api/types';
  */
 export function TopologyGroupsModal({ onClose }: { onClose: () => void }) {
   const { data: groups = [] } = useTopologyGroups();
-  const { data: devices = [] } = useTopologyDevices();
   const deleteGroup = useDeleteTopologyGroup();
   const [editing, setEditing] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
 
@@ -38,7 +37,9 @@ export function TopologyGroupsModal({ onClose }: { onClose: () => void }) {
         <Table withTableBorder verticalSpacing="xs">
           <Table.Tbody>
             {rows.map(({ group, depth }) => {
-              const count = devices.filter((d) => d.topology_group_id === group.id).length;
+              // Сколько устройств в группе, считает сервер: возить ради
+              // этой цифры всю спецификацию незачем.
+              const count = group.device_count;
               return (
                 <Table.Tr key={group.id}>
                   <Table.Td>

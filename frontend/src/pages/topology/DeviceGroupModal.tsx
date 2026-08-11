@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useTopologyDevices, useTopologyGroups, useUpdateDevice } from '../../api/hooks';
+import { useDevice, useTopologyGroups, useUpdateDevice } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { orderedGroups } from './groups';
 
@@ -11,14 +11,18 @@ import { orderedGroups } from './groups';
  * пустой, без единого устройства и потому без рамки.
  */
 export function DeviceGroupModal({ deviceId, onClose }: { deviceId: number; onClose: () => void }) {
-  const { data: devices = [] } = useTopologyDevices();
+  const { data: device } = useDevice(deviceId);
   const { data: groups = [] } = useTopologyGroups();
   const updateDevice = useUpdateDevice();
 
-  const device = devices.find((d) => d.id === deviceId);
-  const [groupId, setGroupId] = useState<string | null>(
-    device?.topology_group_id != null ? String(device.topology_group_id) : null,
-  );
+  // Текущая группа известна только после ответа сервера, а начальное
+  // значение useState считается один раз — поэтому «ещё не трогали»
+  // хранится отдельно от выбранного.
+  const [picked, setPicked] = useState<{ value: string | null } | null>(null);
+  const groupId = picked
+    ? picked.value
+    : (device?.topology_group_id != null ? String(device.topology_group_id) : null);
+  const setGroupId = (value: string | null) => setPicked({ value });
 
   const options = orderedGroups(groups).map(({ group, depth }) => ({
     value: String(group.id),

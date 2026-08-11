@@ -193,6 +193,10 @@ class TopologyGroupOut(BaseModel):
     y: Optional[float] = None
     width: Optional[float] = None
     height: Optional[float] = None
+    # Сколько устройств лежит прямо в этой группе (без подгрупп). Считает
+    # база: список групп показывает эту цифру, и везти ради неё все
+    # устройства площадки было бы странно.
+    device_count: int = 0
 
 
 # ---------- Импорт устройств из файла ----------
@@ -700,25 +704,46 @@ class LinkOut(BaseModel):
 
 # ---------- Topology (для визуализации) ----------
 class TopologyNode(BaseModel):
+    """Устройство глазами схемы: ровно те поля, которые видны на карточке.
+
+    Портов здесь нет намеренно — только их количество. Схема показывает
+    «1/4», а не список; возить ради этой дроби все двадцать четыре тысячи
+    портов площадки было единственным по-настоящему тяжёлым запросом в
+    системе.
+    """
     id: int
     code: str
     name: Optional[str] = None
+    template_id: Optional[int] = None
     template_name: str
     device_type: str
+    # Цвет модели — им красится рамка карточки. Раньше схема ради него
+    # тянула весь список шаблонов со всеми их портами.
+    color: Optional[str] = None
     tag_ids: List[int] = []
     topology_group_id: Optional[int] = None
     topology_x: Optional[float] = None
     topology_y: Optional[float] = None
+    ports_total: int = 0
+    ports_connected: int = 0
 
 
 class TopologyEdge(BaseModel):
+    """Кабель глазами схемы.
+
+    Устройство и порт у конца могут отсутствовать: порт удалили, а кабель
+    остался. Такой конец схема рисует заглушкой, поэтому пропускать связь
+    нельзя — иначе повисший кабель просто исчезал бы с картинки.
+    """
     link_id: int
-    device_a_id: int
-    device_b_id: int
-    interface_a_id: int
-    interface_b_id: int
-    interface_a_label: str
-    interface_b_label: str
+    device_a_id: Optional[int] = None
+    device_b_id: Optional[int] = None
+    interface_a_id: Optional[int] = None
+    interface_b_id: Optional[int] = None
+    port_a_number: Optional[int] = None
+    port_b_number: Optional[int] = None
+    interface_a_label: Optional[str] = None
+    interface_b_label: Optional[str] = None
     media_type: Optional[str] = None
     color: Optional[str] = None
     line_style: Optional[str] = None

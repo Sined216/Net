@@ -12,7 +12,7 @@ import type {
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
-  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox,
+  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyOut,
   SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
   SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
   DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
@@ -99,9 +99,6 @@ export const deleteTemplateInterface = (templateId: number, ifaceId: number) =>
 // ---------- Devices ----------
 export const listDevices = (query: DeviceQuery = {}) =>
   apiFetch<DevicePage>('/devices', { query: query as Record<string, string | number | undefined> });
-/** Устройства со всеми портами — только для схемы связей: она рисует
- * площадку целиком и страницами не показывается. */
-export const listTopologyDevices = () => apiFetch<DeviceOut[]>('/topology/devices');
 export const listFreePorts = (query: FreePortQuery = {}) =>
   apiFetch<FreePortOut[]>('/interfaces/free', { query: query as Record<string, string | number | undefined> });
 export const getDevice = (id: number) => apiFetch<DeviceOut>(`/devices/${id}`);
@@ -120,6 +117,10 @@ export const updateDevicePosition = (id: number, body: DevicePositionUpdate) =>
 
 // ---------- Topology groups ----------
 export const listTopologyGroups = () => apiFetch<TopologyGroupOut[]>('/topology-groups');
+/** Схема связей целиком — узлы и линии, собранные сервером. Отбор по тегу
+ * тоже его: спрятать устройство значит спрятать и его кабели. */
+export const getTopology = (tagId: number | null) =>
+  apiFetch<TopologyOut>('/topology', { query: { tag_id: tagId ?? undefined } });
 export const createTopologyGroup = (body: TopologyGroupCreate) => apiFetch<TopologyGroupOut>('/topology-groups', { method: 'POST', body });
 export const updateTopologyGroup = (id: number, body: TopologyGroupUpdate) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}`, { method: 'PATCH', body });
 export const setTopologyGroupBox = (id: number, body: TopologyGroupBox) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}/box`, { method: 'PATCH', body });
@@ -134,6 +135,9 @@ export const deleteLinkTemplate = (id: number) => apiFetch<void>(`/link-template
 // ---------- Links ----------
 export const listLinks = (query: LinkQuery = {}) =>
   apiFetch<LinkPage>('/links', { query: query as Record<string, string | number | undefined> });
+/** Один кабель — для окна его правки: схема открывает его по одному, а не
+ * ищет в привезённой странице всех связей. */
+export const getLink = (id: number) => apiFetch<LinkOut>(`/links/${id}`);
 export const createLink = (body: LinkCreate) => apiFetch<LinkOut>('/links', { method: 'POST', body });
 export const updateLink = (id: number, body: LinkUpdate) => apiFetch<LinkOut>(`/links/${id}`, { method: 'PATCH', body });
 export const deleteLink = (id: number) => apiFetch<void>(`/links/${id}`, { method: 'DELETE' });

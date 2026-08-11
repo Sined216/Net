@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useAttachLinkEnd, useTopologyDevices } from '../../api/hooks';
+import { useAttachLinkEnd, useDevice } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { portLabel } from './ConnectPortsModal';
 
@@ -18,9 +18,10 @@ export function AttachEndModal({
   deviceId: number;
   onClose: () => void;
 }) {
-  const { data: devices = [] } = useTopologyDevices();
+  // Нужна одна железка — та, на которую бросили конец кабеля. Раньше ради
+  // неё приезжали все устройства площадки со всеми портами.
+  const { data: device } = useDevice(deviceId);
   const attach = useAttachLinkEnd();
-  const device = devices.find((d) => d.id === deviceId);
 
   // Порт занят, даже если на том конце кабеля никого нет: воткнуть в него
   // второй кабель нельзя, и предлагать его бессмысленно.
@@ -32,13 +33,16 @@ export function AttachEndModal({
     [device],
   );
 
-  const [port, setPort] = useState<string | null>(free[0]?.value ?? null);
+  // Порт выбирается сам, но только когда список приехал: до этого выбирать
+  // не из чего, а начальное значение useState считается один раз.
+  const [port, setPort] = useState<string | null>(null);
+  const chosen = port ?? free[0]?.value ?? null;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!port) return;
+    if (!chosen) return;
     attach.mutate(
-      { id: linkId, interfaceId: parseInt(port, 10) },
+      { id: linkId, interfaceId: parseInt(chosen, 10) },
       { onSuccess: () => { notifySuccess('Кабель подключён'); onClose(); }, onError: notifyError },
     );
   }
@@ -58,7 +62,7 @@ export function AttachEndModal({
             <>
               <Select
                 label={label} description="Гнездо, в которое втыкается конец кабеля"
-                data={free} value={port} onChange={setPort} searchable required
+                data={free} value={chosen} onChange={setPort} searchable required
               />
               <Text size="xs" c="dimmed">
                 Сам кабель остаётся прежним — длина, разъём и заметки при нём.
@@ -67,7 +71,7 @@ export function AttachEndModal({
           )}
           <Group justify="flex-end" mt="sm">
             <Button variant="subtle" onClick={onClose}>Отмена</Button>
-            <Button type="submit" loading={attach.isPending} disabled={!port}>Подключить</Button>
+            <Button type="submit" loading={attach.isPending} disabled={!chosen}>Подключить</Button>
           </Group>
         </Stack>
       </form>

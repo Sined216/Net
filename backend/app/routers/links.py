@@ -86,6 +86,23 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
     return serialize.serialize_links(db, [link])[0]
 
 
+@router.get("/{link_id}", response_model=schemas.LinkOut)
+def get_link(link_id: int, db: Session = Depends(get_db),
+              site_id: int = Depends(sites.current_site_id)):
+    """Один кабель целиком — для окна его правки.
+
+    Схема связей больше не возит страницу кабелей ради того, чтобы найти в
+    ней тот, по которому щёлкнули: ей достаточно линий, а окно открывается
+    по одной железке за раз.
+    """
+    link = db.query(models.Link).filter(
+        models.Link.id == link_id, models.Link.site_id == site_id
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Связь не найдена")
+    return serialize.serialize_links(db, [link])[0]
+
+
 @router.patch("/{link_id}", response_model=schemas.LinkOut)
 def update_link(link_id: int, payload: schemas.LinkUpdate, db: Session = Depends(get_db),
                  user: models.User = Depends(auth.can_edit),

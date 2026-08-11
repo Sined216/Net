@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -72,12 +73,28 @@ def _check_parent(db: Session, site_id: int, parent_id: int | None, group_id: in
 @router.get("", response_model=list[schemas.TopologyGroupOut])
 def list_topology_groups(db: Session = Depends(get_db),
                           site_id: int = Depends(sites.current_site_id)):
-    return (
+    groups = (
         db.query(models.TopologyGroup)
         .filter(models.TopologyGroup.site_id == site_id)
         .order_by(models.TopologyGroup.name)
         .all()
     )
+    # Количество устройств в группе считает база — одним запросом на весь
+    # список. Раньше эту цифру выводил браузер, для чего ему приходилось
+    # держать при себе все устройства площадки.
+    counts = dict(
+        db.query(models.Device.topology_group_id, func.count(models.Device.id))
+        .filter(models.Device.site_id == site_id,
+                models.Device.topology_group_id.isnot(None))
+        .group_by(models.Device.topology_group_id)
+        .all()
+    )
+    return [
+        schemas.TopologyGroupOut.model_validate(g).model_copy(
+            update={"device_count": counts.get(g.id, 0)}
+        )
+        for g in groups
+    ]
 
 
 @router.post("", response_model=schemas.TopologyGroupOut, status_code=201)

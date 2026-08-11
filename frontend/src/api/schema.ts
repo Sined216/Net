@@ -755,7 +755,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Link
+         * @description Один кабель целиком — для окна его правки.
+         *
+         *     Схема связей больше не возит страницу кабелей ради того, чтобы найти в
+         *     ней тот, по которому щёлкнули: ей достаточно линий, а окно открывается
+         *     по одной железке за раз.
+         */
+        get: operations["get_link_links__link_id__get"];
         put?: never;
         post?: never;
         /** Delete Link */
@@ -1009,7 +1017,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Topology */
+        /**
+         * Get Topology
+         * @description Всё, что нужно схеме связей, одним ответом.
+         *
+         *     Раньше схема собиралась в браузере из двух запросов: устройства со всеми
+         *     портами (`/topology/devices`) и страница связей. Порты составляли почти
+         *     весь вес — двадцать четыре тысячи вложенных объектов на тысячу устройств
+         *     ради того, чтобы подписать на карточке дробь «1/4» и написать у конца
+         *     кабеля номер порта. Здесь то же самое считает база: карточке достаётся
+         *     пара чисел, кабелю — номер и подпись его портов.
+         *
+         *     Три запроса на весь ответ: устройства, кабели и подсчёт портов. Ни один
+         *     из них не растёт от количества портов.
+         */
         get: operations["get_topology_topology_get"];
         put?: never;
         post?: never;
@@ -1077,33 +1098,6 @@ export interface paths {
          *     об оборудовании.
          */
         patch: operations["set_topology_group_box_topology_groups__group_id__box_patch"];
-        trace?: never;
-    };
-    "/topology/devices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Topology Devices
-         * @description Устройства со всеми портами — для схемы связей.
-         *
-         *     Схема рисует площадку целиком: страницами её не покажешь, и порты нужны
-         *     все — по ним подписываются концы кабелей и заглушки подвешенных концов.
-         *     Поэтому у схемы свой маршрут, а список устройств остаётся лёгким.
-         *
-         *     Когда схему научат собираться на сервере (задача 1.2 ТЗ), этот маршрут
-         *     уйдёт вместе с ней: браузеру перестанет быть нужен полный набор данных.
-         */
-        get: operations["topology_devices_topology_devices_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/vlans": {
@@ -2115,30 +2109,41 @@ export interface components {
              */
             token_type: string;
         };
-        /** TopologyEdge */
+        /**
+         * TopologyEdge
+         * @description Кабель глазами схемы.
+         *
+         *     Устройство и порт у конца могут отсутствовать: порт удалили, а кабель
+         *     остался. Такой конец схема рисует заглушкой, поэтому пропускать связь
+         *     нельзя — иначе повисший кабель просто исчезал бы с картинки.
+         */
         TopologyEdge: {
             /** Color */
             color?: string | null;
             /** Confirmed */
             confirmed: boolean;
             /** Device A Id */
-            device_a_id: number;
+            device_a_id?: number | null;
             /** Device B Id */
-            device_b_id: number;
+            device_b_id?: number | null;
             /** Interface A Id */
-            interface_a_id: number;
+            interface_a_id?: number | null;
             /** Interface A Label */
-            interface_a_label: string;
+            interface_a_label?: string | null;
             /** Interface B Id */
-            interface_b_id: number;
+            interface_b_id?: number | null;
             /** Interface B Label */
-            interface_b_label: string;
+            interface_b_label?: string | null;
             /** Line Style */
             line_style?: string | null;
             /** Link Id */
             link_id: number;
             /** Media Type */
             media_type?: string | null;
+            /** Port A Number */
+            port_a_number?: number | null;
+            /** Port B Number */
+            port_b_number?: number | null;
         };
         /**
          * TopologyGroupBox
@@ -2168,6 +2173,11 @@ export interface components {
         TopologyGroupOut: {
             /** Color */
             color?: string | null;
+            /**
+             * Device Count
+             * @default 0
+             */
+            device_count: number;
             /** Height */
             height?: number | null;
             /** Id */
@@ -2192,10 +2202,20 @@ export interface components {
             /** Parent Id */
             parent_id?: number | null;
         };
-        /** TopologyNode */
+        /**
+         * TopologyNode
+         * @description Устройство глазами схемы: ровно те поля, которые видны на карточке.
+         *
+         *     Портов здесь нет намеренно — только их количество. Схема показывает
+         *     «1/4», а не список; возить ради этой дроби все двадцать четыре тысячи
+         *     портов площадки было единственным по-настоящему тяжёлым запросом в
+         *     системе.
+         */
         TopologyNode: {
             /** Code */
             code: string;
+            /** Color */
+            color?: string | null;
             /** Device Type */
             device_type: string;
             /** Id */
@@ -2203,10 +2223,22 @@ export interface components {
             /** Name */
             name?: string | null;
             /**
+             * Ports Connected
+             * @default 0
+             */
+            ports_connected: number;
+            /**
+             * Ports Total
+             * @default 0
+             */
+            ports_total: number;
+            /**
              * Tag Ids
              * @default []
              */
             tag_ids: number[];
+            /** Template Id */
+            template_id?: number | null;
             /** Template Name */
             template_name: string;
             /** Topology Group Id */
@@ -4076,6 +4108,39 @@ export interface operations {
             };
         };
     };
+    get_link_links__link_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                link_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_link_links__link_id__delete: {
         parameters: {
             query?: never;
@@ -4896,37 +4961,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TopologyGroupOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    topology_devices_topology_devices_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Site-Id"?: number | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceOut"][];
                 };
             };
             /** @description Validation Error */

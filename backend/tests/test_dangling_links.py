@@ -272,12 +272,20 @@ def test_cable_disappears_when_its_last_end_is_removed(client, headers, pc_templ
 
 
 def test_topology_endpoint_survives_dangling_links(client, headers, linked_pair):
-    """Кабель с подвешенным концом ронял /topology: у отсутствующего порта
-    спрашивали устройство. Парой устройств такой кабель не описывается,
-    поэтому в этой выдаче он просто не участвует."""
+    """Кабель с подвешенным концом когда-то ронял /topology: у отсутствующего
+    порта спрашивали устройство.
+
+    Теперь он приходит с пустой стороной — схема рисует такой конец
+    заглушкой, за которую его перетаскивают в новый порт. Выбрасывать его из
+    выдачи значило бы прятать от человека кабель, который на самом деле
+    воткнут в железку.
+    """
     assert client.delete(f"/interfaces/{linked_pair['pc_port']}", headers=headers["editor"]).status_code == 204
 
     response = client.get("/topology", headers=headers["viewer"])
     assert response.status_code == 200
-    assert response.json()["edges"] == []
-    assert len(response.json()["nodes"]) >= 1
+    body = response.json()
+    assert len(body["nodes"]) >= 1
+    edge = body["edges"][0]
+    assert (edge["device_a_id"] is None) != (edge["device_b_id"] is None), \
+        "ровно один конец повис"

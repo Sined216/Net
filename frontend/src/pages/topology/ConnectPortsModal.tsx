@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useCreateLink, useTopologyDevices, useLinkTemplates } from '../../api/hooks';
+import { useCreateLink, useDevice, useLinkTemplates } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { nnInt } from '../../lib/utils';
 import type { DeviceOut, InterfaceOut } from '../../api/types';
@@ -15,29 +15,34 @@ export function ConnectPortsModal({
   targetId: number;
   onClose: () => void;
 }) {
-  const { data: devices = [] } = useTopologyDevices();
+  // Нужны две железки — те, между которыми протянули линию. Раньше ради них
+  // приезжали все устройства площадки со всеми портами.
+  const { data: source, isLoading: loadingSource } = useDevice(sourceId);
+  const { data: target, isLoading: loadingTarget } = useDevice(targetId);
   const { data: linkTemplates = [] } = useLinkTemplates();
   const createLink = useCreateLink();
-
-  const source = devices.find((d) => d.id === sourceId);
-  const target = devices.find((d) => d.id === targetId);
 
   const freeSource = useFreePorts(source);
   const freeTarget = useFreePorts(target);
 
-  const [portA, setPortA] = useState<string | null>(freeSource[0]?.value ?? null);
-  const [portB, setPortB] = useState<string | null>(freeTarget[0]?.value ?? null);
+  // Порты выбираются сами, но только когда списки приехали: начальное
+  // значение useState считается один раз, до ответа сервера.
+  const [portA, setPortA] = useState<string | null>(null);
+  const [portB, setPortB] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<string | null>(null);
+  const chosenA = portA ?? freeSource[0]?.value ?? null;
+  const chosenB = portB ?? freeTarget[0]?.value ?? null;
 
-  const nothingFree = freeSource.length === 0 || freeTarget.length === 0;
+  const loading = loadingSource || loadingTarget;
+  const nothingFree = !loading && (freeSource.length === 0 || freeTarget.length === 0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!portA || !portB) return;
+    if (!chosenA || !chosenB) return;
     createLink.mutate(
       {
-        interface_a_id: parseInt(portA, 10),
-        interface_b_id: parseInt(portB, 10),
+        interface_a_id: parseInt(chosenA, 10),
+        interface_b_id: parseInt(chosenB, 10),
         template_id: nnInt(templateId),
       },
       { onSuccess: () => { notifySuccess('Связь создана'); onClose(); }, onError: notifyError },
@@ -58,12 +63,12 @@ export function ConnectPortsModal({
               <Select
                 label={deviceLabel(source)}
                 description="Порт, от которого тянется кабель"
-                data={freeSource} value={portA} onChange={setPortA} searchable required
+                data={freeSource} value={chosenA} onChange={setPortA} searchable required
               />
               <Select
                 label={deviceLabel(target)}
                 description="Порт на другом конце"
-                data={freeTarget} value={portB} onChange={setPortB} searchable required
+                data={freeTarget} value={chosenB} onChange={setPortB} searchable required
               />
               <Select
                 label="Шаблон связи" placeholder="— без шаблона —"
@@ -78,7 +83,7 @@ export function ConnectPortsModal({
           )}
           <Group justify="flex-end" mt="sm">
             <Button variant="subtle" onClick={onClose}>Отмена</Button>
-            <Button type="submit" loading={createLink.isPending} disabled={nothingFree || !portA || !portB}>
+            <Button type="submit" loading={createLink.isPending} disabled={loading || nothingFree || !chosenA || !chosenB}>
               Соединить
             </Button>
           </Group>

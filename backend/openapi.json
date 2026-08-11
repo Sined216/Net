@@ -3050,6 +3050,7 @@
         "type": "object"
       },
       "TopologyEdge": {
+        "description": "Кабель глазами схемы.\n\nУстройство и порт у конца могут отсутствовать: порт удалили, а кабель\nостался. Такой конец схема рисует заглушкой, поэтому пропускать связь\nнельзя — иначе повисший кабель просто исчезал бы с картинки.",
         "properties": {
           "color": {
             "anyOf": [
@@ -3067,28 +3068,70 @@
             "type": "boolean"
           },
           "device_a_id": {
-            "title": "Device A Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device A Id"
           },
           "device_b_id": {
-            "title": "Device B Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device B Id"
           },
           "interface_a_id": {
-            "title": "Interface A Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface A Id"
           },
           "interface_a_label": {
-            "title": "Interface A Label",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface A Label"
           },
           "interface_b_id": {
-            "title": "Interface B Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface B Id"
           },
           "interface_b_label": {
-            "title": "Interface B Label",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface B Label"
           },
           "line_style": {
             "anyOf": [
@@ -3115,16 +3158,32 @@
               }
             ],
             "title": "Media Type"
+          },
+          "port_a_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port A Number"
+          },
+          "port_b_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port B Number"
           }
         },
         "required": [
           "link_id",
-          "device_a_id",
-          "device_b_id",
-          "interface_a_id",
-          "interface_b_id",
-          "interface_a_label",
-          "interface_b_label",
           "confirmed"
         ],
         "title": "TopologyEdge",
@@ -3210,6 +3269,11 @@
               }
             ],
             "title": "Color"
+          },
+          "device_count": {
+            "default": 0,
+            "title": "Device Count",
+            "type": "integer"
           },
           "height": {
             "anyOf": [
@@ -3324,10 +3388,22 @@
         "type": "object"
       },
       "TopologyNode": {
+        "description": "Устройство глазами схемы: ровно те поля, которые видны на карточке.\n\nПортов здесь нет намеренно — только их количество. Схема показывает\n«1/4», а не список; возить ради этой дроби все двадцать четыре тысячи\nпортов площадки было единственным по-настоящему тяжёлым запросом в\nсистеме.",
         "properties": {
           "code": {
             "title": "Code",
             "type": "string"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
           },
           "device_type": {
             "title": "Device Type",
@@ -3348,6 +3424,16 @@
             ],
             "title": "Name"
           },
+          "ports_connected": {
+            "default": 0,
+            "title": "Ports Connected",
+            "type": "integer"
+          },
+          "ports_total": {
+            "default": 0,
+            "title": "Ports Total",
+            "type": "integer"
+          },
           "tag_ids": {
             "default": [],
             "items": {
@@ -3355,6 +3441,17 @@
             },
             "title": "Tag Ids",
             "type": "array"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
           },
           "template_name": {
             "title": "Template Name",
@@ -7211,6 +7308,68 @@
           "links"
         ]
       },
+      "get": {
+        "description": "Один кабель целиком — для окна его правки.\n\nСхема связей больше не возит страницу кабелей ради того, чтобы найти в\nней тот, по которому щёлкнули: ей достаточно линий, а окно открывается\nпо одной железке за раз.",
+        "operationId": "get_link_links__link_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Link",
+        "tags": [
+          "links"
+        ]
+      },
       "patch": {
         "operationId": "update_link_links__link_id__patch",
         "parameters": [
@@ -8225,6 +8384,7 @@
     },
     "/topology": {
       "get": {
+        "description": "Всё, что нужно схеме связей, одним ответом.\n\nРаньше схема собиралась в браузере из двух запросов: устройства со всеми\nпортами (`/topology/devices`) и страница связей. Порты составляли почти\nвесь вес — двадцать четыре тысячи вложенных объектов на тысячу устройств\nради того, чтобы подписать на карточке дробь «1/4» и написать у конца\nкабеля номер порта. Здесь то же самое считает база: карточке достаётся\nпара чисел, кабелю — номер и подпись его портов.\n\nТри запроса на весь ответ: устройства, кабели и подсчёт портов. Ни один\nиз них не растёт от количества портов.",
         "operationId": "get_topology_topology_get",
         "parameters": [
           {
@@ -8611,65 +8771,6 @@
         "summary": "Set Topology Group Box",
         "tags": [
           "topology-groups"
-        ]
-      }
-    },
-    "/topology/devices": {
-      "get": {
-        "description": "Устройства со всеми портами — для схемы связей.\n\nСхема рисует площадку целиком: страницами её не покажешь, и порты нужны\nвсе — по ним подписываются концы кабелей и заглушки подвешенных концов.\nПоэтому у схемы свой маршрут, а список устройств остаётся лёгким.\n\nКогда схему научат собираться на сервере (задача 1.2 ТЗ), этот маршрут\nуйдёт вместе с ней: браузеру перестанет быть нужен полный набор данных.",
-        "operationId": "topology_devices_topology_devices_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Site-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Site-Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DeviceOut"
-                  },
-                  "title": "Response Topology Devices Topology Devices Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Topology Devices",
-        "tags": [
-          "topology"
         ]
       }
     },

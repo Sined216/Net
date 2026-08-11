@@ -47,6 +47,10 @@ export type TopologyGroupCreate = S['TopologyGroupCreate'];
 export type TopologyGroupUpdate = S['TopologyGroupUpdate'];
 export type TopologyGroupOut = S['TopologyGroupOut'];
 export type TopologyGroupBox = S['TopologyGroupBox'];
+/** Схема связей, собранная сервером. */
+export type TopologyOut = S['TopologyOut'];
+export type TopologyNode = S['TopologyNode'];
+export type TopologyEdge = S['TopologyEdge'];
 
 // ---------- Импорт устройств из файла ----------
 export type ImportRowOut = S['ImportRowOut'];

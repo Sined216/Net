@@ -5,29 +5,26 @@ import {
 } from './shapes';
 import { groupDepth } from '../groups';
 import { computeForceLayout, type LayoutNode, type Spring } from '../layout';
-import type {
-  DeviceOut, DeviceTemplateOut, DeviceTypeOut, LinkOut, LinkTemplateOut, TopologyGroupOut,
-} from '../../../api/types';
+import type { TopologyEdge, TopologyGroupOut, TopologyNode } from '../../../api/types';
 
-/** Данные схемы → ячейки полотна.
+/** Схема, присланная сервером, → ячейки полотна.
  *
- * Вынесено из страницы: там это была половина файла, и правка расцветки
- * кабеля соседствовала с правкой состояния окон. Здесь функция ничего не
- * знает ни про React, ни про запросы к серверу — ей отдают уже загруженные
- * списки и уже посчитанные координаты, а она наполняет граф.
+ * Данные приходят уже в том виде, в каком схема их рисует: у карточки есть
+ * цвет модели и дробь «подключено / всего», у линии — номера и подписи
+ * портов на обоих концах. Собирать это в браузере из всех устройств
+ * площадки со всеми портами больше не нужно, и здесь не осталось ни
+ * поиска по спискам, ни подсчётов — только геометрия и оформление.
  */
 
 export type Box = { x: number; y: number; width: number; height: number };
 export type Point = { x: number; y: number };
 
-/** Что рисуем. */
+/** Что рисуем. Узлы и линии — от сервера, рамки групп — свой справочник:
+ * они правятся отдельно от устройств и на схеме живут своей жизнью. */
 export interface GraphData {
-  devices: DeviceOut[];
-  links: LinkOut[];
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
   groups: TopologyGroupOut[];
-  templates: DeviceTemplateOut[];
-  types: DeviceTypeOut[];
-  linkTemplates: LinkTemplateOut[];
 }
 
 /** Как рисуем: настройки вида, тема интерфейса, способ разводки и
@@ -52,17 +49,16 @@ const GROUP_PADDING = 34;
 type CanvasPaint = ReturnType<typeof canvasColors>;
 
 export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): BuiltGraph {
-  const { devices, links, groups, templates, types, linkTemplates } = data;
+  const { nodes, edges, groups } = data;
   const { look, scheme, router, positions } = view;
 
   const colors = nodeColors(look.deviceDark, scheme);
   const paint = canvasColors(scheme);
-  const boxes = computeBoxes(groups, devices, positions);
+  const boxes = computeBoxes(groups, nodes, positions);
 
-  const groupCells = addGroups(graph, groups, devices, boxes, look, paint);
-  const deviceCells = addDevices(graph, devices, templates, types, positions, boxes, groupCells,
-                                 look, colors);
-  addLinks(graph, devices, links, linkTemplates, deviceCells, look, paint, router);
+  const groupCells = addGroups(graph, groups, nodes, boxes, look, paint);
+  const deviceCells = addDevices(graph, nodes, positions, boxes, groupCells, look, colors);
+  addLinks(graph, edges, deviceCells, look, paint, router);
 
   return { deviceCells, boxes };
 }
@@ -72,7 +68,7 @@ export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): 
 function addGroups(
   graph: dia.Graph,
   groups: TopologyGroupOut[],
-  devices: DeviceOut[],
+  nodes: TopologyNode[],
   boxes: Map<number, Box>,
   look: TopologyAppearance,
   paint: CanvasPaint,
@@ -84,7 +80,7 @@ function addGroups(
     if (!box) continue;
     const accent = group.color ?? '#4dabf7';
     const fade = [1, 0.6, 0.4][Math.min(groupDepth(groups, group.id), 2)];
-    const inside = devices.filter((d) => d.topology_group_id === group.id).length;
+    const inside = nodes.filter((n) => n.topology_group_id === group.id).length;
     const title = look.groupCount ? `${group.name} · ${inside}` : group.name;
     const cell = new GroupShape({
       position: { x: box.x, y: box.y },
@@ -121,9 +117,7 @@ function addGroups(
 /** Карточки устройств. */
 function addDevices(
   graph: dia.Graph,
-  devices: DeviceOut[],
-  templates: DeviceTemplateOut[],
-  types: DeviceTypeOut[],
+  nodes: TopologyNode[],
   positions: Map<number, Point>,
   boxes: Map<number, Box>,
   groupCells: Map<number, dia.Element>,
@@ -131,14 +125,11 @@ function addDevices(
   colors: ReturnType<typeof nodeColors>,
 ): Map<number, dia.Element> {
   const cells = new Map<number, dia.Element>();
-  for (const device of devices) {
-    const template = templates.find((t) => t.id === device.template_id);
-    const accent = template?.color ?? NEUTRAL;
-    const raw = positions.get(device.id)!;
-    const connected = device.interfaces.filter((i) => i.link_id).length;
-    const typeName = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '' : '';
-    const groupCell = device.topology_group_id != null ? groupCells.get(device.topology_group_id) : undefined;
-    const frame = device.topology_group_id != null ? boxes.get(device.topology_group_id) : undefined;
+  for (const node of nodes) {
+    const accent = node.color ?? NEUTRAL;
+    const raw = positions.get(node.id)!;
+    const groupCell = node.topology_group_id != null ? groupCells.get(node.topology_group_id) : undefined;
+    const frame = node.topology_group_id != null ? boxes.get(node.topology_group_id) : undefined;
     // Узел не должен торчать из своей рамки. Перетаскивание за неё не
     // выпускает само полотно, но координаты, пришедшие из базы, оно не
     // подрезает: рамку могли сузить, а устройство — перенести в группу
@@ -148,7 +139,7 @@ function addDevices(
     const cell = new DeviceShape({
       position: at,
       kind: 'device',
-      deviceId: device.id,
+      deviceId: node.id,
       z: 10,
       attrs: {
         // Рамка-градиент по цвету модели.
@@ -166,19 +157,19 @@ function addDevices(
         dot: { fill: accent },
         // Крупная строка — название железки, мелкая под ней — её код: на
         // схеме ищут «станок №7», а не «PLC-0002».
-        title: { text: device.name || template?.name || typeName || device.code, fill: colors.title },
+        title: { text: node.name || node.template_name || node.device_type || node.code, fill: colors.title },
         ports: {
-          text: look.devicePorts ? `${connected}/${device.interfaces.length}` : '',
-          fill: connected > 0 ? colors.portsBusy : colors.portsIdle,
+          text: look.devicePorts ? `${node.ports_connected}/${node.ports_total}` : '',
+          fill: node.ports_connected > 0 ? colors.portsBusy : colors.portsIdle,
         },
         subtitle: {
-          text: look.deviceSubtitle ? device.code : '',
+          text: look.deviceSubtitle ? node.code : '',
           fill: colors.subtitle,
         },
       },
     });
     graph.addCell(cell);
-    cells.set(device.id, cell);
+    cells.set(node.id, cell);
 
     if (groupCell) groupCell.embed(cell);
   }
@@ -189,34 +180,22 @@ function addDevices(
  * своим устройством. */
 function addLinks(
   graph: dia.Graph,
-  devices: DeviceOut[],
-  links: LinkOut[],
-  linkTemplates: LinkTemplateOut[],
+  edges: TopologyEdge[],
   deviceCells: Map<number, dia.Element>,
   look: TopologyAppearance,
   paint: CanvasPaint,
   router: 'orthogonal' | 'straight',
 ) {
-  const deviceOfInterface = new Map<number, number>();
-  const portOfInterface = new Map<number, { number: number; label: string }>();
-  for (const device of devices) {
-    for (const iface of device.interfaces) {
-      deviceOfInterface.set(iface.id, device.id);
-      portOfInterface.set(iface.id, { number: iface.port_number, label: iface.label });
-    }
-  }
-
   // Кабели, приходящие в одно устройство, должны входить в него в разных
   // точках, иначе при ортогональной разводке они ложатся друг на друга и
   // видно одну линию вместо пяти. Считаем каждому концу его номер у своей
   // железки и разносим точки входа по высоте узла.
   const endsOfDevice = new Map<number, number[]>();
-  for (const link of links) {
-    for (const ifaceId of [link.interface_a_id, link.interface_b_id]) {
-      const deviceId = ifaceId != null ? deviceOfInterface.get(ifaceId) : undefined;
+  for (const edge of edges) {
+    for (const deviceId of [edge.device_a_id, edge.device_b_id]) {
       if (deviceId == null) continue;
       if (!endsOfDevice.has(deviceId)) endsOfDevice.set(deviceId, []);
-      endsOfDevice.get(deviceId)!.push(link.id);
+      endsOfDevice.get(deviceId)!.push(edge.link_id);
     }
   }
   const anchorFor = (deviceId: number, linkId: number) => {
@@ -230,7 +209,7 @@ function addLinks(
   // в одну линию ровно так же, как одинаковая точка входа. Шаг подобран так,
   // чтобы соседние коридоры было видно как отдельные, а не как утолщённую
   // линию.
-  const linkOrder = new Map(links.map((l, index) => [l.id, index]));
+  const linkOrder = new Map(edges.map((e, index) => [e.link_id, index]));
   const routerFor = (linkId: number) => (router === 'orthogonal'
     ? { name: 'manhattan', args: { step: 16, padding: 22 + ((linkOrder.get(linkId) ?? 0) % 4) * 18 } }
     : undefined);
@@ -244,38 +223,34 @@ function addLinks(
   // ним. Прямая линия узлы пересекает, и там она остаётся под ними.
   const linkZ = router === 'orthogonal' ? 20 : 5;
 
-  for (const link of links) {
-    const aDevice = link.interface_a_id != null ? deviceOfInterface.get(link.interface_a_id) : undefined;
-    const bDevice = link.interface_b_id != null ? deviceOfInterface.get(link.interface_b_id) : undefined;
-    const template = link.template_id ? linkTemplates.find((t) => t.id === link.template_id) : null;
-
+  for (const edge of edges) {
     // Оба конца на месте — обычный кабель.
-    if (aDevice != null && bDevice != null) {
-      const source = deviceCells.get(aDevice);
-      const target = deviceCells.get(bDevice);
+    if (edge.device_a_id != null && edge.device_b_id != null) {
+      const source = deviceCells.get(edge.device_a_id);
+      const target = deviceCells.get(edge.device_b_id);
       if (!source || !target) continue;
       graph.addCell(new shapes.standard.Link({
-        source: { id: source.id, anchor: anchorFor(aDevice, link.id) },
-        target: { id: target.id, anchor: anchorFor(bDevice, link.id) },
-        linkId: link.id,
-        router: routerFor(link.id),
+        source: { id: source.id, anchor: anchorFor(edge.device_a_id, edge.link_id) },
+        target: { id: target.id, anchor: anchorFor(edge.device_b_id, edge.link_id) },
+        linkId: edge.link_id,
+        router: routerFor(edge.link_id),
         connector: connectorFor(),
         z: linkZ,
         attrs: {
           line: {
-            stroke: template?.color ?? '#9aa1ab',
+            stroke: edge.color ?? '#9aa1ab',
             strokeWidth: look.edgeWidth,
-            strokeDasharray: template?.line_style === 'dashed' ? '7 5'
-              : template?.line_style === 'dotted' ? '2 4' : undefined,
-            opacity: link.confirmed ? 0.9 : 0.45,
+            strokeDasharray: edge.line_style === 'dashed' ? '7 5'
+              : edge.line_style === 'dotted' ? '2 4' : undefined,
+            opacity: edge.confirmed ? 0.9 : 0.45,
             targetMarker: null,
           },
         },
         labels: look.edgeLabels ? [
-          portLabelCell(portText(portOfInterface.get(link.interface_a_id!), look), paint, 46,
-                        labelShift(endsOfDevice.get(aDevice), link.id)),
-          portLabelCell(portText(portOfInterface.get(link.interface_b_id!), look), paint, -46,
-                        labelShift(endsOfDevice.get(bDevice), link.id)),
+          portLabelCell(portText(edge.port_a_number, edge.interface_a_label, look), paint, 46,
+                        labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id)),
+          portLabelCell(portText(edge.port_b_number, edge.interface_b_label, look), paint, -46,
+                        labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id)),
         ] : [],
       }));
       continue;
@@ -283,23 +258,23 @@ function addLinks(
 
     // Один конец повис: рисуем заглушку под живым устройством — кабель
     // никуда не делся, его просто некуда воткнуть.
-    const liveInterface = link.interface_a_id ?? link.interface_b_id;
-    const liveDevice = liveInterface != null ? deviceOfInterface.get(liveInterface) : undefined;
+    const liveIsA = edge.device_a_id != null;
+    const liveDevice = liveIsA ? edge.device_a_id : edge.device_b_id;
     const deviceCell = liveDevice != null ? deviceCells.get(liveDevice) : undefined;
-    if (!deviceCell || liveInterface == null) continue;
+    if (!deviceCell) continue;
 
     const anchor = deviceCell.getBBox();
     const stub = new StubShape({
       position: { x: anchor.x + NODE.width / 2 - STUB_SIZE / 2, y: anchor.y + NODE.height + 42 },
       kind: 'stub',
-      linkId: link.id,
+      linkId: edge.link_id,
       z: 10,
       attrs: { body: { fill: paint.plate } },
     });
     graph.addCell(stub);
     graph.addCell(new shapes.standard.Link({
       source: { id: deviceCell.id }, target: { id: stub.id },
-      linkId: link.id,
+      linkId: edge.link_id,
       z: linkZ,
       attrs: {
         line: {
@@ -308,7 +283,11 @@ function addLinks(
         },
       },
       labels: look.edgeLabels ? [
-        portLabelCell(portText(portOfInterface.get(liveInterface), look), paint, 34),
+        portLabelCell(
+          liveIsA ? portText(edge.port_a_number, edge.interface_a_label, look)
+                  : portText(edge.port_b_number, edge.interface_b_label, look),
+          paint, 34,
+        ),
       ] : [],
     }));
   }
@@ -332,9 +311,10 @@ function clampToFrame(at: Point, frame: Box | undefined): Point {
   };
 }
 
-function portText(port: { number: number; label: string } | undefined, look: TopologyAppearance): string {
-  if (!port) return '';
-  return look.edgeLabelName && port.label ? `№${port.number} · ${port.label}` : `№${port.number}`;
+function portText(number: number | null | undefined, label: string | null | undefined,
+                   look: TopologyAppearance): string {
+  if (number == null) return '';
+  return look.edgeLabelName && label ? `№${number} · ${label}` : `№${number}`;
 }
 
 /** Подпись конца кабеля: в нескольких десятках точек от своего конца линии.
@@ -368,43 +348,41 @@ export function storedBox(group: TopologyGroupOut): Box | null {
 /** Положение узлов: сохранённое в базе, затем сложившееся в этой сессии, и
  * только новым устройствам считается пружинная раскладка. */
 export function computePositions(
-  devices: DeviceOut[],
-  links: LinkOut[],
+  nodes: TopologyNode[],
+  edges: TopologyEdge[],
   placed: React.RefObject<Map<number, Point>>,
   relayout: number,
 ): Map<number, Point> {
-  const nodes: LayoutNode[] = devices.map((d) => {
+  const layout: LayoutNode[] = nodes.map((n) => {
     // Сложившееся в этой сессии важнее сохранённого: запись позиции нарочно
-    // не обновляет список устройств (иначе схема дёргалась бы на каждое
-    // перетаскивание), поэтому в нём ещё лежат прежние координаты. Брать их
+    // не обновляет схему (иначе она дёргалась бы на каждое перетаскивание),
+    // поэтому в присланных узлах ещё лежат прежние координаты. Брать их
     // после перетаскивания рамки группы значило бы вернуть узлы туда, откуда
     // человек их только что увёз, — рамка уехала, а узлы прыгнули назад.
     const saved = relayout > 0 ? undefined
-      : (placed.current!.get(d.id)
-        ?? (d.topology_x != null && d.topology_y != null ? { x: d.topology_x, y: d.topology_y } : undefined));
+      : (placed.current!.get(n.id)
+        ?? (n.topology_x != null && n.topology_y != null ? { x: n.topology_x, y: n.topology_y } : undefined));
     return {
-      id: String(d.id),
+      id: String(n.id),
       x: saved?.x ?? Math.random() * 1100,
       y: saved?.y ?? Math.random() * 700,
       vx: 0, vy: 0,
       fixed: saved != null,
     };
   });
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const ifaceToDevice = new Map<number, number>();
-  for (const d of devices) for (const i of d.interfaces) ifaceToDevice.set(i.id, d.id);
+  const byId = new Map(layout.map((n) => [n.id, n]));
 
   const springs: Spring[] = [];
-  for (const link of links) {
-    if (link.interface_a_id == null || link.interface_b_id == null) continue;
-    const a = byId.get(String(ifaceToDevice.get(link.interface_a_id)));
-    const b = byId.get(String(ifaceToDevice.get(link.interface_b_id)));
+  for (const edge of edges) {
+    if (edge.device_a_id == null || edge.device_b_id == null) continue;
+    const a = byId.get(String(edge.device_a_id));
+    const b = byId.get(String(edge.device_b_id));
     if (a && b && a !== b) springs.push({ a, b, idealLen: 240, strength: 0.02 });
   }
-  if (nodes.some((n) => !n.fixed)) computeForceLayout(nodes, springs, 1100, 750);
+  if (layout.some((n) => !n.fixed)) computeForceLayout(layout, springs, 1100, 750);
 
   const result = new Map<number, Point>();
-  for (const node of nodes) {
+  for (const node of layout) {
     const at = { x: node.x, y: node.y };
     result.set(parseInt(node.id, 10), at);
     placed.current!.set(parseInt(node.id, 10), at);
@@ -415,7 +393,7 @@ export function computePositions(
 /** Рамки групп: заданная руками, иначе — по содержимому. */
 export function computeBoxes(
   groups: TopologyGroupOut[],
-  devices: DeviceOut[],
+  nodes: TopologyNode[],
   positions: Map<number, Point>,
 ): Map<number, Box> {
   const boxes = new Map<number, Box>();
@@ -430,9 +408,9 @@ export function computeBoxes(
     }
 
     const parts: Box[] = [];
-    for (const device of devices) {
-      if (device.topology_group_id !== group.id) continue;
-      const at = positions.get(device.id);
+    for (const node of nodes) {
+      if (node.topology_group_id !== group.id) continue;
+      const at = positions.get(node.id);
       if (!at) continue;
       parts.push({
         x: at.x - NODE.width / 2, y: at.y - NODE.height / 2,

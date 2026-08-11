@@ -183,11 +183,13 @@ def test_free_ports_are_found_by_the_database(client, headers, make_device):
     assert all(p["device_name"] == "Второй" for p in by_name)
 
 
-def test_topology_still_gets_everything(client, headers, make_device):
-    """Схеме нужны все порты — у неё свой маршрут, и он не постраничный."""
+def test_topology_no_longer_hauls_every_port(client, headers, make_device):
+    """У схемы свой маршрут, и он тоже стал лёгким: карточке достаточно
+    счётчиков. Подробности — в `test_topology.py`."""
     make_device()
-    devices = client.get("/topology/devices", headers=headers["viewer"]).json()
-    assert devices and "interfaces" in devices[0]
+    body = client.get("/topology", headers=headers["viewer"]).json()
+    assert body["nodes"] and "interfaces" not in body["nodes"][0]
+    assert body["nodes"][0]["ports_total"] == 2
 
 
 def test_page_is_fast_enough(client, headers, many_devices):

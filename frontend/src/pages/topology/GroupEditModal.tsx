@@ -1,11 +1,19 @@
 import { useState } from 'react';
 import { Button, ColorInput, Group, Modal, MultiSelect, Select, Stack, Text, TextInput } from '@mantine/core';
 import {
-  useCreateTopologyGroup, useTopologyDevices, useTopologyGroups, useUpdateDevice, useUpdateTopologyGroup,
+  useCreateTopologyGroup, useDevices, useTopologyGroups, useUpdateDevice, useUpdateTopologyGroup,
 } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { orderedGroups } from './groups';
 import type { TopologyGroupOut } from '../../api/types';
+
+/** Сколько устройств помещается в список выбора состава.
+ *
+ * Выпадающий список на тысячу с лишним пунктов всё равно не тот способ,
+ * которым набирают группу, — там ищут по названию. Ограничение честное: если
+ * устройств больше, об этом сказано прямо в окне.
+ */
+const MEMBER_LIMIT = 500;
 
 /** Правка группы: название, цвет, место во вложенности и состав устройств.
  *
@@ -27,7 +35,11 @@ export function GroupEditModal({
 }) {
   const isEdit = !!group;
   const { data: groups = [] } = useTopologyGroups();
-  const { data: devices = [] } = useTopologyDevices();
+  // Состав правится только у существующей группы, поэтому для новой список
+  // устройств не запрашивается вовсе. Список лёгкий — без портов.
+  const { data: devicePage } = useDevices({ limit: MEMBER_LIMIT, sort: 'code' }, !!group);
+  const devices = devicePage?.items ?? [];
+  const trimmed = (devicePage?.total ?? 0) > devices.length;
   const createGroup = useCreateTopologyGroup();
   const updateGroup = useUpdateTopologyGroup();
   const updateDevice = useUpdateDevice();
@@ -37,9 +49,11 @@ export function GroupEditModal({
   const [parent, setParent] = useState<string | null>(
     group ? (group.parent_id != null ? String(group.parent_id) : null) : (parentId != null ? String(parentId) : null),
   );
-  const [members, setMembers] = useState<string[]>(
-    devices.filter((d) => d.topology_group_id === group?.id).map((d) => String(d.id)),
-  );
+  // Кто уже в группе, известно только после ответа сервера, а начальное
+  // значение useState считается один раз — поэтому «ещё не трогали»
+  // хранится отдельно от выбранного.
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const members = picked ?? devices.filter((d) => d.topology_group_id === group?.id).map((d) => String(d.id));
 
   // Собственные потомки в родители не годятся — получилось бы кольцо, и
   // сервер такой перенос всё равно отвергнет.
@@ -106,12 +120,18 @@ export function GroupEditModal({
               data={parentOptions} value={parent} onChange={setParent}
             />
           </Group>
+          {isEdit && trimmed && (
+            <Text size="xs" c="orange">
+              Показаны первые {MEMBER_LIMIT} устройств по коду — на этой площадке их больше. Остальные
+              переносятся в группу из своей карточки или кнопкой «В группу» на схеме.
+            </Text>
+          )}
           {isEdit && (
             <MultiSelect
               label="Устройства в группе" placeholder="выберите устройства" searchable clearable
               description="Устройство состоит ровно в одной группе — в самой внутренней"
               data={devices.map((d) => ({ value: String(d.id), label: d.name ? `${d.code} — ${d.name}` : d.code }))}
-              value={members} onChange={setMembers}
+              value={members} onChange={setPicked}
             />
           )}
           <Text size="xs" c="dimmed">

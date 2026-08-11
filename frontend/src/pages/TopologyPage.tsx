@@ -6,18 +6,19 @@ import {
   IconFocusCentered, IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup,
 } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { highlighters, type dia } from '@joint/core';
 import {
-  useCreateDevice, useDeleteDevice, useDeleteTopologyGroup, useDeviceTemplates,
-  useDeviceTypes, useLinkTemplates, useLinks, useSetTopologyGroupBox, useTags, useTopologyDevices,
-  useTopologyGroups, useUpdateDevicePosition,
+  useCreateDevice, useDeleteDevice, useDeleteTopologyGroup, useSetTopologyGroupBox, useTags,
+  useTopology, useTopologyGroups, useUpdateDevicePosition,
 } from '../api/hooks';
+import * as apiEndpoints from '../api/endpoints';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
 import { AttachEndModal } from './topology/AttachEndModal';
 import { GroupEditModal } from './topology/GroupEditModal';
 import { DeviceGroupModal } from './topology/DeviceGroupModal';
 import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
-import { LinkFormModal } from './links/LinkFormModal';
+import { DeviceModalById, LinkModalById } from './topology/OpenById';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
@@ -30,7 +31,7 @@ import {
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { useCan } from '../auth/permissions';
-import type { DeviceOut, LinkOut, TopologyGroupOut } from '../api/types';
+import type { TopologyGroupOut } from '../api/types';
 
 /** Схема связей.
  *
@@ -44,11 +45,15 @@ import type { DeviceOut, LinkOut, TopologyGroupOut } from '../api/types';
  * их напрямик через чужие карточки. Второй вариант удалён, чтобы схему не
  * приходилось чинить дважды.
  *
- * Здесь остались только три вещи: что показывать (запросы и отбор по тегу),
- * что делают кнопки, и какие окна открыты. Само полотно с его событиями
- * живёт в `joint/useJointPaper`, а превращение данных в ячейки — в
- * `joint/buildGraph`: раньше всё это лежало в одном файле на тысячу строк,
- * и правка расцветки кабеля соседствовала с правкой состояния окон.
+ * Саму схему собирает сервер: `GET /topology` отдаёт узлы и линии в том
+ * виде, в каком они рисуются. Раньше браузер получал всю площадку со всеми
+ * портами и сшивал картинку сам — двадцать четыре тысячи вложенных объектов
+ * на тысячу устройств ради дроби «1/4» на карточке и номера порта у конца
+ * кабеля.
+ *
+ * Здесь остались только три вещи: что показывать, что делают кнопки и какие
+ * окна открыты. Полотно с его событиями живёт в `joint/useJointPaper`, а
+ * превращение присланной схемы в ячейки — в `joint/buildGraph`.
  */
 
 const EMPTY: never[] = [];
@@ -57,16 +62,17 @@ const EMPTY: never[] = [];
 const GROUP_SLACK = 90;
 
 export function TopologyPage() {
-  const { data: devices = EMPTY } = useTopologyDevices();
-  const { data: linkPage } = useLinks({ limit: 500 });
-  const { data: templates = EMPTY } = useDeviceTemplates();
-  const { data: types = EMPTY } = useDeviceTypes();
-  const { data: linkTemplates = EMPTY } = useLinkTemplates();
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  // Отбор по тегу делает сервер: спрятать устройство значит спрятать и его
+  // кабели, а решать это по половине данных нельзя.
+  const { data: topology } = useTopology(tagFilter ? parseInt(tagFilter, 10) : null);
   const { data: tags = EMPTY } = useTags();
   const { data: groups = EMPTY } = useTopologyGroups();
-  const links = linkPage?.items ?? EMPTY;
+  const nodes = topology?.nodes ?? EMPTY;
+  const edges = topology?.edges ?? EMPTY;
 
   const canEdit = useCan('edit');
+  const queryClient = useQueryClient();
   const updatePosition = useUpdateDevicePosition();
   const deleteDevice = useDeleteDevice();
   const createDevice = useCreateDevice();
@@ -76,12 +82,11 @@ export function TopologyPage() {
   // Полотно схемы — это фон страницы, поэтому подписи, врезки и кнопки
   // красятся от темы интерфейса, а не наугад.
   const scheme = useComputedColorScheme('light');
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [look, setLook] = useState<TopologyAppearance>(loadAppearance);
   const [router, setRouter] = useState<'orthogonal' | 'straight'>('orthogonal');
   const [addingDevice, setAddingDevice] = useState(false);
-  const [editingDevice, setEditingDevice] = useState<DeviceOut | null>(null);
-  const [editingLink, setEditingLink] = useState<LinkOut | null>(null);
+  const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
+  const [editingLinkId, setEditingLinkId] = useState<number | null>(null);
   const [connecting, setConnecting] = useState<{ sourceId: number; targetId: number } | null>(null);
   const [attaching, setAttaching] = useState<{ linkId: number; deviceId: number } | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
@@ -102,11 +107,6 @@ export function TopologyPage() {
   const actionsRef = useRef<JointActions>(null!);
   const handlers = useRef<PaperHandlers>(null!);
 
-  const filteredDevices = useMemo(
-    () => (tagFilter ? devices.filter((d) => d.tags.some((t) => String(t.id) === tagFilter)) : devices),
-    [devices, tagFilter],
-  );
-
   function changeLook(next: TopologyAppearance) {
     setLook(next);
     saveAppearance(next);
@@ -114,33 +114,40 @@ export function TopologyPage() {
 
   // ---------- действия панелей ----------
   const actions: JointActions = useMemo(() => ({
-    edit: (deviceId: number) => {
-      const device = devices.find((d) => d.id === deviceId);
-      if (device) setEditingDevice(device);
-    },
-    copy: (deviceId: number) => {
-      const source = devices.find((d) => d.id === deviceId);
-      if (!source) return;
-      createDevice.mutate({
-        template_id: source.template_id, name: source.name, location: source.location,
-        role: source.role, notes: source.notes, topology_group_id: source.topology_group_id,
-        tag_ids: source.tags.map((t) => t.id),
-        // IP и дата установки у каждой железки свои — копировать их значит
-        // получить конфликт адресов.
-      }, {
-        onSuccess: (created) => {
-          notifySuccess(`Создано устройство ${created.code}`);
-          const at = placed.current.get(deviceId);
-          if (at) updatePosition.mutate({ id: created.id, body: { x: at.x + 60, y: at.y + 90 } });
-        },
-        onError: notifyError,
-      });
+    edit: (deviceId: number) => setEditingDeviceId(deviceId),
+    copy: async (deviceId: number) => {
+      // Схема знает про узел только то, что на нём нарисовано, а копировать
+      // надо всю железку — с расположением, ролью и заметками. Поэтому
+      // сначала она приезжает целиком, тем же запросом, что и для окна
+      // правки: второй раз он уже возьмётся из кэша.
+      try {
+        const source = await queryClient.fetchQuery({
+          queryKey: ['device', deviceId],
+          queryFn: () => apiEndpoints.getDevice(deviceId),
+        });
+        createDevice.mutate({
+          template_id: source.template_id, name: source.name, location: source.location,
+          role: source.role, notes: source.notes, topology_group_id: source.topology_group_id,
+          tag_ids: source.tags.map((t) => t.id),
+          // IP и дата установки у каждой железки свои — копировать их значит
+          // получить конфликт адресов.
+        }, {
+          onSuccess: (created) => {
+            notifySuccess(`Создано устройство ${created.code}`);
+            const at = placed.current.get(deviceId);
+            if (at) updatePosition.mutate({ id: created.id, body: { x: at.x + 60, y: at.y + 90 } });
+          },
+          onError: notifyError,
+        });
+      } catch (error) {
+        notifyError(error);
+      }
     },
     regroup: (deviceId: number) => setRegrouping(deviceId),
     remove: (deviceId: number) => {
-      const device = devices.find((d) => d.id === deviceId);
-      if (!device) return;
-      if (!confirm(`Удалить устройство «${device.code}» вместе с портами и связями?`)) return;
+      const node = nodes.find((n) => n.id === deviceId);
+      if (!node) return;
+      if (!confirm(`Удалить устройство «${node.code}» вместе с портами и связями?`)) return;
       deleteDevice.mutate(deviceId, { onError: notifyError });
     },
     editGroup: (groupId: number) => {
@@ -155,7 +162,7 @@ export function TopologyPage() {
       deleteGroup.mutate(groupId, { onSuccess: () => notifySuccess('Группа удалена'), onError: notifyError });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [devices, groups]);
+  }), [nodes, groups]);
 
   actionsRef.current = actions;
 
@@ -181,10 +188,7 @@ export function TopologyPage() {
       if (sourceId === targetId) return;
       setConnecting({ sourceId, targetId });
     },
-    onLinkClick: (linkId) => {
-      const link = links.find((l) => l.id === linkId);
-      if (link) setEditingLink(link);
-    },
+    onLinkClick: (linkId) => setEditingLinkId(linkId),
     onDeviceMoved: (deviceId, x, y) => {
       placed.current.set(deviceId, { x, y });
       updatePosition.mutate({ id: deviceId, body: { x, y } });
@@ -211,13 +215,11 @@ export function TopologyPage() {
     view.removeTools();
     highlighters.stroke.removeAll(view);
     graph.clear();
-    if (filteredDevices.length === 0) return;
+    if (nodes.length === 0) return;
 
-    const positions = computePositions(filteredDevices, links, placed, relayout);
+    const positions = computePositions(nodes, edges, placed, relayout);
     const { deviceCells, boxes } = buildGraph(
-      graph,
-      { devices: filteredDevices, links, groups, templates, types, linkTemplates },
-      { look, scheme, router, positions },
+      graph, { nodes, edges, groups }, { look, scheme, router, positions },
     );
 
     // Заведённые до появления ручной правки группы получают посчитанную
@@ -262,7 +264,7 @@ export function TopologyPage() {
       setSearchParams(rest, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredDevices, links, templates, types, linkTemplates, groups, look, router, relayout, canEdit, scheme]);
+  }, [nodes, edges, groups, look, router, relayout, canEdit, scheme]);
 
   /** Новое устройство появляется в середине видимой области. */
   function placeNewDevice(deviceId: number) {
@@ -342,9 +344,11 @@ export function TopologyPage() {
       {addingDevice && (
         <DeviceFormModal device={null} onCreated={placeNewDevice} onClose={() => setAddingDevice(false)} />
       )}
-      {editingDevice && <DeviceFormModal device={editingDevice} onClose={() => setEditingDevice(null)} />}
-      {editingLink && (
-        <LinkFormModal link={editingLink} templates={linkTemplates} onClose={() => setEditingLink(null)} />
+      {editingDeviceId != null && (
+        <DeviceModalById deviceId={editingDeviceId} onClose={() => setEditingDeviceId(null)} />
+      )}
+      {editingLinkId != null && (
+        <LinkModalById linkId={editingLinkId} onClose={() => setEditingLinkId(null)} />
       )}
       {connecting && (
         <ConnectPortsModal

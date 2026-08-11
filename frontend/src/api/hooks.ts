@@ -26,15 +26,20 @@ export const useImportRows = () => useQuery({ queryKey: ['importRows'], queryFn:
 export const useVlans = () => useQuery({ queryKey: ['vlans'], queryFn: api.listVlans });
 export const useDeviceTemplates = () => useQuery({ queryKey: ['deviceTemplates'], queryFn: api.listDeviceTemplates });
 /** Список устройств — страницами и без портов. */
-export const useDevices = (query: DeviceQuery = {}) =>
-  useQuery({ queryKey: ['devices', query], queryFn: () => api.listDevices(query) });
+export const useDevices = (query: DeviceQuery = {}, enabled = true) =>
+  useQuery({ queryKey: ['devices', query], queryFn: () => api.listDevices(query), enabled });
 /** Одно устройство целиком — для его страницы. Раньше она искала нужное
  * среди всех устройств, то есть везла всю спецификацию ради одной железки. */
 export const useDevice = (id: number | null) =>
   useQuery({ queryKey: ['device', id], queryFn: () => api.getDevice(id!), enabled: id != null && !Number.isNaN(id) });
-/** Устройства со всеми портами — для схемы связей и её окон. */
-export const useTopologyDevices = () =>
-  useQuery({ queryKey: ['topologyDevices'], queryFn: api.listTopologyDevices });
+/** Схема связей: узлы и линии, собранные сервером.
+ *
+ * Раньше её собирал браузер — из всех устройств площадки со всеми портами
+ * и страницы кабелей. Отбор по тегу тоже уехал на сервер: спрятать
+ * устройство значит спрятать и его кабели, а решать это по половине данных
+ * нельзя. */
+export const useTopology = (tagId: number | null) =>
+  useQuery({ queryKey: ['topology', tagId], queryFn: () => api.getTopology(tagId) });
 /** Порты одного устройства — подтягиваются, когда карточку раскрывают. */
 export const useDeviceInterfaces = (deviceId: number | null) =>
   useQuery({
@@ -47,6 +52,9 @@ export const useFreePorts = (query: FreePortQuery, enabled = true) =>
   useQuery({ queryKey: ['freePorts', query], queryFn: () => api.listFreePorts(query), enabled });
 export const useLinks = (query: LinkQuery = {}) =>
   useQuery({ queryKey: ['links', query], queryFn: () => api.listLinks(query) });
+/** Один кабель — для окна правки со схемы: там открывают по одному. */
+export const useLink = (id: number | null) =>
+  useQuery({ queryKey: ['link', id], queryFn: () => api.getLink(id!), enabled: id != null });
 export const useLinkTemplates = () => useQuery({ queryKey: ['linkTemplates'], queryFn: api.listLinkTemplates });
 export const useTopologyGroups = () => useQuery({ queryKey: ['topologyGroups'], queryFn: api.listTopologyGroups });
 export const useDatabaseSchema = () => useQuery({ queryKey: ['schema'], queryFn: api.getDatabaseSchema });
@@ -62,10 +70,10 @@ export const useTemplateImpact = (id: number | null) =>
  *
  * Одного `devices` мало: тот же набор данных живёт в нескольких запросах —
  * лёгкий список, порты раскрытой карточки, свободные порты для подключения
- * и полный набор для схемы связей. Пока схема была тем же запросом, что и
+ * и собранная сервером схема. Пока схема была тем же запросом, что и
  * список, это сходило с рук; после разделения заведённое устройство
  * появлялось на схеме только после перезагрузки страницы. */
-const CORE_KEYS = ['devices', 'links', 'deviceInterfaces', 'freePorts', 'topologyDevices'] as const;
+const CORE_KEYS = ['devices', 'links', 'link', 'deviceInterfaces', 'freePorts', 'topology'] as const;
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>, keys: readonly string[]) {
   return Promise.all(keys.map((k) => qc.invalidateQueries({ queryKey: [k] })));
@@ -88,21 +96,21 @@ export function useCreateTag() {
     mutationFn: (body: TagCreate) => api.createTag(body),
     // Строки импорта тоже устаревают: подсказки в них — это найденные по
     // названию записи справочников, и новый тег может закрыть пробел.
-    onSuccess: () => invalidateAll(qc, ['tags', 'devices', 'importRows']),
+    onSuccess: () => invalidateAll(qc, ['tags', 'devices', 'topology', 'importRows']),
   });
 }
 export function useUpdateTag() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: TagUpdate }) => api.updateTag(id, body),
-    onSuccess: () => invalidateAll(qc, ['tags', 'devices']),
+    onSuccess: () => invalidateAll(qc, ['tags', 'devices', 'topology']),
   });
 }
 export function useDeleteTag() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteTag(id),
-    onSuccess: () => invalidateAll(qc, ['tags', 'devices']),
+    onSuccess: () => invalidateAll(qc, ['tags', 'devices', 'topology']),
   });
 }
 
@@ -126,7 +134,7 @@ export function useUpdateDeviceType() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: DeviceTypeUpdate }) => api.updateDeviceType(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deviceTypes'] }),
+    onSuccess: () => invalidateAll(qc, ['deviceTypes', 'topology']),
   });
 }
 
@@ -234,7 +242,7 @@ export function useUpdateDeviceTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: DeviceTemplateUpdate }) => api.updateDeviceTemplate(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deviceTemplates'] }),
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'topology']),
   });
 }
 export function useDeleteDeviceTemplate() {
@@ -251,7 +259,7 @@ export function useAddTemplateInterface() {
       api.addTemplateInterface(templateId, body),
     // Порт добавляется и всем устройствам этой модели — списки устройств и
     // связей тоже устарели.
-    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links']),
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links', 'topology']),
   });
 }
 export function useUpdateTemplateInterface() {
@@ -260,7 +268,7 @@ export function useUpdateTemplateInterface() {
     mutationFn: ({ templateId, ifaceId, body }: { templateId: number; ifaceId: number; body: InterfaceTemplateUpdate }) =>
       api.updateTemplateInterface(templateId, ifaceId, body),
     // Правка порта модели доезжает до всех её устройств.
-    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices']),
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'topology']),
   });
 }
 export function useAddTemplateInterfacesBulk() {
@@ -268,7 +276,7 @@ export function useAddTemplateInterfacesBulk() {
   return useMutation({
     mutationFn: ({ templateId, body }: { templateId: number; body: PortsBulkCreate }) =>
       api.addTemplateInterfacesBulk(templateId, body),
-    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links']),
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links', 'topology']),
   });
 }
 export function useAddInterfacesBulk() {
@@ -292,7 +300,7 @@ export function useDeleteTemplateInterface() {
     mutationFn: ({ templateId, ifaceId }: { templateId: number; ifaceId: number }) =>
       api.deleteTemplateInterface(templateId, ifaceId),
     // Порт исчезает у всех устройств модели, а их кабели повисают.
-    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links']),
+    onSuccess: () => invalidateAll(qc, ['deviceTemplates', 'devices', 'links', 'topology']),
   });
 }
 
@@ -375,7 +383,7 @@ export function useUpdateTopologyGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: TopologyGroupUpdate }) => api.updateTopologyGroup(id, body),
-    onSuccess: () => invalidateAll(qc, ['topologyGroups', 'devices']),
+    onSuccess: () => invalidateAll(qc, ['topologyGroups', 'devices', 'topology']),
   });
 }
 export function useSetTopologyGroupBox() {
@@ -404,7 +412,7 @@ export function useDeleteTopologyGroup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteTopologyGroup(id),
-    onSuccess: () => invalidateAll(qc, ['topologyGroups', 'devices']),
+    onSuccess: () => invalidateAll(qc, ['topologyGroups', 'devices', 'topology']),
   });
 }
 
@@ -443,7 +451,7 @@ export function useUpdateLink() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: LinkUpdate }) => api.updateLink(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['links'] }),
+    onSuccess: () => invalidateAll(qc, ['links', 'link', 'topology']),
     // Отбили из-за чужой правки — сразу показываем свежие данные.
     onError: (error) => refreshOnConflict(qc, error),
   });
