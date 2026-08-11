@@ -243,8 +243,8 @@ export function ImportPage() {
  * говорит «посмотри, это уже заведено» и ведёт на найденное устройство.
  */
 function SameAsExisting({ value, deviceId, what }: {
-  value: string | null;
-  deviceId: number | null;
+  value: string | null | undefined;
+  deviceId: number | null | undefined;
   what: string;
 }) {
   if (!value) return <Table.Td><Text c="dimmed" size="sm">—</Text></Table.Td>;

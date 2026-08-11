@@ -38,7 +38,7 @@ export function LinkFormModal({
 
   /** Переставить один конец, если его поменяли. Подвешенный конец
    * подключается своим маршрутом: там переставлять нечего. */
-  async function applyEnd(was: number | null, now: string | null): Promise<boolean> {
+  async function applyEnd(was: number | null | undefined, now: string | null): Promise<boolean> {
     const next = now ? parseInt(now, 10) : null;
     if (next == null || next === was) return false;
     if (was == null) await attach.mutateAsync({ id: link.id, interfaceId: next });
@@ -149,7 +149,7 @@ export function LinkFormModal({
  * показать выбранное значение чем-то надо. */
 function portOptions(free: FreePortOut[], current: LinkEndOut | null | undefined) {
   const groups = new Map<number, { group: string; items: { value: string; label: string }[] }>();
-  const add = (deviceId: number, deviceCode: string, deviceName: string | null,
+  const add = (deviceId: number, deviceCode: string, deviceName: string | null | undefined,
                 interfaceId: number, portNumber: number, label: string) => {
     if (!groups.has(deviceId)) {
       groups.set(deviceId, {

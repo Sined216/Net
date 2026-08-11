@@ -23,6 +23,14 @@ jobs:
 
       - run: npm ci
 
+      # Типы фронтенда выводятся из описания API. Если его обновили, а
+      # типы не перегенерировали, расхождение всплывёт здесь, а не в
+      # работающем интерфейсе.
+      - name: типы совпадают с описанием API
+        run: |
+          npm run codegen
+          git diff --exit-code src/api/schema.ts
+
       - name: oxlint
         run: npm run lint
 

@@ -43,6 +43,11 @@ jobs:
       - name: ruff
         run: ruff check .
 
+      - name: openapi.json не отстал от кода
+        env:
+          SECRET_KEY: ci-secret-key
+        run: python -m scripts.dump_openapi --check
+
       - name: pytest
         env:
           TEST_DATABASE_URL: postgresql://netdoc:netdoc@localhost:5432/netdoc_test

@@ -17,7 +17,9 @@ export function nnFloat(v: string | number | null | undefined): number | null {
 export interface TagLike {
   id: number;
   name: string;
-  parent_id: number | null;
+  /** Может отсутствовать вовсе: в описании API поле необязательное, и
+   * сервер его не присылает у тега верхнего уровня. */
+  parent_id?: number | null;
   color?: string | null;
 }
 

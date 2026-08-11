@@ -24,7 +24,7 @@ export function InterfaceRow({
   // Смотрящему поля показываются, но не правятся: пустая строка вместо
   // данных сбивала бы с толку, а кнопка, за которой стоит 403, — обманывает.
   const canEdit = useCan('edit');
-  const [mode, setMode] = useState<string | null>(iface.mode);
+  const [mode, setMode] = useState<string | null>(iface.mode ?? null);
   const [moduleId, setModuleId] = useState<string | null>(
     iface.module ? String(iface.module.id) : null,
   );

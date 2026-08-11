@@ -31,6 +31,7 @@ export interface DeviceDraft {
   tag_ids?: number[];
 }
 
+
 export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId }: {
   /** Правится существующее устройство или заводится новое. Хватает лёгкой
    * записи из списка: в форме нет ни одного поля, которого в ней нет. */

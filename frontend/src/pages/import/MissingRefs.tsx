@@ -107,7 +107,7 @@ function NameTable({ title, names, onAdd }: {
 
 /** Названия из файла без пустых и повторов; регистр и лишние пробелы не в
  * счёт — как их не считает и сервер, когда ищет запись справочника. */
-function distinct(values: (string | null)[]): string[] {
+function distinct(values: (string | null | undefined)[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const value of values) {
@@ -125,7 +125,7 @@ function refKey(value: string): string {
   return value.split(/\s+/).filter(Boolean).join(' ').toLowerCase();
 }
 
-function splitTags(value: string | null): string[] {
+function splitTags(value: string | null | undefined): string[] {
   if (!value) return [];
   return value.replace(/;/g, ',').split(',').map((part) => part.trim()).filter(Boolean);
 }
