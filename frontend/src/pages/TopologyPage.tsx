@@ -6,7 +6,7 @@ import {
   IconFocusCentered, IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup,
 } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
-import { dia, highlighters, shapes } from '@joint/core';
+import { highlighters, type dia } from '@joint/core';
 import {
   useCreateDevice, useDeleteDevice, useDeleteTopologyGroup, useDeviceTemplates,
   useDeviceTypes, useLinkTemplates, useLinks, useSetTopologyGroupBox, useTags, useTopologyDevices,
@@ -19,16 +19,14 @@ import { DeviceGroupModal } from './topology/DeviceGroupModal';
 import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 import { LinkFormModal } from './links/LinkFormModal';
 import { DeviceFormModal } from './devices/DeviceFormModal';
-import { groupDepth } from './topology/groups';
-import { computeForceLayout, type LayoutNode, type Spring } from './topology/layout';
 import { AppearanceMenu } from './topology/AppearanceMenu';
+import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
-  canvasColors, loadAppearance, nodeColors, saveAppearance, tint, type TopologyAppearance,
-} from './topology/appearance';
+  buildGraph, computePositions, storedBox, type Box, type Point,
+} from './topology/joint/buildGraph';
 import {
-  DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, STUB_SIZE, withAlpha,
-} from './topology/joint/shapes';
-import { deviceTools, groupTools } from './topology/joint/tools';
+  useJointPaper, type JointActions, type PaperHandlers,
+} from './topology/joint/useJointPaper';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { useCan } from '../auth/permissions';
@@ -45,41 +43,18 @@ import type { DeviceOut, LinkOut, TopologyGroupOut } from '../api/types';
  * ортогональной разводки: он сам обводит кабели вокруг узлов, а не рисует
  * их напрямик через чужие карточки. Второй вариант удалён, чтобы схему не
  * приходилось чинить дважды.
+ *
+ * Здесь остались только три вещи: что показывать (запросы и отбор по тегу),
+ * что делают кнопки, и какие окна открыты. Само полотно с его событиями
+ * живёт в `joint/useJointPaper`, а превращение данных в ячейки — в
+ * `joint/buildGraph`: раньше всё это лежало в одном файле на тысячу строк,
+ * и правка расцветки кабеля соседствовала с правкой состояния окон.
  */
 
 const EMPTY: never[] = [];
 /** Запас у рамки, посчитанной по содержимому: внутри должно остаться место,
  * чтобы узлы можно было двигать. */
 const GROUP_SLACK = 90;
-const GROUP_PADDING = 34;
-
-/** Фон полотна из настроек вида — своими именами JointJS. */
-const GRID: Record<TopologyAppearance['background'], dia.Paper.GridOptions | false> = {
-  dots: { name: 'dot', color: '#ced4da', thickness: 1 },
-  lines: { name: 'mesh', color: '#e9ecef', thickness: 1 },
-  cross: { name: 'doubleMesh', color: '#e9ecef', thickness: 1 },
-  none: false,
-};
-
-type Box = { x: number; y: number; width: number; height: number };
-type CanvasPaint = ReturnType<typeof canvasColors>;
-type Selection = { kind: 'device' | 'group'; id: number } | null;
-
-/** Что панель действий умеет делать с узлом и с рамкой. */
-interface JointActions {
-  edit: (deviceId: number) => void;
-  copy: (deviceId: number) => void;
-  regroup: (deviceId: number) => void;
-  remove: (deviceId: number) => void;
-  editGroup: (groupId: number) => void;
-  addSubgroup: (groupId: number) => void;
-  removeGroup: (groupId: number) => void;
-}
-
-function storedBox(group: TopologyGroupOut): Box | null {
-  if (group.x == null || group.y == null || group.width == null || group.height == null) return null;
-  return { x: group.x, y: group.y, width: group.width, height: group.height };
-}
 
 export function TopologyPage() {
   const { data: devices = EMPTY } = useTopologyDevices();
@@ -114,30 +89,18 @@ export function TopologyPage() {
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const holder = useRef<HTMLDivElement>(null);
-  const paperRef = useRef<dia.Paper | null>(null);
-  const graphRef = useRef<dia.Graph | null>(null);
-  /** Обработчики полотна вешаются один раз, а данные под ними меняются —
-   * поэтому в них смотрит ссылка, которую мы держим свежей. */
-  const handlers = useRef<{
-    onConnect: (source: dia.Element, target: dia.Element) => void;
-    onLinkClick: (linkId: number) => void;
-    onDeviceMoved: (deviceId: number, x: number, y: number) => void;
-    onGroupMoved: (groupId: number, box: Box) => void;
-    onDelete: (selection: Selection) => void;
-  }>(null!);
-  const selection = useRef<Selection>(null);
   /** Раскладка, сложившаяся в этой сессии: пересчитывать симуляцию на каждое
    * изменение данных значит гонять узлы по экрану под руками у человека. */
-  const placed = useRef(new Map<number, { x: number; y: number }>());
+  const placed = useRef(new Map<number, Point>());
   const autoSaved = useRef(new Set<number>());
   /** Для какого по счёту «Вписать» уже подгоняли масштаб. −1 — ещё ни разу,
    * то есть первое наполнение схемы. */
   const fitted = useRef(-1);
   const [relayout, setRelayout] = useState(0);
-  /** Свежие действия для панелей: обработчики полотна ставятся один раз, а
+  /** Свежие действия и обработчики для полотна: оно ставит их один раз, а
    * данные под ними меняются. */
   const actionsRef = useRef<JointActions>(null!);
+  const handlers = useRef<PaperHandlers>(null!);
 
   const filteredDevices = useMemo(
     () => (tagFilter ? devices.filter((d) => d.tags.some((t) => String(t.id) === tagFilter)) : devices),
@@ -201,58 +164,8 @@ export function TopologyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Панели действий берут обработчики в момент нажатия — так в них не
-   * застывает состояние того рендера, на котором рисовали узел. */
-  const toolActions = useCallback((): JointActions => ({
-    edit: (id) => actionsRef.current.edit(id),
-    copy: (id) => actionsRef.current.copy(id),
-    regroup: (id) => actionsRef.current.regroup(id),
-    remove: (id) => actionsRef.current.remove(id),
-    editGroup: (id) => actionsRef.current.editGroup(id),
-    addSubgroup: (id) => actionsRef.current.addSubgroup(id),
-    removeGroup: (id) => actionsRef.current.removeGroup(id),
-  }), []);
-
-  /** Показать панель действий и подсветку у выделенного.
-   *
-   * Отдельной функцией, потому что вызывается дважды: по щелчку и после
-   * перерисовки схемы. Перерисовка сносит все ячейки вместе с панелями, и
-   * без восстановления панель пропадала сама собой — например когда правка
-   * устройства обновляла список, а человек ждал, что панель на месте. */
-  const showTools = useCallback((paper: dia.Paper, target: Selection) => {
-    // Кнопки живут в координатах схемы: отдалили её — и попасть в них нечем.
-    // Поправка возвращает им экранный размер, но только при отдалении: при
-    // приближении кнопки растут вместе с узлом, и это никому не мешает.
-    const look = {
-      paint: canvasColors(scheme),
-      zoom: Math.min(Math.max(1 / paper.scale().sx, 1), 4),
-    };
-    paper.removeTools();
-    highlighters.stroke.removeAll(paper);
-    if (!target) return;
-    const key = target.kind === 'device' ? 'deviceId' : 'groupId';
-    const cell = paper.model.getElements().find(
-      (el) => el.get('kind') === target.kind && el.get(key) === target.id,
-    );
-    const view = cell?.findView(paper) as dia.ElementView | undefined;
-    if (!cell || !view) return;
-    if (target.kind === 'device') {
-      highlighters.stroke.add(view, 'body', 'selected', {
-        padding: 3, rx: 12, ry: 12, attrs: { stroke: '#1971c2', 'stroke-width': 2 },
-      });
-      if (canEdit) view.addTools(deviceTools(target.id, toolActions(), look));
-    } else if (canEdit) {
-      view.addTools(groupTools(target.id, toolActions(), cell.get('accent') ?? '#4dabf7', look));
-    }
-  }, [canEdit, scheme, toolActions]);
-
-  /** Обработчики полотна ставятся один раз, а показ панели зависит от темы
-   * и масштаба — поэтому он берётся через ссылку, а не замыкается. */
-  const showToolsRef = useRef(showTools);
-  showToolsRef.current = showTools;
-
   handlers.current = {
-    onConnect: (source, target) => {
+    onConnect: (source: dia.Element, target: dia.Element) => {
       const sourceKind = source.get('kind');
       const targetKind = target.get('kind');
       if (sourceKind === 'stub' || targetKind === 'stub') {
@@ -284,433 +197,28 @@ export function TopologyPage() {
     },
   };
 
-  // ---------- полотно ----------
-  useEffect(() => {
-    const element = holder.current;
-    if (!element) return;
-
-    const graph = new dia.Graph({}, { cellNamespace: shapes });
-    // Своего контейнера полотну не отдаём: `paper.remove()` уносит именно тот
-    // элемент, который ему передали, и после повторного монтирования рисовать
-    // было бы уже некуда. Размер — числами: на контейнере нулевого размера
-    // JointJS падает с невырожденной матрицей.
-    const paper = new dia.Paper({
-      model: graph,
-      cellViewNamespace: shapes,
-      width: Math.max(element.clientWidth, 320),
-      height: Math.max(element.clientHeight, 320),
-      gridSize: 10,
-      drawGrid: GRID[loadAppearance().background],
-      // Сколько движений мыши между нажатием и отпусканием ещё считается
-      // щелчком. По умолчанию — ноль: дрогнула рука на пиксель, и JointJS
-      // считает это перетаскиванием, а клика не было вовсе. Из-за этого
-      // панель действий у узла и правка связи открывались с третьего-пятого
-      // раза.
-      clickThreshold: 6,
-      // Кабель тянут от кнопки на панели узла, поэтому «висящих» концов у
-      // временной линии быть не должно: отпустил мимо — линия исчезла.
-      linkPinning: false,
-      defaultLink: () => new shapes.standard.Link({
-        attrs: {
-          line: {
-            stroke: '#1971c2', strokeWidth: 2, strokeDasharray: '6 4',
-            targetMarker: { type: 'path', d: 'M 8 -4 0 0 8 4 z', fill: '#1971c2' },
-          },
-        },
-      }),
-      validateConnection: (sourceView, _sm, targetView, _tm) => {
-        const source = sourceView?.model as dia.Element | undefined;
-        const target = targetView?.model as dia.Element | undefined;
-        if (!source || !target || source === target) return false;
-        const kinds = [source.get('kind'), target.get('kind')];
-        // Кабель соединяет два устройства либо повисший конец с устройством.
-        if (kinds.includes('group')) return false;
-        return kinds.filter((k) => k === 'device').length >= 1;
-      },
-      // Узел не выходит за рамку своей группы — то же правило, что и на
-      // основной схеме: состав группы меняется только явно, а не перетаскиванием.
-      restrictTranslate: (elementView) => {
-        const parent = elementView.model.getParentCell() as dia.Element | null;
-        // `false` — «двигай куда хочешь»: у узла без группы ограничений нет.
-        // Именно false, а не true: возвращённое из функции значение JointJS
-        // берёт как готовую рамку и на `true` считает координаты из
-        // несуществующих полей — узел уезжал в NaN, а сервер отбивал
-        // сохранение позиции.
-        return parent ? parent.getBBox().toJSON() : false;
-      },
-      // Линия начинается на границе узла, а не в его середине. Иначе путь
-      // кабеля уходит внутрь карточки, и подписи портов, отмеряемые от его
-      // начала, оказываются под ней.
-      defaultConnectionPoint: { name: 'boundary', args: { offset: 2 } },
-      interactive: (cellView) => {
-        if (!canEdit) return false;
-        // Заглушку свободного конца не двигают: за неё тянут кабель, и жест
-        // не должен быть двусмысленным.
-        if (cellView.model.get('kind') === 'stub') return { elementMove: false };
-        return { linkMove: false, labelMove: false };
-      },
-    });
-    element.appendChild(paper.el);
-    paper.unfreeze();
-
-    const observer = new ResizeObserver(() => {
-      paper.setDimensions(Math.max(element.clientWidth, 320), Math.max(element.clientHeight, 320));
-    });
-    observer.observe(element);
-
-    // Панорама тягой за пустое место, масштаб колесом.
-    let panning: { x: number; y: number } | null = null;
-    paper.on('blank:pointerdown', (event: dia.Event) => {
-      panning = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
-    });
-    paper.on('blank:pointermove cell:pointermove', (event: dia.Event) => {
-      if (!panning) return;
-      const t = paper.translate();
-      paper.translate(t.tx + ((event.clientX ?? 0) - panning.x), t.ty + ((event.clientY ?? 0) - panning.y));
-      panning = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
-    });
-    paper.on('blank:pointerup cell:pointerup', () => { panning = null; });
-    // Масштаб колесом — вокруг курсора, а не вокруг угла полотна. Иначе
-    // при отдалении схема уезжает в левый верхний угол, и то место, куда
-    // человек смотрел, приходится искать заново.
-    paper.on('blank:mousewheel cell:mousewheel', (...args: unknown[]) => {
-      const delta = args[args.length - 1] as number;
-      const y = args[args.length - 2] as number;
-      const x = args[args.length - 3] as number;
-      const from = paper.scale().sx;
-      const to = Math.min(2.5, Math.max(0.2, from * (delta > 0 ? 1.1 : 0.9)));
-      if (to === from) return;
-      const t = paper.translate();
-      // Экранная точка под курсором до масштабирования — после него она
-      // должна остаться там же.
-      const screenX = x * from + t.tx;
-      const screenY = y * from + t.ty;
-      paper.scale(to);
-      paper.translate(screenX - x * to, screenY - y * to);
-    });
-    // Масштаб изменился — панель действий пересобирается с новой поправкой.
-    paper.on('scale', () => showToolsRef.current(paper, selection.current));
-
-    // Выделение: панель действий появляется по клику, как и на основной схеме.
-    paper.on('element:pointerclick', (view: dia.ElementView) => {
-      const model = view.model;
-      const kind = model.get('kind');
-      selection.current = kind === 'device' ? { kind: 'device', id: model.get('deviceId') }
-        : kind === 'group' ? { kind: 'group', id: model.get('groupId') }
-          : null;
-      showTools(paper, selection.current);
-    });
-    paper.on('blank:pointerclick', () => {
-      selection.current = null;
-      showTools(paper, null);
-    });
-    paper.on('link:pointerclick', (view: dia.LinkView) => {
-      const linkId = view.model.get('linkId');
-      if (linkId) handlers.current.onLinkClick(linkId);
-    });
-
-    // Перетащили — сохраняем: устройство своей позицией, рамку — своей.
-    paper.on('element:pointerup', (view: dia.ElementView) => {
-      if (!canEdit) return;
-      const model = view.model;
-      if (model.get('kind') === 'device') {
-        const center = model.getBBox().center();
-        handlers.current.onDeviceMoved(model.get('deviceId'), center.x, center.y);
-      } else if (model.get('kind') === 'group') {
-        const box = model.getBBox();
-        handlers.current.onGroupMoved(model.get('groupId'), {
-          x: box.x, y: box.y, width: box.width, height: box.height,
-        });
-        // Содержимое уехало вместе с рамкой — его новые координаты тоже нужно
-        // записать: в базе они абсолютные.
-        for (const child of model.getEmbeddedCells({ deep: true })) {
-          if (child.get('kind') !== 'device') continue;
-          const at = (child as dia.Element).getBBox().center();
-          handlers.current.onDeviceMoved(child.get('deviceId'), at.x, at.y);
-        }
-      }
-    });
-
-    // Растянули рамку за угол. Размер меняется на каждое движение мыши, а
-    // записывать его на каждый пиксель — сотня запросов на одно движение;
-    // поэтому сохраняем, когда рука остановилась.
-    let resizeTimer: number | undefined;
-    graph.on('change:size', (cell: dia.Cell) => {
-      if (!canEdit || cell.get('kind') !== 'group') return;
-      window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(() => {
-        const box = (cell as dia.Element).getBBox();
-        handlers.current.onGroupMoved(cell.get('groupId'), {
-          x: box.x, y: box.y, width: box.width, height: box.height,
-        });
-      }, 350);
-    });
-
-    // Протянули кабель: временная линия не остаётся на схеме — вместо неё
-    // открывается окно выбора портов, а связь создаёт сервер.
-    paper.on('link:connect', (linkView: dia.LinkView) => {
-      const source = linkView.model.getSourceCell() as dia.Element | null;
-      const target = linkView.model.getTargetCell() as dia.Element | null;
-      linkView.model.remove();
-      if (source && target) handlers.current.onConnect(source, target);
-    });
-
-    paperRef.current = paper;
-    graphRef.current = graph;
-    return () => {
-      window.clearTimeout(resizeTimer);
-      observer.disconnect();
-      paper.remove();
-      paperRef.current = null;
-      graphRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canEdit]);
-
-  // Фон полотна меняется настройкой вида, а полотно создаётся один раз.
-  useEffect(() => {
-    paperRef.current?.setGrid(GRID[look.background]);
-  }, [look.background]);
-
-  // Delete удаляет выделенное.
-  useEffect(() => {
-    if (!canEdit) return;
-    function onKey(event: KeyboardEvent) {
-      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
-      const active = document.activeElement;
-      if (active && ['INPUT', 'TEXTAREA'].includes(active.tagName)) return;
-      handlers.current.onDelete(selection.current);
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [canEdit]);
+  const paper = useJointPaper({
+    canEdit, scheme, background: look.background, actions: actionsRef, handlers,
+  });
+  const { holder, paperRef, graphRef, refreshTools } = paper;
 
   // ---------- наполнение ----------
   useEffect(() => {
     const graph = graphRef.current;
-    const paper = paperRef.current;
-    if (!graph || !paper) return;
+    const view = paperRef.current;
+    if (!graph || !view) return;
 
-    paper.removeTools();
-    highlighters.stroke.removeAll(paper);
+    view.removeTools();
+    highlighters.stroke.removeAll(view);
     graph.clear();
     if (filteredDevices.length === 0) return;
 
-    const colors = nodeColors(look.deviceDark, scheme);
-    const paint = canvasColors(scheme);
     const positions = computePositions(filteredDevices, links, placed, relayout);
-    const boxes = computeBoxes(groups, filteredDevices, positions);
-
-    // Рамки — раньше устройств: JointJS кладёт ячейки в порядке добавления,
-    // и рамка, добавленная позже, перекрыла бы узлы.
-    const groupCells = new Map<number, dia.Element>();
-    const byDepth = [...groups].sort((a, b) => groupDepth(groups, a.id) - groupDepth(groups, b.id));
-    for (const group of byDepth) {
-      const box = boxes.get(group.id);
-      if (!box) continue;
-      const accent = group.color ?? '#4dabf7';
-      const fade = [1, 0.6, 0.4][Math.min(groupDepth(groups, group.id), 2)];
-      const inside = filteredDevices.filter((d) => d.topology_group_id === group.id).length;
-      const title = look.groupCount ? `${group.name} · ${inside}` : group.name;
-      const cell = new GroupShape({
-        position: { x: box.x, y: box.y },
-        size: { width: box.width, height: box.height },
-        kind: 'group',
-        groupId: group.id,
-        accent,
-        z: 1,
-        attrs: {
-          body: {
-            stroke: look.groupBorder === 'none' ? 'transparent' : tint(accent, 100 * fade),
-            strokeWidth: look.groupBorderWidth,
-            strokeDasharray: look.groupBorder === 'dashed' ? '7 5' : look.groupBorder === 'dotted' ? '2 4' : undefined,
-            rx: look.groupRadius, ry: look.groupRadius,
-            fill: look.groupFill > 0 ? tint(accent, look.groupFill * fade) : 'transparent',
-          },
-          label: { text: look.groupTitle === 'hidden' ? '' : title, fill: accent },
-          labelBack: {
-            width: look.groupTitle === 'hidden' ? 0 : title.length * 7 + 14,
-            fill: look.groupTitle === 'onFrame' ? paint.canvas : 'transparent',
-            y: look.groupTitle === 'onFrame' ? -9 : 2,
-          },
-        },
-      });
-      graph.addCell(cell);
-      groupCells.set(group.id, cell);
-
-      const parentCell = group.parent_id != null ? groupCells.get(group.parent_id) : undefined;
-      if (parentCell) parentCell.embed(cell);
-    }
-
-    const deviceCells = new Map<number, dia.Element>();
-    for (const device of filteredDevices) {
-      const template = templates.find((t) => t.id === device.template_id);
-      const accent = template?.color ?? NEUTRAL;
-      const raw = positions.get(device.id)!;
-      const connected = device.interfaces.filter((i) => i.link_id).length;
-      const typeName = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '' : '';
-      const groupCell = device.topology_group_id != null ? groupCells.get(device.topology_group_id) : undefined;
-      const frame = device.topology_group_id != null ? boxes.get(device.topology_group_id) : undefined;
-      // Узел не должен торчать из своей рамки. Перетаскивание за неё не
-      // выпускает само полотно, но координаты, пришедшие из базы, оно не
-      // подрезает: рамку могли сузить, а устройство — перенести в группу
-      // из другого угла схемы.
-      const at = clampToFrame({ x: raw.x - NODE.width / 2, y: raw.y - NODE.height / 2 }, frame);
-
-      const cell = new DeviceShape({
-        position: at,
-        kind: 'device',
-        deviceId: device.id,
-        z: 10,
-        attrs: {
-          // Рамка-градиент по цвету модели — как на основной схеме.
-          border: {
-            fill: {
-              type: 'linearGradient',
-              stops: [{ offset: '0%', color: accent }, { offset: '100%', color: withAlpha(accent, 0.25) }],
-              attrs: { x1: 0, y1: 0, x2: 1, y2: 1 },
-            },
-            filter: look.deviceGlow
-              ? { name: 'dropShadow', args: { dx: 0, dy: 1, blur: 5, color: withAlpha(accent, 0.35) } }
-              : null,
-          },
-          body: { fill: colors.fill },
-          dot: { fill: accent },
-          // Крупная строка — название железки, мелкая под ней — её код:
-          // на схеме ищут «станок №7», а не «PLC-0002».
-          title: { text: device.name || template?.name || typeName || device.code, fill: colors.title },
-          ports: {
-            text: look.devicePorts ? `${connected}/${device.interfaces.length}` : '',
-            fill: connected > 0 ? colors.portsBusy : colors.portsIdle,
-          },
-          subtitle: {
-            text: look.deviceSubtitle ? device.code : '',
-            fill: colors.subtitle,
-          },
-        },
-      });
-      graph.addCell(cell);
-      deviceCells.set(device.id, cell);
-
-      if (groupCell) groupCell.embed(cell);
-    }
-
-    const deviceOfInterface = new Map<number, number>();
-    const portOfInterface = new Map<number, { number: number; label: string }>();
-    for (const device of filteredDevices) {
-      for (const iface of device.interfaces) {
-        deviceOfInterface.set(iface.id, device.id);
-        portOfInterface.set(iface.id, { number: iface.port_number, label: iface.label });
-      }
-    }
-
-    // Кабели, приходящие в одно устройство, должны входить в него в разных
-    // точках, иначе при ортогональной разводке они ложатся друг на друга и
-    // видно одну линию вместо пяти. Считаем каждому концу его номер у своей
-    // железки и разносим точки входа по высоте узла.
-    const endsOfDevice = new Map<number, number[]>();
-    for (const link of links) {
-      for (const ifaceId of [link.interface_a_id, link.interface_b_id]) {
-        const deviceId = ifaceId != null ? deviceOfInterface.get(ifaceId) : undefined;
-        if (deviceId == null) continue;
-        if (!endsOfDevice.has(deviceId)) endsOfDevice.set(deviceId, []);
-        endsOfDevice.get(deviceId)!.push(link.id);
-      }
-    }
-    const anchorFor = (deviceId: number, linkId: number) => {
-      const ends = endsOfDevice.get(deviceId) ?? [];
-      const index = ends.indexOf(linkId);
-      const spread = Math.min(ends.length, 5);
-      const dy = spread <= 1 ? 0 : ((index % spread) - (spread - 1) / 2) * 18;
-      return { name: 'center', args: { dy } };
-    };
-    // Коридоры разводки тоже разные: одинаковый отступ сводит соседние
-    // кабели в одну линию ровно так же, как одинаковая точка входа. Шаг
-    // подобран так, чтобы соседние коридоры было видно как отдельные, а не
-    // как утолщённую линию.
-    const linkOrder = new Map(links.map((l, index) => [l.id, index]));
-    const routerFor = (linkId: number) => (router === 'orthogonal'
-      ? { name: 'manhattan', args: { step: 16, padding: 22 + ((linkOrder.get(linkId) ?? 0) % 4) * 18 } }
-      : undefined);
-    // Пересечения показываем «мостиком»: без него две пересекающиеся линии
-    // читаются как одна с ответвлением.
-    const connectorFor = () => (router === 'orthogonal'
-      ? { name: 'jumpover', args: { size: 5, jump: 'arc' } }
-      : { name: 'rounded', args: { radius: 8 } });
-    // При ортогональной разводке линия обходит узлы стороной, поэтому её
-    // можно класть поверх карточек — иначе подписи портов у самого узла
-    // прячутся под ним. Прямая линия узлы пересекает, и там она остаётся
-    // под ними.
-    const linkZ = router === 'orthogonal' ? 20 : 5;
-
-    for (const link of links) {
-      const aDevice = link.interface_a_id != null ? deviceOfInterface.get(link.interface_a_id) : undefined;
-      const bDevice = link.interface_b_id != null ? deviceOfInterface.get(link.interface_b_id) : undefined;
-      const template = link.template_id ? linkTemplates.find((t) => t.id === link.template_id) : null;
-
-      // Оба конца на месте — обычный кабель.
-      if (aDevice != null && bDevice != null) {
-        const source = deviceCells.get(aDevice);
-        const target = deviceCells.get(bDevice);
-        if (!source || !target) continue;
-        graph.addCell(new shapes.standard.Link({
-          source: { id: source.id, anchor: anchorFor(aDevice, link.id) },
-          target: { id: target.id, anchor: anchorFor(bDevice, link.id) },
-          linkId: link.id,
-          router: routerFor(link.id),
-          connector: connectorFor(),
-          z: linkZ,
-          attrs: {
-            line: {
-              stroke: template?.color ?? '#9aa1ab',
-              strokeWidth: look.edgeWidth,
-              strokeDasharray: template?.line_style === 'dashed' ? '7 5'
-                : template?.line_style === 'dotted' ? '2 4' : undefined,
-              opacity: link.confirmed ? 0.9 : 0.45,
-              targetMarker: null,
-            },
-          },
-          labels: look.edgeLabels ? [
-            portLabelCell(portText(portOfInterface.get(link.interface_a_id!), look), paint, 46,
-                          labelShift(endsOfDevice.get(aDevice), link.id)),
-            portLabelCell(portText(portOfInterface.get(link.interface_b_id!), look), paint, -46,
-                          labelShift(endsOfDevice.get(bDevice), link.id)),
-          ] : [],
-        }));
-        continue;
-      }
-
-      // Один конец повис: рисуем заглушку под живым устройством — кабель
-      // никуда не делся, его просто некуда воткнуть.
-      const liveInterface = link.interface_a_id ?? link.interface_b_id;
-      const liveDevice = liveInterface != null ? deviceOfInterface.get(liveInterface) : undefined;
-      const deviceCell = liveDevice != null ? deviceCells.get(liveDevice) : undefined;
-      if (!deviceCell || liveInterface == null) continue;
-
-      const anchor = deviceCell.getBBox();
-      const stub = new StubShape({
-        position: { x: anchor.x + NODE.width / 2 - STUB_SIZE / 2, y: anchor.y + NODE.height + 42 },
-        kind: 'stub',
-        linkId: link.id,
-        z: 10,
-        attrs: { body: { fill: paint.plate } },
-      });
-      graph.addCell(stub);
-      graph.addCell(new shapes.standard.Link({
-        source: { id: deviceCell.id }, target: { id: stub.id },
-        linkId: link.id,
-        z: linkZ,
-        attrs: {
-          line: {
-            stroke: '#f76707', strokeWidth: look.edgeWidth, strokeDasharray: '4 4',
-            opacity: 0.9, targetMarker: null,
-          },
-        },
-        labels: look.edgeLabels ? [
-          portLabelCell(portText(portOfInterface.get(liveInterface), look), paint, 34),
-        ] : [],
-      }));
-    }
+    const { deviceCells, boxes } = buildGraph(
+      graph,
+      { devices: filteredDevices, links, groups, templates, types, linkTemplates },
+      { look, scheme, router, positions },
+    );
 
     // Заведённые до появления ручной правки группы получают посчитанную
     // рамку один раз — дальше она живёт своей жизнью.
@@ -726,7 +234,7 @@ export function TopologyPage() {
 
     // Панель действий и подсветка переживают перерисовку: ячейки создаются
     // заново, а выделенным остаётся то же устройство.
-    showTools(paper, selection.current);
+    refreshTools();
 
     // Вписывать содержимое в окно можно только тогда, когда человек этого
     // просит: схема перерисовывается на каждое изменение данных, и подгонка
@@ -734,7 +242,7 @@ export function TopologyPage() {
     // особенно заметный после перетаскивания рамки группы.
     if (graph.getCells().length > 0 && fitted.current !== relayout) {
       fitted.current = relayout;
-      paper.transformToFitContent({ padding: 60, maxScale: 1.1, useModelGeometry: true });
+      view.transformToFitContent({ padding: 60, maxScale: 1.1, useModelGeometry: true });
     }
 
     // Пришли по ссылке с карточки устройства — показываем именно его.
@@ -742,10 +250,10 @@ export function TopologyPage() {
     if (focusId) {
       const cell = deviceCells.get(parseInt(focusId, 10));
       if (cell) {
-        paper.transformToFitContent({
+        view.transformToFitContent({
           contentArea: cell.getBBox().inflate(320), maxScale: 1.4, useModelGeometry: true,
         });
-        highlighters.stroke.add(cell.findView(paper) as dia.ElementView, 'body', 'focused', {
+        highlighters.stroke.add(cell.findView(view) as dia.ElementView, 'body', 'focused', {
           padding: 3, rx: 12, ry: 12, attrs: { stroke: '#1971c2', 'stroke-width': 2 },
         });
       }
@@ -758,9 +266,9 @@ export function TopologyPage() {
 
   /** Новое устройство появляется в середине видимой области. */
   function placeNewDevice(deviceId: number) {
-    const paper = paperRef.current;
-    if (!paper) return;
-    const area = paper.getArea();
+    const view = paperRef.current;
+    if (!view) return;
+    const area = view.getArea();
     updatePosition.mutate({ id: deviceId, body: { x: area.x + area.width / 2, y: area.y + area.height / 2 } });
   }
 
@@ -861,148 +369,4 @@ export function TopologyPage() {
       )}
     </Stack>
   );
-}
-
-/** Сдвиг подписи поперёк линии: у устройства с несколькими кабелями подписи
- * сходятся в одну точку и наезжают друг на друга. */
-function labelShift(ends: number[] | undefined, linkId: number): number {
-  if (!ends || ends.length <= 1) return 0;
-  const index = ends.indexOf(linkId);
-  return (index % 2 === 0 ? -1 : 1) * (10 + Math.floor(index / 2) * 4);
-}
-
-/** Загнать узел внутрь рамки: рамка — это область, за которую он не выходит. */
-function clampToFrame(at: { x: number; y: number }, frame: Box | undefined) {
-  if (!frame) return at;
-  const pad = 8;
-  return {
-    x: Math.min(Math.max(at.x, frame.x + pad), Math.max(frame.x + pad, frame.x + frame.width - NODE.width - pad)),
-    y: Math.min(Math.max(at.y, frame.y + 24), Math.max(frame.y + 24, frame.y + frame.height - NODE.height - pad)),
-  };
-}
-
-function portText(port: { number: number; label: string } | undefined, look: TopologyAppearance): string {
-  if (!port) return '';
-  return look.edgeLabelName && port.label ? `№${port.number} · ${port.label}` : `№${port.number}`;
-}
-
-/** Подпись конца кабеля: в нескольких десятках точек от своего конца линии.
- * Целые числа JointJS понимает как расстояние в точках от начала, а
- * отрицательные — от конца; доли прижимали бы подпись вплотную к узлу.
- *
- * Подложка с контуром обязательна: без неё номер порта ложится прямо на
- * линию и на фон полотна и читается только при удачном стечении цветов. */
-function portLabelCell(text: string, paint: CanvasPaint, distance: number, offset = 0) {
-  return {
-    position: { distance, offset },
-    attrs: {
-      labelBody: {
-        fill: paint.plate, stroke: paint.plateBorder, strokeWidth: 1, rx: 4, ry: 4,
-      },
-      labelText: { text, fontSize: 10, fontWeight: 600, fill: paint.plateText, fontFamily: 'inherit' },
-    },
-    markup: [
-      { tagName: 'rect', selector: 'labelBody' },
-      { tagName: 'text', selector: 'labelText' },
-    ],
-  };
-}
-
-/** Положение узлов: сохранённое в базе, затем сложившееся в этой сессии, и
- * только новым устройствам считается пружинная раскладка. */
-function computePositions(
-  devices: DeviceOut[],
-  links: LinkOut[],
-  placed: React.RefObject<Map<number, { x: number; y: number }>>,
-  relayout: number,
-) {
-  const nodes: LayoutNode[] = devices.map((d) => {
-    // Сложившееся в этой сессии важнее сохранённого: запись позиции нарочно
-    // не обновляет список устройств (иначе схема дёргалась бы на каждое
-    // перетаскивание), поэтому в нём ещё лежат прежние координаты. Брать их
-    // после перетаскивания рамки группы значило бы вернуть узлы туда, откуда
-    // человек их только что увёз, — рамка уехала, а узлы прыгнули назад.
-    const saved = relayout > 0 ? undefined
-      : (placed.current!.get(d.id)
-        ?? (d.topology_x != null && d.topology_y != null ? { x: d.topology_x, y: d.topology_y } : undefined));
-    return {
-      id: String(d.id),
-      x: saved?.x ?? Math.random() * 1100,
-      y: saved?.y ?? Math.random() * 700,
-      vx: 0, vy: 0,
-      fixed: saved != null,
-    };
-  });
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const ifaceToDevice = new Map<number, number>();
-  for (const d of devices) for (const i of d.interfaces) ifaceToDevice.set(i.id, d.id);
-
-  const springs: Spring[] = [];
-  for (const link of links) {
-    if (link.interface_a_id == null || link.interface_b_id == null) continue;
-    const a = byId.get(String(ifaceToDevice.get(link.interface_a_id)));
-    const b = byId.get(String(ifaceToDevice.get(link.interface_b_id)));
-    if (a && b && a !== b) springs.push({ a, b, idealLen: 240, strength: 0.02 });
-  }
-  if (nodes.some((n) => !n.fixed)) computeForceLayout(nodes, springs, 1100, 750);
-
-  const result = new Map<number, { x: number; y: number }>();
-  for (const node of nodes) {
-    const at = { x: node.x, y: node.y };
-    result.set(parseInt(node.id, 10), at);
-    placed.current!.set(parseInt(node.id, 10), at);
-  }
-  return result;
-}
-
-/** Рамки групп: заданная руками, иначе — по содержимому. */
-function computeBoxes(
-  groups: TopologyGroupOut[],
-  devices: DeviceOut[],
-  positions: Map<number, { x: number; y: number }>,
-): Map<number, Box> {
-  const boxes = new Map<number, Box>();
-  const measure = (group: TopologyGroupOut, visited: Set<number>): Box | null => {
-    if (visited.has(group.id)) return null;
-    visited.add(group.id);
-
-    const stored = storedBox(group);
-    if (stored) {
-      boxes.set(group.id, stored);
-      return stored;
-    }
-
-    const parts: Box[] = [];
-    for (const device of devices) {
-      if (device.topology_group_id !== group.id) continue;
-      const at = positions.get(device.id);
-      if (!at) continue;
-      parts.push({
-        x: at.x - NODE.width / 2, y: at.y - NODE.height / 2,
-        width: NODE.width, height: NODE.height,
-      });
-    }
-    for (const child of groups.filter((g) => g.parent_id === group.id)) {
-      const box = measure(child, visited);
-      if (box) parts.push(box);
-    }
-    // Пустая группа без заданной рамки не рисуется: пустой прямоугольник
-    // только мешает, а сама группа никуда не делась.
-    if (parts.length === 0) return null;
-
-    const minX = Math.min(...parts.map((p) => p.x)) - GROUP_PADDING;
-    const minY = Math.min(...parts.map((p) => p.y)) - GROUP_PADDING;
-    const maxX = Math.max(...parts.map((p) => p.x + p.width)) + GROUP_PADDING;
-    const maxY = Math.max(...parts.map((p) => p.y + p.height)) + GROUP_PADDING;
-    const box = {
-      x: minX, y: minY,
-      width: Math.max(maxX - minX, GROUP_MIN.width),
-      height: Math.max(maxY - minY, GROUP_MIN.height),
-    };
-    boxes.set(group.id, box);
-    return box;
-  };
-
-  for (const group of groups.filter((g) => g.parent_id == null)) measure(group, new Set());
-  return boxes;
 }
