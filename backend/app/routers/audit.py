@@ -86,6 +86,9 @@ FIELD_LABELS = {
 HIDDEN_FIELDS = {"id", "created_at", "updated_at", "created_by", "updated_by",
                  "password_hash", "must_change_password", "topology_x", "topology_y",
                  "last_seen_at", "source",
+                 # Номер правки — служебный счётчик оптимистичной блокировки,
+                 # а не содержание записи.
+                 "version",
                  # Площадка у записи и так одна — та, в которой человек
                  # работает; в списке правок она только шумит.
                  "site_id"}

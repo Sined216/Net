@@ -301,6 +301,10 @@ class Device(Base):
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Номер правки — см. app/versioning.py. Растёт на каждое осмысленное
+    # изменение записи; клиент присылает тот, что видел, и расхождение
+    # означает, что кто-то успел раньше.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         CheckConstraint("role IN ('core','distribution','access') OR role IS NULL"),
@@ -372,6 +376,7 @@ class Interface(Base):
     ip = Column(INET)
     mac = Column(MACADDR)
     notes = Column(Text)
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         UniqueConstraint("device_id", "port_number", name="uq_interfaces_number"),
@@ -466,6 +471,7 @@ class Link(Base):
     notes = Column(Text)
     updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         # Строгое "меньше", а не "не равно": стороны связи нормализуются по

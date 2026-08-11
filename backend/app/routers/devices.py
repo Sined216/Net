@@ -3,7 +3,7 @@ from sqlalchemy import Text, cast, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import models, ports, provisioning, schemas, auth, serialize, sites
+from app import models, ports, provisioning, schemas, auth, serialize, sites, versioning
 from app.audit import log_change
 from app.codegen import next_device_code
 
@@ -157,8 +157,12 @@ def set_device_tags(device_id: int, payload: schemas.DeviceTagsUpdate, db: Sessi
     if len(tags) != len(set(payload.tag_ids)):
         raise HTTPException(status_code=404, detail="Один из тегов не найден")
 
+    versioning.check(device, payload.version)
     old_snapshot = {"tags": [t.id for t in device.tags]}
+    changed = {t.id for t in device.tags} != {t.id for t in tags}
     device.tags = tags
+    if changed:
+        versioning.bump(device)
     log_change(db, user.id, "update", "device", device.id, old=old_snapshot, new={"tags": payload.tag_ids})
     db.commit()
     db.refresh(device)
@@ -175,7 +179,8 @@ def update_device(device_id: int, payload: schemas.DeviceUpdate, db: Session = D
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(device, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     if data.get("topology_group_id") is not None:
         if not db.query(models.TopologyGroup).filter(
             models.TopologyGroup.id == data["topology_group_id"],
@@ -184,8 +189,11 @@ def update_device(device_id: int, payload: schemas.DeviceUpdate, db: Session = D
             raise HTTPException(status_code=404, detail="Группа топологии не найдена")
 
     old_snapshot = {c.name: getattr(device, c.name) for c in device.__table__.columns}
+    changed = versioning.differs(device, data)
     for field, value in data.items():
         setattr(device, field, value)
+    if changed:
+        versioning.bump(device)
 
     log_change(db, user.id, "update", "device", device.id, old=old_snapshot, new=device)
     db.commit()

@@ -71,6 +71,16 @@ function invalidateAll(qc: ReturnType<typeof useQueryClient>, keys: readonly str
   return Promise.all(keys.map((k) => qc.invalidateQueries({ queryKey: [k] })));
 }
 
+/** Сохранение отбито из-за чужой правки — показываем свежие данные сразу.
+ *
+ * Человеку сказали «обновите страницу»; обновлять её руками, чтобы увидеть
+ * чужую правку, — лишний шаг, и половина людей его не сделает. */
+function refreshOnConflict(qc: ReturnType<typeof useQueryClient>, error: unknown) {
+  if (error instanceof Error && /изменена другим пользователем/.test(error.message)) {
+    invalidateAll(qc, CORE_KEYS);
+  }
+}
+
 // ---------- Tags ----------
 export function useCreateTag() {
   const qc = useQueryClient();
@@ -299,6 +309,8 @@ export function useUpdateDevice() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: DeviceUpdate }) => api.updateDevice(id, body),
     onSuccess: () => invalidateAll(qc, CORE_KEYS),
+    // Отбили из-за чужой правки — сразу показываем свежие данные.
+    onError: (error) => refreshOnConflict(qc, error),
   });
 }
 export function useDeleteDevice() {
@@ -313,6 +325,8 @@ export function useSetDeviceTags() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: DeviceTagsUpdate }) => api.setDeviceTags(id, body),
     onSuccess: () => invalidateAll(qc, CORE_KEYS),
+    // Отбили из-за чужой правки — сразу показываем свежие данные.
+    onError: (error) => refreshOnConflict(qc, error),
   });
 }
 export function useAddInterface() {
@@ -327,6 +341,8 @@ export function useUpdateInterface() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: InterfaceUpdate }) => api.updateInterface(id, body),
     onSuccess: () => invalidateAll(qc, CORE_KEYS),
+    // Отбили из-за чужой правки — сразу показываем свежие данные.
+    onError: (error) => refreshOnConflict(qc, error),
   });
 }
 export function useDeleteInterface() {
@@ -428,6 +444,8 @@ export function useUpdateLink() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: LinkUpdate }) => api.updateLink(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['links'] }),
+    // Отбили из-за чужой правки — сразу показываем свежие данные.
+    onError: (error) => refreshOnConflict(qc, error),
   });
 }
 export function useAttachLinkEnd() {

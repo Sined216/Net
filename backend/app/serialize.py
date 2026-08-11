@@ -96,6 +96,7 @@ def serialize_interface(iface: models.Interface, link_map: Dict[int, LinkEnd],
     return schemas.InterfaceOut(
         id=iface.id,
         device_id=iface.device_id,
+        version=iface.version or 1,
         label=iface.label,
         port_number=iface.port_number,
         mode=iface.mode,
@@ -128,6 +129,7 @@ def serialize_device(device: models.Device, link_map: Optional[Dict[int, LinkEnd
         trunk_map = build_trunk_map(db, (i.id for i in device.interfaces))
     return schemas.DeviceOut(
         id=device.id,
+        version=device.version or 1,
         template_id=device.template_id,
         code=device.code,
         name=device.name,
@@ -183,7 +185,7 @@ def serialize_device_list(db: Session, devices: List[models.Device]) -> List[sch
 
     return [
         schemas.DeviceListItem(
-            id=d.id, template_id=d.template_id, code=d.code, name=d.name,
+            id=d.id, version=d.version or 1, template_id=d.template_id, code=d.code, name=d.name,
             management_ip=d.management_ip, location=d.location, role=d.role,
             install_date=d.install_date, notes=d.notes,
             topology_group_id=d.topology_group_id,

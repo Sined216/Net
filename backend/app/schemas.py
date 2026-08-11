@@ -418,6 +418,10 @@ class InterfaceUpdate(BaseModel):
     портов. Здесь настраивается то, что у каждого экземпляра своё: адреса,
     VLAN, заметка.
     """
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     mode: Optional[PortMode] = None
     # Модуль, вставленный в клетку. Разъём здесь не правится — он из модели.
     module_id: Optional[int] = None
@@ -455,6 +459,7 @@ class ConnectedTo(BaseModel):
 class InterfaceOut(BaseModel):
     id: int
     device_id: int
+    version: int = 1
     port_number: int
     label: str
     mode: Optional[PortMode] = None
@@ -497,6 +502,10 @@ class DeviceCreate(DeviceBase):
 
 
 class DeviceUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, max_length=200)
     management_ip: Optional[IPAddressStr] = None
     location: Optional[str] = Field(default=None, max_length=200)
@@ -516,6 +525,7 @@ class DeviceListItem(BaseModel):
     """
     model_config = ConfigDict(from_attributes=True)
     id: int
+    version: int = 1
     template_id: int
     code: str
     name: Optional[str] = None
@@ -564,6 +574,11 @@ class FreePortOut(BaseModel):
 
 class DeviceTagsUpdate(BaseModel):
     tag_ids: List[int]
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
+
 
 
 class DevicePositionUpdate(BaseModel):
@@ -578,6 +593,9 @@ class DeviceOut(DeviceBase):
     code: str
     created_at: datetime
     updated_at: datetime
+    # Номер правки: клиент возвращает его при сохранении, и по нему видно,
+    # не успел ли кто-то другой.
+    version: int = 1
     interfaces: List[InterfaceOut] = []
     tags: List[TagOut] = []
     topology_x: Optional[float] = None
@@ -629,6 +647,10 @@ class LinkCreate(BaseModel):
 
 
 class LinkUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     template_id: Optional[int] = None
     connector_type: Optional[str] = None
     # NUMERIC(6,1) в базе: больше 99999.9 не влезает, а отрицательной длины
@@ -673,6 +695,7 @@ class LinkOut(BaseModel):
     confirmed: bool
     notes: Optional[str] = None
     updated_at: datetime
+    version: int = 1
 
 
 # ---------- Topology (для визуализации) ----------

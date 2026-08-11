@@ -38,11 +38,12 @@ export function LinkFormModal({
 
   /** Переставить один конец, если его поменяли. Подвешенный конец
    * подключается своим маршрутом: там переставлять нечего. */
-  async function applyEnd(was: number | null, now: string | null) {
+  async function applyEnd(was: number | null, now: string | null): Promise<boolean> {
     const next = now ? parseInt(now, 10) : null;
-    if (next == null || next === was) return;
+    if (next == null || next === was) return false;
     if (was == null) await attach.mutateAsync({ id: link.id, interfaceId: next });
     else await reconnect.mutateAsync({ id: link.id, from: was, to: next });
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -51,11 +52,15 @@ export function LinkFormModal({
       // Концы переставляются по одному и до правки остальных полей: каждая
       // перестановка возвращает связь целиком, и порядок сторон в ней мог
       // поменяться — стороны хранятся по возрастанию id.
-      await applyEnd(link.interface_a_id, portA);
-      await applyEnd(link.interface_b_id, portB);
+      const movedA = await applyEnd(link.interface_a_id, portA);
+      const movedB = await applyEnd(link.interface_b_id, portB);
+      const movedEnd = movedA || movedB;
       await updateLink.mutateAsync({
         id: link.id,
         body: {
+          // Перестановка конца выше уже подняла номер правки, поэтому
+          // сверяться с исходным здесь нельзя — он заведомо устарел.
+          version: movedEnd ? undefined : link.version,
           template_id: nnInt(templateId),
           connector_type: nn(connector),
           length_m: nnFloat(length === '' ? null : String(length)),

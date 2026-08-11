@@ -7,7 +7,9 @@ from app import models
 
 # Поля, которые в журнале только шумят: их меняет сама база на каждой
 # записи, и «updated_at: было → стало» ничего не сообщает.
-NOISY_FIELDS = {"updated_at", "created_at", "password_hash", "topology_x", "topology_y"}
+NOISY_FIELDS = {"updated_at", "created_at", "password_hash", "topology_x", "topology_y",
+                # Номер правки — служебный счётчик, а не содержание записи.
+                "version"}
 
 
 def _to_jsonable(obj) -> Optional[dict]:

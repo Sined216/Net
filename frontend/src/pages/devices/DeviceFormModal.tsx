@@ -121,12 +121,15 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
       topology_group_id: groupId ? parseInt(groupId, 10) : null,
     };
     if (isEdit) {
+      // Номер правки, который был на экране: если кто-то сохранил раньше,
+      // сервер отобьёт правку, а не даст затереть чужую. Теги уходят вторым
+      // запросом уже с новым номером — из ответа первого.
       updateDevice.mutate(
-        { id: device!.id, body },
+        { id: device!.id, body: { ...body, version: device!.version } },
         {
-          onSuccess: () => {
+          onSuccess: (saved) => {
             setDeviceTags.mutate(
-              { id: device!.id, body: { tag_ids: [...tagIds] } },
+              { id: device!.id, body: { tag_ids: [...tagIds], version: saved.version } },
               { onSuccess: () => { notifySuccess('Устройство обновлено'); onClose(); }, onError: notifyError },
             );
           },

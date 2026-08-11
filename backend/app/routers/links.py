@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, select
 
 from app.database import get_db
-from app import models, schemas, auth, serialize, sites
+from app import models, schemas, auth, serialize, sites, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/links", tags=["links"])
@@ -96,15 +96,19 @@ def update_link(link_id: int, payload: schemas.LinkUpdate, db: Session = Depends
     if not link:
         raise HTTPException(status_code=404, detail="Связь не найдена")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(link, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     if data.get("template_id") is not None:
         if not db.query(models.LinkTemplate).filter(models.LinkTemplate.id == data["template_id"]).first():
             raise HTTPException(status_code=404, detail="Шаблон связи не найден")
 
     old_snapshot = {c.name: getattr(link, c.name) for c in link.__table__.columns}
+    changed = versioning.differs(link, data)
     for field, value in data.items():
         setattr(link, field, value)
     link.updated_by = user.id
+    if changed:
+        versioning.bump(link)
 
     log_change(db, user.id, "update", "link", link.id, old=old_snapshot, new=link)
     db.commit()
@@ -146,6 +150,7 @@ def attach_link_end(link_id: int, payload: schemas.LinkAttach, db: Session = Dep
     # Стороны хранятся по возрастанию id — иначе не пройдёт ограничение базы.
     link.interface_a_id, link.interface_b_id = sorted([other_id, iface.id])
     link.updated_by = user.id
+    versioning.bump(link)
 
     log_change(db, user.id, "update", "link", link.id, old=old_snapshot, new=link)
     db.commit()
@@ -199,6 +204,7 @@ def reconnect_link_end(link_id: int, payload: schemas.LinkReconnect, db: Session
         # Стороны хранятся по возрастанию id — иначе не пройдёт ограничение базы.
         link.interface_a_id, link.interface_b_id = sorted([other_id, iface.id])
     link.updated_by = user.id
+    versioning.bump(link)
 
     log_change(db, user.id, "update", "link", link.id, old=old_snapshot, new=link)
     db.commit()

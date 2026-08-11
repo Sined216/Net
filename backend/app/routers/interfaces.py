@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Text, cast, or_
 
 from app.database import get_db
-from app import cables, models, ports, schemas, auth, serialize, sites
+from app import cables, models, ports, schemas, auth, serialize, sites, versioning
 from app.audit import log_change
 from app.routers.devices import _require_editable_ports
 
@@ -20,7 +20,8 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
     if not iface:
         raise HTTPException(status_code=404, detail="Интерфейс не найден")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(iface, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     # Транковые VLAN живут отдельной таблицей и правятся не присваиванием
     # поля, а заменой набора строк — поэтому вынимаются из общего разбора.
     trunk_ids = data.pop("trunk_vlan_ids", "не задано")
@@ -45,11 +46,16 @@ def update_interface(interface_id: int, payload: schemas.InterfaceUpdate, db: Se
 
     old_snapshot = {c.name: getattr(iface, c.name) for c in iface.__table__.columns}
     old_snapshot["trunk_vlan_ids"] = sorted(t.vlan_id for t in iface.trunk_vlans)
+    changed = versioning.differs(iface, data)
     for field, value in data.items():
         setattr(iface, field, value)
 
     if trunk_ids != "не задано":
+        before = {t.vlan_id for t in iface.trunk_vlans}
         _set_trunk_vlans(db, iface, trunk_ids or [], site_id)
+        changed = changed or before != {t.vlan_id for t in iface.trunk_vlans}
+    if changed:
+        versioning.bump(iface)
 
     new_snapshot = {c.name: getattr(iface, c.name) for c in iface.__table__.columns}
     new_snapshot["trunk_vlan_ids"] = sorted(t.vlan_id for t in iface.trunk_vlans)

@@ -261,6 +261,8 @@ export interface TemplateImpact {
 /** Правка порта у устройства. Названия и номера здесь нет: они описывают
  * модель техники и правятся в шаблоне. */
 export interface InterfaceUpdate {
+  /** Номер правки, который человек видел на экране. Пусто — проверки нет. */
+  version?: number;
   mode?: PortMode | null;
   /** Модуль, вставленный в клетку. Разъём здесь не правится — он из модели. */
   module_id?: number | null;
@@ -294,6 +296,9 @@ export interface ConnectedTo {
 
 export interface InterfaceOut {
   id: number;
+  /** Номер правки: клиент возвращает его при сохранении, и сервер по нему
+   * видит, не успел ли кто-то другой. */
+  version: number;
   device_id: number;
   port_number: number;
   label: string;
@@ -334,6 +339,8 @@ export interface DeviceCreate {
 }
 
 export interface DeviceUpdate {
+  /** Номер правки, который человек видел на экране. Пусто — проверки нет. */
+  version?: number;
   name?: string | null;
   management_ip?: string | null;
   location?: string | null;
@@ -345,6 +352,8 @@ export interface DeviceUpdate {
 
 export interface DeviceTagsUpdate {
   tag_ids: number[];
+  /** Номер правки, который человек видел на экране. Пусто — проверки нет. */
+  version?: number;
 }
 
 export interface DevicePositionUpdate {
@@ -354,6 +363,10 @@ export interface DevicePositionUpdate {
 
 export interface DeviceOut {
   id: number;
+  /** Номер правки: клиент возвращает его при сохранении, и сервер по нему
+   * видит, не успел ли кто-то другой. */
+  version: number;
+
   template_id: number;
   code: string;
   name: string | null;
@@ -402,6 +415,8 @@ export interface LinkCreate {
 }
 
 export interface LinkUpdate {
+  /** Номер правки, который человек видел на экране. Пусто — проверки нет. */
+  version?: number;
   template_id?: number | null;
   connector_type?: string | null;
   length_m?: number | null;
@@ -411,6 +426,9 @@ export interface LinkUpdate {
 }
 
 export interface LinkOut {
+  /** Номер правки: клиент возвращает его при сохранении, и сервер по нему
+   * видит, не успел ли кто-то другой. */
+  version: number;
   end_a?: LinkEndOut | null;
   end_b?: LinkEndOut | null;
   id: number;
@@ -509,6 +527,10 @@ export interface AuditQuery {
 // ---------- Список устройств (без портов) ----------
 export interface DeviceListItem {
   id: number;
+  /** Номер правки: клиент возвращает его при сохранении, и сервер по нему
+   * видит, не успел ли кто-то другой. */
+  version: number;
+
   template_id: number;
   code: string;
   name: string | null;
