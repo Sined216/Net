@@ -11,6 +11,7 @@ import {
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { useCan } from '../auth/permissions';
+import { EquipmentTabs } from './equipment/EquipmentTabs';
 import type { ConnectorMedia, ConnectorTypeOut, DeviceTypeOut, TransceiverModuleOut } from '../api/types';
 
 const MEDIA: { value: ConnectorMedia; label: string }[] = [
@@ -32,6 +33,7 @@ export function mediaLabel(media: ConnectorMedia | undefined): string {
 export function CatalogPage() {
   return (
     <Stack>
+      <EquipmentTabs />
       <Title order={2}>Справочники</Title>
       <DeviceTypes />
       <Connectors />

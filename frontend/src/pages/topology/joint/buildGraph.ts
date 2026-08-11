@@ -247,9 +247,9 @@ function addLinks(
           },
         },
         labels: look.edgeLabels ? [
-          portLabelCell(portText(edge.port_a_number, edge.interface_a_label, look), paint, 46,
+          portLabelCell(portText(edge.port_a_number, edge.interface_a_label, look), paint, true,
                         labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id)),
-          portLabelCell(portText(edge.port_b_number, edge.interface_b_label, look), paint, -46,
+          portLabelCell(portText(edge.port_b_number, edge.interface_b_label, look), paint, false,
                         labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id)),
         ] : [],
       }));
@@ -283,10 +283,12 @@ function addLinks(
         },
       },
       labels: look.edgeLabels ? [
+        // У повисшего кабеля живой конец всегда со стороны устройства:
+        // заглушка — это второй конец, и подписывать там нечего.
         portLabelCell(
           liveIsA ? portText(edge.port_a_number, edge.interface_a_label, look)
                   : portText(edge.port_b_number, edge.interface_b_label, look),
-          paint, 34,
+          paint, true,
         ),
       ] : [],
     }));
@@ -317,20 +319,35 @@ function portText(number: number | null | undefined, label: string | null | unde
   return look.edgeLabelName && label ? `№${number} · ${label}` : `№${number}`;
 }
 
-/** Подпись конца кабеля: в нескольких десятках точек от своего конца линии.
- * Целые числа JointJS понимает как расстояние в точках от начала, а
- * отрицательные — от конца; доли прижимали бы подпись вплотную к узлу.
+/** Отступ подписи от своего конца линии.
+ *
+ * Подпись относится к порту, а порт — у железки, поэтому и стоять она должна
+ * у железки. Раньше отступ был вдвое больше, и на коротком кабеле подписи
+ * обоих концов сходились к середине — было не понять, которая чья. */
+const LABEL_DISTANCE = 26;
+
+/** Подпись конца кабеля. Целые числа JointJS понимает как расстояние в
+ * точках от начала линии, а отрицательные — от конца; доли прижимали бы
+ * подпись вплотную к узлу.
  *
  * Подложка с контуром обязательна: без неё номер порта ложится прямо на
- * линию и на фон полотна и читается только при удачном стечении цветов. */
-function portLabelCell(text: string, paint: CanvasPaint, distance: number, offset = 0) {
+ * линию и на фон полотна и читается только при удачном стечении цветов.
+ * Размер ей задаётся по тексту (`ref` и `calc`) — без этого прямоугольник
+ * остаётся нулевым и подложки не видно вовсе; ровно так она и не рисовалась,
+ * хотя цвета ей были заданы. */
+function portLabelCell(text: string, paint: CanvasPaint, atSource: boolean, offset = 0) {
   return {
-    position: { distance, offset },
+    position: { distance: atSource ? LABEL_DISTANCE : -LABEL_DISTANCE, offset },
     attrs: {
       labelBody: {
+        ref: 'labelText',
+        x: 'calc(x-5)', y: 'calc(y-3)', width: 'calc(w+10)', height: 'calc(h+6)',
         fill: paint.plate, stroke: paint.plateBorder, strokeWidth: 1, rx: 4, ry: 4,
       },
-      labelText: { text, fontSize: 10, fontWeight: 600, fill: paint.plateText, fontFamily: 'inherit' },
+      labelText: {
+        text, fontSize: 10, fontWeight: 600, fill: paint.plateText, fontFamily: 'inherit',
+        textAnchor: 'middle', textVerticalAnchor: 'middle',
+      },
     },
     markup: [
       { tagName: 'rect', selector: 'labelBody' },

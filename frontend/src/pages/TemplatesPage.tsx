@@ -15,6 +15,7 @@ import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import type { ConnectorTypeOut, DeviceTemplateOut, InterfaceTemplateOut } from '../api/types';
 import { useCan } from '../auth/permissions';
+import { EquipmentTabs } from './equipment/EquipmentTabs';
 
 export function TemplatesPage() {
   const canEdit = useCan('edit');
@@ -44,6 +45,7 @@ export function TemplatesPage() {
 
   return (
     <Stack>
+      <EquipmentTabs />
       <Group justify="space-between">
         <Title order={2}>Шаблоны устройств</Title>
         {canEdit && (

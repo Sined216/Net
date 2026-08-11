@@ -11,6 +11,7 @@ import { DeviceFormModal } from './devices/DeviceFormModal';
 import { TemplateFormModal } from './TemplatesPage';
 import type { DeviceListItem } from '../api/types';
 import { useCan } from '../auth/permissions';
+import { EquipmentTabs } from './equipment/EquipmentTabs';
 
 const PAGE = 50;
 const COLUMNS = 10;
@@ -74,6 +75,7 @@ export function DevicesPage() {
 
   return (
     <Stack>
+      <EquipmentTabs />
       <Group justify="space-between" wrap="wrap">
         <Group gap="xs">
           <Title order={2}>Устройства</Title>

@@ -8,7 +8,7 @@ import {
 } from './schema/joint/tableShape';
 import type { SchemaTable } from '../api/types';
 
-const COLUMN_GAP = 90;
+const COLUMN_GAP = 110;
 const ROW_GAP = 34;
 
 /** Структура базы — как она есть на самом деле, схемой.
@@ -218,25 +218,45 @@ function relayout(graph: dia.Graph | null, tables: SchemaTable[]) {
   }
 }
 
-/** Автоматическая раскладка по слоям: таблица стоит правее всех, на которые
- * ссылается.
+/** Автоматическая раскладка по слоям.
  *
- * Пружинная симуляция здесь хуже — у карточек сильно разная высота, и она
- * их накладывает; а связи между таблицами почти дерево, так что слои дают
- * читаемую схему без случайности.
+ * Таблица стоит правее всех, на которые ссылается: связи между таблицами
+ * почти дерево, и слои дают читаемую схему без случайности. Пружинная
+ * симуляция здесь хуже — у карточек сильно разная высота, и она их
+ * накладывает.
+ *
+ * Одних слоёв мало. Раньше порядок внутри слоя считался одним проходом слева
+ * направо и только по «родителям», а стрелка через несколько слоёв — вроде
+ * `sites` → `links` — в раскладке не участвовала вовсе и потому шла напрямик
+ * через середину чужих карточек. Из-за этого схему приходилось разбирать
+ * руками.
+ *
+ * Теперь делается то же, что делают все раскладчики таких схем (метод
+ * Сугиямы), в трёх шагах: длинная стрелка разбивается проходными точками по
+ * одной на каждый пересекаемый слой — дальше она такой же участник раскладки,
+ * как таблица, и ей резервируется коридор; порядок внутри слоя подбирается
+ * проходами в обе стороны; и только потом считаются координаты.
  */
 function layout(tables: SchemaTable[]): Map<string, { x: number; y: number }> {
   const byName = new Map(tables.map((t) => [t.name, t]));
 
-  const referencedTables = (table: SchemaTable) => {
-    const names = new Set<string>();
+  const refs = new Map<string, Set<string>>(tables.map((t) => [t.name, new Set<string>()]));
+  const backRefs = new Map<string, Set<string>>(tables.map((t) => [t.name, new Set<string>()]));
+  for (const table of tables) {
     for (const column of table.columns) {
       const target = column.references?.split('.')[0];
       // Ссылка на саму себя (вложенные теги) слой не сдвигает.
-      if (target && target !== table.name && byName.has(target)) names.add(target);
+      if (!target || target === table.name || !byName.has(target)) continue;
+      refs.get(table.name)!.add(target);
+      backRefs.get(target)!.add(table.name);
     }
-    return [...names];
-  };
+  }
+
+  // Таблицы вообще без связей (alembic_version, code_sequences) в раскладке
+  // не участвуют: они никого не держат и никем не держатся, а слой собой
+  // растягивают. Их место — отдельным столбцом в стороне.
+  const isolated = tables.filter((t) => !refs.get(t.name)!.size && !backRefs.get(t.name)!.size);
+  const connected = tables.filter((t) => refs.get(t.name)!.size || backRefs.get(t.name)!.size);
 
   const level = new Map<string, number>();
   const levelOf = (name: string, seen: Set<string>): number => {
@@ -245,48 +265,188 @@ function layout(tables: SchemaTable[]): Map<string, { x: number; y: number }> {
     // Циклическая ссылка не должна уводить в бесконечность: цепочку, которая
     // вернулась к уже пройденной таблице, обрываем.
     if (seen.has(name)) return 0;
-    const table = byName.get(name);
-    if (!table) return 0;
     seen.add(name);
-    const parents = referencedTables(table).map((parent) => levelOf(parent, seen));
+    const parents = [...refs.get(name)!].map((parent) => levelOf(parent, seen));
     const value = parents.length === 0 ? 0 : Math.max(...parents) + 1;
     level.set(name, value);
     return value;
   };
-  for (const table of tables) levelOf(table.name, new Set());
+  for (const table of connected) levelOf(table.name, new Set());
 
-  const columns = new Map<number, SchemaTable[]>();
-  for (const table of tables) {
-    const depth = level.get(table.name) ?? 0;
-    if (!columns.has(depth)) columns.set(depth, []);
-    columns.get(depth)!.push(table);
-  }
+  const heightOf = (name: string) => {
+    const table = byName.get(name);
+    // Проходная точка места не занимает — ей нужен только свой коридор.
+    return table ? tableHeight(table.columns.length, !!table.note) : 0;
+  };
 
-  // Внутри слоя таблицы выстраиваются напротив тех, на которые ссылаются:
-  // без этого стрелки идут наискосок через всю схему. Слои считаются слева
-  // направо, поэтому положение «родителей» к этому моменту уже известно.
-  const centerY = new Map<string, number>();
+  const { layers, down, up } = withWaypoints(connected, level, refs);
+  orderLayers(layers, down, up);
+  const centers = straighten(layers, down, up, heightOf);
+
   const result = new Map<string, { x: number; y: number }>();
-  for (const [depth, group] of [...columns.entries()].sort((a, b) => a[0] - b[0])) {
-    const anchor = (table: SchemaTable) => {
-      const parents = referencedTables(table)
-        .map((name) => centerY.get(name))
-        .filter((y): y is number => y != null);
-      // Таблице без ссылок держаться не за что — такие уходят вниз слоя.
-      return parents.length ? parents.reduce((a, b) => a + b, 0) / parents.length : Number.MAX_SAFE_INTEGER;
-    };
-    const ordered = depth === 0
-      ? [...group].sort((a, b) => a.name.localeCompare(b.name))
-      : [...group].sort((a, b) => anchor(a) - anchor(b) || a.name.localeCompare(b.name));
+  layers.forEach((layer, depth) => {
+    for (const name of layer) {
+      if (!byName.has(name)) continue;  // проходные точки наружу не отдаются
+      result.set(name, {
+        x: depth * (TABLE_WIDTH + COLUMN_GAP),
+        y: centers.get(name)! - heightOf(name) / 2,
+      });
+    }
+  });
 
-    const heights = ordered.map((t) => tableHeight(t.columns.length, !!t.note));
-    const total = heights.reduce((a, b) => a + b, 0) + ROW_GAP * (ordered.length - 1);
-    let y = -total / 2;  // слои центрируются друг относительно друга
-    ordered.forEach((table, index) => {
-      result.set(table.name, { x: depth * (TABLE_WIDTH + COLUMN_GAP), y });
-      centerY.set(table.name, y + heights[index] / 2);
-      y += heights[index] + ROW_GAP;
+  // Несвязанные — отдельным столбцом справа, с двойным зазором, чтобы было
+  // видно, что они не часть картины, а просто тоже есть.
+  let y = 0;
+  for (const table of isolated) {
+    result.set(table.name, {
+      x: layers.length * (TABLE_WIDTH + COLUMN_GAP) + COLUMN_GAP,
+      y,
     });
+    y += heightOf(table.name) + ROW_GAP;
   }
   return result;
+}
+
+/** Разбить стрелки, идущие через несколько слоёв, проходными точками.
+ *
+ * После этого каждая стрелка соединяет соседние слои — а значит, участвует и
+ * в подборе порядка, и в расчёте координат. Без этого шага она невидима для
+ * раскладки: слои между её концами про неё не знают и спокойно ставят на её
+ * пути карточку.
+ */
+function withWaypoints(
+  tables: SchemaTable[],
+  level: Map<string, number>,
+  refs: Map<string, Set<string>>,
+) {
+  const depth = Math.max(0, ...tables.map((t) => level.get(t.name) ?? 0));
+  const layers: string[][] = Array.from({ length: depth + 1 }, () => []);
+  for (const table of tables) layers[level.get(table.name) ?? 0].push(table.name);
+  for (const layer of layers) layer.sort((a, b) => a.localeCompare(b));
+
+  const down = new Map<string, string[]>();  // в следующий слой
+  const up = new Map<string, string[]>();    // в предыдущий
+  const link = (from: string, to: string) => {
+    if (!down.has(from)) down.set(from, []);
+    if (!up.has(to)) up.set(to, []);
+    down.get(from)!.push(to);
+    up.get(to)!.push(from);
+  };
+  for (const name of layers.flat()) { down.set(name, []); up.set(name, []); }
+
+  for (const table of tables) {
+    const childLevel = level.get(table.name)!;
+    for (const parent of refs.get(table.name)!) {
+      const parentLevel = level.get(parent)!;
+      if (parentLevel >= childLevel) continue;  // цикл — разложить его нечем
+      let previous = parent;
+      for (let l = parentLevel + 1; l < childLevel; l++) {
+        const point = `⋯${parent}→${table.name}@${l}`;
+        layers[l].push(point);
+        down.set(point, []);
+        up.set(point, []);
+        link(previous, point);
+        previous = point;
+      }
+      link(previous, table.name);
+    }
+  }
+  return { layers, down, up };
+}
+
+/** Порядок внутри слоя — так, чтобы стрелки поменьше пересекались.
+ *
+ * Барицентр: узел встаёт напротив середины тех, с кем связан в соседнем
+ * слое. Проходы чередуются, потому что за один проход слева направо ничего
+ * не известно про правых соседей, а они тянут не слабее левых. Семи проходов
+ * заведомо хватает на два десятка таблиц, и стоят они доли миллисекунды.
+ */
+function orderLayers(layers: string[][], down: Map<string, string[]>, up: Map<string, string[]>) {
+  const indexIn = (layer: string[]) => new Map(layer.map((name, index) => [name, index]));
+
+  for (let pass = 0; pass < 7; pass++) {
+    const forward = pass % 2 === 0;
+    const order = forward
+      ? layers.map((_, i) => i).slice(1)
+      : layers.map((_, i) => i).slice(0, -1).reverse();
+
+    for (const i of order) {
+      const neighbourIndex = indexIn(layers[forward ? i - 1 : i + 1]);
+      const links = forward ? up : down;
+      const previous = indexIn(layers[i]);
+      const key = new Map<string, number>();
+      for (const name of layers[i]) {
+        const positions = (links.get(name) ?? [])
+          .map((other) => neighbourIndex.get(other))
+          .filter((value): value is number => value != null);
+        // Узлу без соседей в эту сторону держаться не за что — остаётся там,
+        // где стоял, а не улетает в начало слоя.
+        key.set(name, positions.length
+          ? positions.reduce((a, b) => a + b, 0) / positions.length
+          : previous.get(name)!);
+      }
+      layers[i] = [...layers[i]].sort((a, b) => key.get(a)! - key.get(b)! || a.localeCompare(b));
+    }
+  }
+}
+
+/** Координаты по вертикали: каждый узел тянется к середине своих соседей, но
+ * карточки не налезают друг на друга.
+ *
+ * Без этого слой раскладывался подряд сверху вниз, и стрелка из середины
+ * одного слоя уходила в самый низ другого через всю схему. Здесь наоборот:
+ * сначала желаемое место, потом раздвигание — ровно то, что раньше
+ * приходилось делать мышью.
+ */
+function straighten(
+  layers: string[][],
+  down: Map<string, string[]>,
+  up: Map<string, string[]>,
+  heightOf: (name: string) => number,
+): Map<string, number> {
+  // Между проходными точками зазор меньше: это коридоры для линий, а не
+  // карточки, и разносить их на полный отступ значит раздувать схему.
+  const gap = (a: string, b: string) => (heightOf(a) === 0 && heightOf(b) === 0 ? 14 : ROW_GAP);
+  const center = new Map<string, number>();
+
+  for (const layer of layers) {
+    let y = 0;
+    layer.forEach((name, index) => {
+      if (index > 0) y += gap(layer[index - 1], name);
+      center.set(name, y + heightOf(name) / 2);
+      y += heightOf(name);
+    });
+    const total = y;
+    for (const name of layer) center.set(name, center.get(name)! - total / 2);
+  }
+
+  for (let pass = 0; pass < 6; pass++) {
+    const forward = pass % 2 === 0;
+    const order = forward ? layers.map((_, i) => i) : layers.map((_, i) => i).reverse();
+    for (const i of order) {
+      const links = forward ? up : down;
+      const wanted = layers[i].map((name) => {
+        const neighbours = (links.get(name) ?? [])
+          .map((other) => center.get(other))
+          .filter((value): value is number => value != null);
+        return neighbours.length
+          ? neighbours.reduce((a, b) => a + b, 0) / neighbours.length
+          : center.get(name)!;
+      });
+      // Порядок в слое уже выбран и меняться не должен: узлы только
+      // раздвигаются вниз, пока не перестанут накладываться.
+      let bottom = -Infinity;
+      const placed = layers[i].map((name, index) => {
+        const half = heightOf(name) / 2;
+        const spacing = index > 0 ? gap(layers[i][index - 1], name) : 0;
+        const y = Math.max(wanted[index], bottom + spacing + half);
+        bottom = y + half;
+        return y;
+      });
+      // Раздвигание тянет слой вниз — возвращаем его туда, куда он метил.
+      const drift = placed.reduce((sum, y, index) => sum + (y - wanted[index]), 0) / placed.length;
+      layers[i].forEach((name, index) => center.set(name, placed[index] - drift));
+    }
+  }
+  return center;
 }

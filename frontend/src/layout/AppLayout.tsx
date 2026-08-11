@@ -1,32 +1,71 @@
 import { useState } from 'react';
 import { AppShell, Group, NavLink as MantineNavLink, ScrollArea, Select, Text, Button, Stack, Box } from '@mantine/core';
 import {
-  IconDeviceDesktop, IconTemplate, IconPlugConnected, IconTopologyStar,
-  IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase, IconBook,
+  IconDeviceDesktop, IconPlugConnected, IconTopologyStar,
+  IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
   IconFileImport, IconBuildingFactory2, IconHistory,
 } from '@tabler/icons-react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 import { useSite } from '../sites/SiteContext';
 
-const NAV_ITEMS = [
-  { to: '/devices', label: 'Устройства', icon: IconDeviceDesktop },
-  { to: '/templates', label: 'Шаблоны', icon: IconTemplate },
-  { to: '/links', label: 'Связи', icon: IconPlugConnected },
-  { to: '/topology', label: 'Топология', icon: IconTopologyStar },
-  { to: '/search', label: 'Поиск', icon: IconSearch },
-  { to: '/tags', label: 'Теги', icon: IconTags },
-  { to: '/vlans', label: 'VLAN', icon: IconNetwork },
-  { to: '/import', label: 'Импорт', icon: IconFileImport },
-  { to: '/history', label: 'История', icon: IconHistory },
-  { to: '/catalog', label: 'Справочники', icon: IconBook },
-  { to: '/schema', label: 'Структура БД', icon: IconDatabase },
+/** Меню разделами, а не одним списком из тринадцати пунктов.
+ *
+ * «Оборудование» — один пункт на три страницы (устройства, их модели,
+ * справочники): работают с ними вперемешку, и раньше каждый шаг «а модели-то
+ * нет» означал поход в меню и обратно. Переключаются они теперь вкладками
+ * наверху самой страницы, а меню про них знает одно: они про железо.
+ *
+ * `match` нужен затем же: пункт должен подсвечиваться, когда открыта любая
+ * из его страниц, а не только та, на которую он ведёт.
+ */
+const NAV_SECTIONS: {
+  title: string;
+  items: { to: string; label: string; icon: typeof IconDeviceDesktop; match?: string[]; admin?: boolean }[];
+}[] = [
+  {
+    title: 'Сеть',
+    items: [
+      {
+        to: '/devices', label: 'Оборудование', icon: IconDeviceDesktop,
+        match: ['/devices', '/templates', '/catalog'],
+      },
+      { to: '/links', label: 'Связи', icon: IconPlugConnected },
+      { to: '/topology', label: 'Топология', icon: IconTopologyStar },
+    ],
+  },
+  {
+    title: 'Классификация',
+    items: [
+      { to: '/tags', label: 'Теги', icon: IconTags },
+      { to: '/vlans', label: 'VLAN', icon: IconNetwork },
+    ],
+  },
+  {
+    title: 'Работа',
+    items: [
+      { to: '/import', label: 'Импорт', icon: IconFileImport },
+      { to: '/search', label: 'Поиск', icon: IconSearch },
+      { to: '/history', label: 'История', icon: IconHistory },
+    ],
+  },
+  {
+    // Структура БД доступна всем ролям, как и на сервере: это не управление,
+    // а взгляд внутрь. Площадки и учётные записи — только администратору.
+    title: 'Система',
+    items: [
+      { to: '/schema', label: 'Структура БД', icon: IconDatabase },
+      { to: '/sites', label: 'Площадки', icon: IconBuildingFactory2, admin: true },
+      { to: '/users', label: 'Пользователи', icon: IconUsers, admin: true },
+    ],
+  },
 ];
 
 export function AppLayout() {
   const { user, signOut } = useAuth();
   const { sites, siteId, selectSite } = useSite();
+  const { pathname } = useLocation();
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   // Пароль назначен не владельцем — до смены работать нельзя. Модалка без
@@ -53,21 +92,30 @@ export function AppLayout() {
         )}
         <ScrollArea style={{ flex: 1 }}>
           <Stack gap={2}>
-            {NAV_ITEMS.map((item) => (
-              <MantineNavLink
-                key={item.to}
-                component={NavLink}
-                to={item.to}
-                label={item.label}
-                leftSection={<item.icon size={18} />}
-              />
-            ))}
-            {user?.role === 'admin' && (
-              <>
-                <MantineNavLink component={NavLink} to="/sites" label="Площадки" leftSection={<IconBuildingFactory2 size={18} />} />
-                <MantineNavLink component={NavLink} to="/users" label="Пользователи" leftSection={<IconUsers size={18} />} />
-              </>
-            )}
+            {NAV_SECTIONS.map((section) => {
+              const items = section.items.filter((item) => !item.admin || user?.role === 'admin');
+              if (items.length === 0) return null;
+              return (
+                <div key={section.title}>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={600} px="xs" mt="sm" mb={4}>
+                    {section.title}
+                  </Text>
+                  {items.map((item) => (
+                    <MantineNavLink
+                      key={item.to}
+                      component={NavLink}
+                      to={item.to}
+                      label={item.label}
+                      leftSection={<item.icon size={18} />}
+                      // Пункт горит и когда открыта соседняя страница того же
+                      // раздела: иначе «Оборудование» гаснет, стоит перейти
+                      // на вкладку шаблонов, и меню выглядит сбитым.
+                      active={item.match?.some((path) => pathname.startsWith(path)) || undefined}
+                    />
+                  ))}
+                </div>
+              );
+            })}
           </Stack>
         </ScrollArea>
         <Box pt="sm" mt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
