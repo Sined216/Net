@@ -17,6 +17,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from app import siemens
+
 # Синонимы заголовков. Сравнение идёт по «сжатой» форме: строчными, без
 # пробелов, дефисов и точек, — чтобы «IP-адрес», «ip адрес» и «IP.адрес»
 # считались одним и тем же.
@@ -53,12 +55,14 @@ class ImportError_(Exception):
 def parse(filename: str, content: bytes) -> list[ParsedRow]:
     """Прочитать файл целиком. Формат определяется по расширению."""
     lowered = filename.lower()
+    if lowered.endswith(".xml"):
+        return _read_siemens(content)
     if lowered.endswith((".xlsx", ".xlsm")):
         table = _read_xlsx(content)
     elif lowered.endswith((".csv", ".txt")):
         table = _read_csv(content)
     else:
-        raise ImportError_("Поддерживаются файлы .xlsx и .csv")
+        raise ImportError_("Поддерживаются файлы .xlsx, .csv и .xml (выгрузка Siemens Automation Tool)")
 
     if not table:
         raise ImportError_("Файл пуст")
@@ -78,6 +82,30 @@ def parse(filename: str, content: bytes) -> list[ParsedRow]:
                 title = header[column] if column < len(header) else f"столбец {column + 1}"
                 extra[str(title).strip() or f"столбец {column + 1}"] = text
         parsed = ParsedRow(row_number=index, values=values, extra=extra)
+        if not parsed.is_empty:
+            rows.append(parsed)
+    return rows
+
+
+def _read_siemens(content: bytes) -> list[ParsedRow]:
+    """Выгрузка Siemens Automation Tool.
+
+    У неё нет ни заголовков, ни столбцов — раскладывать по полям нечего,
+    структура известна заранее. Поэтому она разбирается отдельно и приходит
+    сюда уже готовыми строками.
+    """
+    if not siemens.looks_like_siemens(content):
+        raise ImportError_("Это не похоже на XML — проверьте файл")
+    try:
+        found = siemens.parse_devices(content, _decode)
+    except ValueError as exc:
+        raise ImportError_(str(exc)) from None
+
+    rows = []
+    for index, item in enumerate(found, start=1):
+        values = {name: "" for name in FIELDS}
+        values.update(item["values"])
+        parsed = ParsedRow(row_number=index, values=values, extra=item["extra"])
         if not parsed.is_empty:
             rows.append(parsed)
     return rows

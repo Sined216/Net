@@ -97,7 +97,7 @@ export function ImportPage() {
         </Group>
       </Group>
       <input
-        ref={fileInput} type="file" accept=".csv,.xlsx,.xlsm,.txt" hidden onChange={handleFile}
+        ref={fileInput} type="file" accept=".csv,.xlsx,.xlsm,.txt,.xml" hidden onChange={handleFile}
       />
 
       <Text c="dimmed" size="sm">
@@ -105,7 +105,8 @@ export function ImportPage() {
         устройства с тем, что удалось разобрать: шаблон, IP, расположение. Чего в файле нет — заполняется руками.
         Связи из файла не заводятся: кабель соединяет порты, а портов до заведения устройства ещё нет.
         Зелёным подсвечены название и адрес, которые в спецификации уже есть, — такую строку, скорее всего,
-        переносить не нужно.
+        переносить не нужно. Кроме таблиц принимается выгрузка Siemens Automation Tool (.xml): из неё
+        читаются станции с их адресами, моделями, артикулами и составом стоек.
       </Text>
 
       {templates.length === 0 && (
@@ -119,7 +120,10 @@ export function ImportPage() {
 
       {rows.length === 0 ? (
         <Text c="dimmed">
-          {isLoading ? 'Загрузка…' : 'Пусто. Загрузите .xlsx или .csv — колонки распознаются по названиям: имя, шаблон (модель), IP, расположение, группа, теги.'}
+          {isLoading
+            ? 'Загрузка…'
+            : 'Пусто. Загрузите .xlsx или .csv — колонки распознаются по названиям: имя, шаблон (модель), IP, '
+              + 'расположение, группа, теги. Либо .xml — выгрузку Siemens Automation Tool, её структура известна заранее.'}
         </Text>
       ) : (
         <>
