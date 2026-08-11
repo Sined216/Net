@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
-  ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Table, Text, Title, Tooltip,
+  ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Table, Text, Title, Tooltip, UnstyledButton,
 } from '@mantine/core';
-import { IconDotsVertical, IconPlus, IconTrash, IconUpload } from '@tabler/icons-react';
+import {
+  IconArrowsSort, IconChevronDown, IconChevronUp, IconDotsVertical, IconPlus, IconTrash, IconUpload,
+} from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import {
   useClearImportRows, useDeleteImportRow, useDeviceTemplates, useImportRows, useUploadImportFile,
@@ -29,10 +31,17 @@ export function ImportPage() {
   const clearRows = useClearImportRows();
   const fileInput = useRef<HTMLInputElement>(null);
   const [adding, setAdding] = useState<ImportRowOut | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'row_number', desc: false });
   const canEdit = useCan('edit');
 
   const waiting = rows.filter((r) => r.status === 'new');
   const moved = rows.filter((r) => r.status === 'moved');
+  const sorted = useMemo(() => sortRows(rows, sort), [rows, sort]);
+
+  /** Щелчок по заголовку: первый раз — по возрастанию, второй — наоборот. */
+  function toggleSort(key: SortKey) {
+    setSort((prev) => (prev.key === key ? { key, desc: !prev.desc } : { key, desc: false }));
+  }
 
   function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -121,19 +130,19 @@ export function ImportPage() {
           <Table withTableBorder verticalSpacing="xs" horizontalSpacing="sm" striped>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th w={70}>Строка</Table.Th>
-                <Table.Th>Название</Table.Th>
-                <Table.Th>Шаблон устройства</Table.Th>
-                <Table.Th w={130}>IP</Table.Th>
-                <Table.Th>Расположение</Table.Th>
-                <Table.Th>Группа и теги</Table.Th>
+                <SortTh w={70} field="row_number" sort={sort} onSort={toggleSort}>Строка</SortTh>
+                <SortTh field="name" sort={sort} onSort={toggleSort}>Название</SortTh>
+                <SortTh field="template_name" sort={sort} onSort={toggleSort}>Шаблон устройства</SortTh>
+                <SortTh w={130} field="management_ip" sort={sort} onSort={toggleSort}>IP</SortTh>
+                <SortTh field="location" sort={sort} onSort={toggleSort}>Расположение</SortTh>
+                <SortTh field="group_name" sort={sort} onSort={toggleSort}>Группа и теги</SortTh>
                 <Table.Th>Ещё из файла</Table.Th>
-                <Table.Th w={160}>Состояние</Table.Th>
+                <SortTh w={160} field="status" sort={sort} onSort={toggleSort}>Состояние</SortTh>
                 <Table.Th w={90} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {rows.map((row) => (
+              {sorted.map((row) => (
                 <Table.Tr key={row.id}>
                   <Table.Td>
                     <Tooltip label={row.source_file}>
@@ -232,6 +241,64 @@ export function ImportPage() {
       )}
     </Stack>
   );
+}
+
+/** По каким колонкам таблица упорядочивается. «Ещё из файла» здесь нет: это
+ * мешанина неразобранных колонок, и порядок по ней ничего не значит. */
+type SortKey = 'row_number' | 'name' | 'template_name' | 'management_ip' | 'location'
+  | 'group_name' | 'status';
+
+/** Заголовок, по которому упорядочивают.
+ *
+ * Порядок считает браузер, а не сервер: таблица импорта — это разобранный
+ * файл, живущий до переноса строк, и целиком он и так уже здесь. Гонять его
+ * на сервер ради `ORDER BY` значило бы ждать ответа там, где сортировка
+ * мгновенна.
+ */
+function SortTh({ field, sort, onSort, w, children }: {
+  field: SortKey;
+  sort: { key: SortKey; desc: boolean };
+  onSort: (key: SortKey) => void;
+  w?: number;
+  children: React.ReactNode;
+}) {
+  const active = sort.key === field;
+  const Icon = active ? (sort.desc ? IconChevronDown : IconChevronUp) : IconArrowsSort;
+  return (
+    <Table.Th w={w}>
+      <UnstyledButton onClick={() => onSort(field)} style={{ width: '100%' }}>
+        <Group gap={4} wrap="nowrap">
+          <Text size="sm" fw={600}>{children}</Text>
+          <Icon size={13} opacity={active ? 0.9 : 0.35} style={{ flexShrink: 0 }} />
+        </Group>
+      </UnstyledButton>
+    </Table.Th>
+  );
+}
+
+/** Порядок строк.
+ *
+ * Пустые значения всегда внизу, в любую сторону: строка без названия — это
+ * то, что предстоит дозаполнить руками, и ей незачем оказываться первой
+ * только потому, что порядок развернули.
+ */
+function sortRows(rows: ImportRowOut[], sort: { key: SortKey; desc: boolean }): ImportRowOut[] {
+  const direction = sort.desc ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const left = a[sort.key];
+    const right = b[sort.key];
+    const emptyLeft = left == null || left === '';
+    const emptyRight = right == null || right === '';
+    if (emptyLeft || emptyRight) return emptyLeft && emptyRight ? a.row_number - b.row_number : (emptyLeft ? 1 : -1);
+    const compared = typeof left === 'number' && typeof right === 'number'
+      ? left - right
+      // Числа внутри текста сравниваются как числа: иначе «Цех 10» встаёт
+      // между «Цех 1» и «Цех 2».
+      : String(left).localeCompare(String(right), 'ru', { numeric: true });
+    // Одинаковые значения — по номеру строки в файле: иначе при каждом
+    // пересчёте они меняются местами.
+    return compared * direction || a.row_number - b.row_number;
+  });
 }
 
 /** Ячейка, которая подсвечивается, если такое же значение в спецификации

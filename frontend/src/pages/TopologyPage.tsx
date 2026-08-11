@@ -83,7 +83,6 @@ export function TopologyPage() {
   // красятся от темы интерфейса, а не наугад.
   const scheme = useComputedColorScheme('light');
   const [look, setLook] = useState<TopologyAppearance>(loadAppearance);
-  const [router, setRouter] = useState<'orthogonal' | 'straight'>('orthogonal');
   const [addingDevice, setAddingDevice] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [editingLinkId, setEditingLinkId] = useState<number | null>(null);
@@ -171,6 +170,10 @@ export function TopologyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const paper = useJointPaper({
+    canEdit, scheme, background: look.background, actions: actionsRef, handlers,
+  });
+
   handlers.current = {
     onConnect: (source: dia.Element, target: dia.Element) => {
       const sourceKind = source.get('kind');
@@ -194,16 +197,27 @@ export function TopologyPage() {
       updatePosition.mutate({ id: deviceId, body: { x, y } });
     },
     onGroupMoved: (groupId, box) => saveGroupBox(groupId, box),
-    onDelete: (target) => {
+    onDelete: (target, devices) => {
+      // Выделенных рамкой — пачкой и с одним вопросом: спрашивать по разу на
+      // каждую железку означает десять окон подряд, а на десятом человек
+      // жмёт «да» не читая.
+      if (devices.length > 1) {
+        if (!confirm(`Удалить устройств: ${devices.length}? Вместе с их портами и связями.`)) return;
+        for (const id of devices) deleteDevice.mutate(id, { onError: notifyError });
+        paper.clearMarked();
+        return;
+      }
+      if (devices.length === 1) {
+        actions.remove(devices[0]);
+        paper.clearMarked();
+        return;
+      }
       if (!target) return;
       if (target.kind === 'device') actions.remove(target.id);
       else actions.removeGroup(target.id);
     },
   };
 
-  const paper = useJointPaper({
-    canEdit, scheme, background: look.background, actions: actionsRef, handlers,
-  });
   const { holder, paperRef, graphRef, refreshTools } = paper;
 
   // ---------- наполнение ----------
@@ -219,7 +233,7 @@ export function TopologyPage() {
 
     const positions = computePositions(nodes, edges, placed, relayout);
     const { deviceCells, boxes } = buildGraph(
-      graph, { nodes, edges, groups }, { look, scheme, router, positions },
+      graph, { nodes, edges, groups }, { look, scheme, router: look.edgeRouter, positions },
     );
 
     // Заведённые до появления ручной правки группы получают посчитанную
@@ -264,7 +278,7 @@ export function TopologyPage() {
       setSearchParams(rest, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, groups, look, router, relayout, canEdit, scheme]);
+  }, [nodes, edges, groups, look, relayout, canEdit, scheme]);
 
   /** Новое устройство появляется в середине видимой области. */
   function placeNewDevice(deviceId: number) {
@@ -286,9 +300,13 @@ export function TopologyPage() {
             }))}
             value={tagFilter} onChange={setTagFilter}
           />
+          {/* Способ разводки — такая же настройка вида, как заливка групп:
+              хранится в браузере и переживает перезагрузку. Раньше он жил
+              только в состоянии страницы и сбрасывался на «ортогонально»
+              при каждом заходе. */}
           <SegmentedControl
-            size="xs" value={router}
-            onChange={(value) => setRouter(value as 'orthogonal' | 'straight')}
+            size="xs" value={look.edgeRouter}
+            onChange={(value) => changeLook({ ...look, edgeRouter: value as 'orthogonal' | 'straight' })}
             data={[{ value: 'orthogonal', label: 'Ортогонально' }, { value: 'straight', label: 'Прямыми' }]}
           />
           {canEdit && (
@@ -338,7 +356,15 @@ export function TopologyPage() {
         подгруппа, удаление; рамку двигают мышью и растягивают за угол. Оранжевый кружок с «?» — свободный конец
         кабеля: его тянут на устройство, чтобы воткнуть в порт. Клик по линии открывает правку связи, Delete удаляет
         выделенное. Узел за рамку своей группы не выходит, а состав группы меняется только явно.
+        {canEdit && ' Shift с растяжкой по пустому месту выделяет несколько устройств рамкой, Shift по узлу добавляет'
+          + ' его к выделенным: дальше их двигают за любое из них и удаляют разом.'}
       </Text>
+      {paper.markedCount > 1 && (
+        <Group gap="xs">
+          <Text size="sm">Выделено устройств: {paper.markedCount}</Text>
+          <Button size="compact-xs" variant="subtle" onClick={paper.clearMarked}>снять выделение</Button>
+        </Group>
+      )}
 
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
       {addingDevice && (

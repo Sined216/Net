@@ -58,7 +58,7 @@ export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): 
 
   const groupCells = addGroups(graph, groups, nodes, boxes, look, paint);
   const deviceCells = addDevices(graph, nodes, positions, boxes, groupCells, look, colors);
-  addLinks(graph, edges, deviceCells, look, paint, router);
+  addLinks(graph, edges, deviceCells, positions, look, paint, router);
 
   return { deviceCells, boxes };
 }
@@ -182,6 +182,7 @@ function addLinks(
   graph: dia.Graph,
   edges: TopologyEdge[],
   deviceCells: Map<number, dia.Element>,
+  positions: Map<number, Point>,
   look: TopologyAppearance,
   paint: CanvasPaint,
   router: 'orthogonal' | 'straight',
@@ -198,12 +199,37 @@ function addLinks(
       endsOfDevice.get(deviceId)!.push(edge.link_id);
     }
   }
-  const anchorFor = (deviceId: number, linkId: number) => {
+  /** Куда именно кабель входит в карточку.
+   *
+   * При ортогональной разводке точки разносятся по высоте: коридоры у
+   * `manhattan` горизонтальные, и вертикальный разбег их и разделяет.
+   *
+   * Прямая линия — другое дело. Она идёт из точки в точку, поэтому все
+   * кабели одной железки целились в её середину и у самой карточки
+   * сходились в пучок. Здесь точка входа сдвигается поперёк своей же линии:
+   * кабели идут рядом, не сливаясь, и видно, что их несколько. Сдвиг
+   * считается по расположению узлов, известному на момент отрисовки, — при
+   * перетаскивании он слегка устаревает до следующей перерисовки, но это
+   * оформление, а не данные.
+   */
+  const anchorFor = (deviceId: number, otherId: number | null | undefined, linkId: number) => {
     const ends = endsOfDevice.get(deviceId) ?? [];
     const index = ends.indexOf(linkId);
     const spread = Math.min(ends.length, 5);
-    const dy = spread <= 1 ? 0 : ((index % spread) - (spread - 1) / 2) * 18;
-    return { name: 'center', args: { dy } };
+    const shift = spread <= 1 ? 0 : ((index % spread) - (spread - 1) / 2);
+
+    if (router === 'orthogonal') return { name: 'center', args: { dy: shift * 18 } };
+
+    const from = positions.get(deviceId);
+    const to = otherId != null ? positions.get(otherId) : undefined;
+    if (!from || !to || shift === 0) return { name: 'center', args: {} };
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    // Перпендикуляр к направлению кабеля: сдвиг вдоль него уводит линию
+    // вбок, не приближая и не удаляя её от соседней железки.
+    const step = shift * 16;
+    return { name: 'center', args: { dx: (-dy / length) * step, dy: (dx / length) * step } };
   };
   // Коридоры разводки тоже разные: одинаковый отступ сводит соседние кабели
   // в одну линию ровно так же, как одинаковая точка входа. Шаг подобран так,
@@ -230,8 +256,8 @@ function addLinks(
       const target = deviceCells.get(edge.device_b_id);
       if (!source || !target) continue;
       graph.addCell(new shapes.standard.Link({
-        source: { id: source.id, anchor: anchorFor(edge.device_a_id, edge.link_id) },
-        target: { id: target.id, anchor: anchorFor(edge.device_b_id, edge.link_id) },
+        source: { id: source.id, anchor: anchorFor(edge.device_a_id, edge.device_b_id, edge.link_id) },
+        target: { id: target.id, anchor: anchorFor(edge.device_b_id, edge.device_a_id, edge.link_id) },
         linkId: edge.link_id,
         router: routerFor(edge.link_id),
         connector: connectorFor(),

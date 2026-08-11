@@ -27,6 +27,10 @@ export interface TopologyAppearance {
    * заметно лучше, чем на белом узле, — ради этого вид и задумывался. */
   deviceDark: boolean;
 
+  /** Как разводить кабели: ортогонально (обходя узлы) или прямыми линиями.
+   * Настройка вида, а не состояние экрана: выбранный однажды способ должен
+   * пережить перезагрузку, как и всё остальное здесь. */
+  edgeRouter: 'orthogonal' | 'straight';
   edgeWidth: number;
   /** Подписи портов на концах линии. */
   edgeLabels: boolean;
@@ -50,6 +54,7 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   deviceGlow: true,
   deviceDark: true,
 
+  edgeRouter: 'orthogonal',
   edgeWidth: 2,
   edgeLabels: true,
   edgeLabelName: true,
