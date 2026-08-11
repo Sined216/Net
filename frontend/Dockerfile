@@ -4,8 +4,9 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 # Отдельным слоем, чтобы установка зависимостей не повторялась при каждой
-# правке исходников.
-COPY package.json package-lock.json ./
+# правке исходников. `.npmrc` обязателен: в нём послабление на соседей
+# openapi-typescript, без которого `npm ci` отказывается разрешать дерево.
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 COPY . .
