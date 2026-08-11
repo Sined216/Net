@@ -3,7 +3,8 @@ import {
   Button, Group, Paper, SegmentedControl, Select, Stack, Text, Title, useComputedColorScheme,
 } from '@mantine/core';
 import {
-  IconFocusCentered, IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup,
+  IconArrowBackUp, IconArrowForwardUp, IconFocusCentered, IconLayoutDistributeHorizontal,
+  IconPlus, IconUsersGroup,
 } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,8 +24,9 @@ import { DeviceFormModal } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
-  buildGraph, computePositions, storedBox, type Box, type Point,
+  buildGraph, computePositions, layoutInsideGroup, storedBox, type Box, type Point,
 } from './topology/joint/buildGraph';
+import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
 } from './topology/joint/useJointPaper';
@@ -101,6 +103,15 @@ export function TopologyPage() {
    * то есть первое наполнение схемы. */
   const fitted = useRef(-1);
   const [relayout, setRelayout] = useState(0);
+  /** Перерисовать схему, не пересчитывая раскладку заново: положение узлов
+   * живёт в `placed`, а он не состояние и сам перерисовку не вызывает. */
+  const [redraw, setRedraw] = useState(0);
+  /** Рамки групп с прошлой отрисовки — нужны, чтобы знать, откуда рамка
+   * уехала, и чтобы разложить содержимое внутри неё. */
+  const boxesRef = useRef(new Map<number, Box>());
+  /** Раскладка до нажатия «Разложить»: сам пересчёт происходит внутри
+   * отрисовки, и «как было» к тому моменту уже затёрто. */
+  const beforeRelayout = useRef<Map<number, Point> | null>(null);
   /** Свежие действия и обработчики для полотна: оно ставит их один раз, а
    * данные под ними меняются. */
   const actionsRef = useRef<JointActions>(null!);
@@ -154,6 +165,38 @@ export function TopologyPage() {
       if (group) setEditingGroup({ group, parentId: null });
     },
     addSubgroup: (groupId: number) => setEditingGroup({ group: null, parentId: groupId }),
+    layoutGroup: (groupId: number) => {
+      const box = boxesRef.current.get(groupId);
+      if (!box) return;
+      // Порядок — тот, в котором устройства пришли с сервера (по коду):
+      // повторное нажатие тогда даёт ту же раскладку, а не тасует карточки.
+      const inside = nodes.filter((n) => n.topology_group_id === groupId).map((n) => n.id);
+      if (inside.length === 0) return;
+      const inner = groups
+        .filter((g) => g.parent_id === groupId)
+        .map((g) => boxesRef.current.get(g.id))
+        .filter((b): b is Box => b != null);
+      const laid = layoutInsideGroup(box, inside, inner);
+      const grown = laid.box !== box
+        ? [{ id: groupId, from: box, to: laid.box }]
+        : [];
+      history.push({
+        title: 'раскладка группы',
+        devices: inside
+          .map((id) => ({ id, from: placed.current.get(id), to: laid.positions.get(id)! }))
+          .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
+        groups: grown,
+      });
+      for (const [id, at] of laid.positions) {
+        placed.current.set(id, at);
+        updatePosition.mutate({ id, body: at });
+      }
+      if (grown.length) {
+        boxesRef.current.set(groupId, laid.box);
+        saveGroupBox(groupId, laid.box);
+      }
+      setRedraw((n) => n + 1);
+    },
     removeGroup: (groupId: number) => {
       const group = groups.find((g) => g.id === groupId);
       if (!group) return;
@@ -169,6 +212,39 @@ export function TopologyPage() {
     setGroupBox.mutate({ id: groupId, body: box }, { onError: notifyError });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Разослать координаты шага — в ту или другую сторону. */
+  const applyStep = useCallback((step: LayoutStep, back: boolean) => {
+    for (const move of step.devices ?? []) {
+      const at = back ? move.from : move.to;
+      placed.current.set(move.id, at);
+      updatePosition.mutate({ id: move.id, body: at });
+    }
+    for (const frame of step.groups ?? []) {
+      saveGroupBox(frame.id, back ? frame.from : frame.to);
+    }
+    setRedraw((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const history = useLayoutHistory(applyStep);
+
+  /** Записать перемещение и разослать его. «Откуда» берётся из раскладки,
+   * сложившейся к этому моменту. */
+  const moveDevices = useCallback((moves: { id: number; x: number; y: number }[], title: string) => {
+    const step: LayoutStep = {
+      title,
+      devices: moves
+        .map((move) => ({ id: move.id, from: placed.current.get(move.id), to: { x: move.x, y: move.y } }))
+        .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
+    };
+    history.push(step);
+    for (const move of moves) {
+      placed.current.set(move.id, { x: move.x, y: move.y });
+      updatePosition.mutate({ id: move.id, body: { x: move.x, y: move.y } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
 
   const paper = useJointPaper({
     canEdit, scheme, background: look.background, actions: actionsRef, handlers,
@@ -192,11 +268,13 @@ export function TopologyPage() {
       setConnecting({ sourceId, targetId });
     },
     onLinkClick: (linkId) => setEditingLinkId(linkId),
-    onDeviceMoved: (deviceId, x, y) => {
-      placed.current.set(deviceId, { x, y });
-      updatePosition.mutate({ id: deviceId, body: { x, y } });
+    onDevicesMoved: (moves) => moveDevices(moves, moves.length > 1 ? 'перемещение группы узлов' : 'перемещение узла'),
+    onGroupMoved: (groupId, box) => {
+      const was = boxesRef.current.get(groupId);
+      if (was) history.push({ title: 'рамка группы', groups: [{ id: groupId, from: was, to: box }] });
+      boxesRef.current.set(groupId, box);
+      saveGroupBox(groupId, box);
     },
-    onGroupMoved: (groupId, box) => saveGroupBox(groupId, box),
     onDelete: (target, devices) => {
       // Выделенных рамкой — пачкой и с одним вопросом: спрашивать по разу на
       // каждую железку означает десять окон подряд, а на десятом человек
@@ -232,9 +310,23 @@ export function TopologyPage() {
     if (nodes.length === 0) return;
 
     const positions = computePositions(nodes, edges, placed, relayout);
+    // «Разложить» пересчитывает раскладку прямо здесь, поэтому и шаг
+    // истории записывается здесь: к моменту нажатия кнопки новых координат
+    // ещё не существует, а к моменту выхода отсюда прежние уже затёрты.
+    const was = beforeRelayout.current;
+    if (was) {
+      beforeRelayout.current = null;
+      history.push({
+        title: 'раскладка схемы',
+        devices: [...positions]
+          .map(([id, to]) => ({ id, from: was.get(id), to }))
+          .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
+      });
+    }
     const { deviceCells, boxes } = buildGraph(
       graph, { nodes, edges, groups }, { look, scheme, router: look.edgeRouter, positions },
     );
+    boxesRef.current = boxes;
 
     // Заведённые до появления ручной правки группы получают посчитанную
     // рамку один раз — дальше она живёт своей жизнью.
@@ -278,7 +370,23 @@ export function TopologyPage() {
       setSearchParams(rest, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, groups, look, relayout, canEdit, scheme]);
+  }, [nodes, edges, groups, look, relayout, redraw, canEdit, scheme]);
+
+  // Ctrl+Z и Ctrl+Shift+Z — там же, где они везде. Внутри полей ввода не
+  // перехватываются: там своя отмена, и она нужнее.
+  useEffect(() => {
+    if (!canEdit) return;
+    function onKey(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
+      const active = document.activeElement;
+      if (active && ['INPUT', 'TEXTAREA'].includes(active.tagName)) return;
+      event.preventDefault();
+      if (event.shiftKey) history.redo();
+      else history.undo();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canEdit, history]);
 
   /** Новое устройство появляется в середине видимой области. */
   function placeNewDevice(deviceId: number) {
@@ -314,6 +422,24 @@ export function TopologyPage() {
               Группы
             </Button>
           )}
+          {canEdit && (
+            <Button.Group>
+              <Button
+                variant="default" px={10} disabled={!history.canUndo}
+                title={history.canUndo ? `Отменить: ${history.canUndo} (Ctrl+Z)` : 'Отменять нечего'}
+                onClick={history.undo}
+              >
+                <IconArrowBackUp size={16} />
+              </Button>
+              <Button
+                variant="default" px={10} disabled={!history.canRedo}
+                title={history.canRedo ? `Вернуть: ${history.canRedo} (Ctrl+Shift+Z)` : 'Возвращать нечего'}
+                onClick={history.redo}
+              >
+                <IconArrowForwardUp size={16} />
+              </Button>
+            </Button.Group>
+          )}
           <AppearanceMenu value={look} onChange={changeLook} />
           {/* Разложить и вписать — разные жесты: первое пересчитывает
               расположение узлов, второе только подгоняет масштаб под то,
@@ -324,6 +450,7 @@ export function TopologyPage() {
               variant="default" leftSection={<IconLayoutDistributeHorizontal size={16} />}
               onClick={() => {
                 if (!confirm('Разложить схему заново? Расположение узлов, выставленное руками, будет пересчитано.')) return;
+                beforeRelayout.current = new Map(placed.current);
                 setRelayout((n) => n + 1);
               }}
             >
@@ -358,6 +485,8 @@ export function TopologyPage() {
         выделенное. Узел за рамку своей группы не выходит, а состав группы меняется только явно.
         {canEdit && ' Shift с растяжкой по пустому месту выделяет несколько устройств рамкой, Shift по узлу добавляет'
           + ' его к выделенным: дальше их двигают за любое из них и удаляют разом.'}
+        {canEdit && ' Ctrl+Z возвращает расположение назад, Ctrl+Shift+Z — вперёд; заведение и удаление так не'
+          + ' отменяются. На панели рамки есть «разложить содержимое рядами».'}
       </Text>
       {paper.markedCount > 1 && (
         <Group gap="xs">

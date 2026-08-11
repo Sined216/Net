@@ -30,6 +30,8 @@ export interface JointActions {
   editGroup: (groupId: number) => void;
   addSubgroup: (groupId: number) => void;
   removeGroup: (groupId: number) => void;
+  /** Разложить содержимое группы рядами внутри её рамки. */
+  layoutGroup: (groupId: number) => void;
 }
 
 /** Что полотно сообщает странице. */
@@ -37,7 +39,10 @@ export interface PaperHandlers {
   /** Протянули кабель от одной ячейки к другой. */
   onConnect: (source: dia.Element, target: dia.Element) => void;
   onLinkClick: (linkId: number) => void;
-  onDeviceMoved: (deviceId: number, x: number, y: number) => void;
+  /** Устройства, переехавшие одним жестом. Списком, а не по одному: за
+   * рамку группы уезжает всё её содержимое, а выделенную рамкой пачку тянут
+   * целиком — и отменять такое движение надо тоже целиком. */
+  onDevicesMoved: (moves: { id: number; x: number; y: number }[]) => void;
   onGroupMoved: (groupId: number, box: Box) => void;
   /** Delete по выделенному. `devices` — устройства, выделенные рамкой; когда
    * их несколько, `selection` не в счёт. */
@@ -110,6 +115,7 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     editGroup: (id) => actions.current.editGroup(id),
     addSubgroup: (id) => actions.current.addSubgroup(id),
     removeGroup: (id) => actions.current.removeGroup(id),
+    layoutGroup: (id) => actions.current.layoutGroup(id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
@@ -411,18 +417,21 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     paper.on('element:pointerup', (view: dia.ElementView) => {
       if (!canEdit) return;
       const model = view.model;
+      const moves: { id: number; x: number; y: number }[] = [];
+      const remember = (element: dia.Element) => {
+        const center = element.getBBox().center();
+        moves.push({ id: element.get('deviceId'), x: center.x, y: center.y });
+      };
+
       if (lead && String(model.id) === lead.id) {
         for (const id of lead.others.keys()) {
           const element = graph.getCell(id) as dia.Element | undefined;
-          if (!element) continue;
-          const center = element.getBBox().center();
-          handlers.current.onDeviceMoved(element.get('deviceId'), center.x, center.y);
+          if (element) remember(element);
         }
         lead = null;
       }
       if (model.get('kind') === 'device') {
-        const center = model.getBBox().center();
-        handlers.current.onDeviceMoved(model.get('deviceId'), center.x, center.y);
+        remember(model as dia.Element);
       } else if (model.get('kind') === 'group') {
         const box = model.getBBox();
         handlers.current.onGroupMoved(model.get('groupId'), {
@@ -431,11 +440,10 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
         // Содержимое уехало вместе с рамкой — его новые координаты тоже нужно
         // записать: в базе они абсолютные.
         for (const child of model.getEmbeddedCells({ deep: true })) {
-          if (child.get('kind') !== 'device') continue;
-          const at = (child as dia.Element).getBBox().center();
-          handlers.current.onDeviceMoved(child.get('deviceId'), at.x, at.y);
+          if (child.get('kind') === 'device') remember(child as dia.Element);
         }
       }
+      if (moves.length) handlers.current.onDevicesMoved(moves);
     });
 
     // Растянули рамку за угол. Размер меняется на каждое движение мыши, а

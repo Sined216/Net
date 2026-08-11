@@ -433,24 +433,47 @@ export function computePositions(
   return result;
 }
 
-/** Рамки групп: заданная руками, иначе — по содержимому. */
+/** Рамки групп: заданная руками, иначе — по содержимому.
+ *
+ * Подгруппы считаются всегда, даже когда у родителя рамка уже задана.
+ * Раньше расчёт на такой рамке останавливался и внутрь не заглядывал —
+ * подгруппы просто не рисовались. Заметить это было непросто: пока рамку
+ * родителя ни разу не двигали, её тоже считали по содержимому, и всё
+ * работало; но посчитанная рамка один раз сохраняется в базу, и со
+ * следующего открытия схемы подгруппы исчезали.
+ */
 export function computeBoxes(
   groups: TopologyGroupOut[],
   nodes: TopologyNode[],
   positions: Map<number, Point>,
 ): Map<number, Box> {
   const boxes = new Map<number, Box>();
+
   const measure = (group: TopologyGroupOut, visited: Set<number>): Box | null => {
     if (visited.has(group.id)) return null;
     visited.add(group.id);
 
+    // Дети — раньше себя, независимо от того, задана ли своя рамка: их
+    // рамки живут отдельно, и пропускать их нельзя.
+    const inner: Box[] = [];
+    for (const child of groups.filter((g) => g.parent_id === group.id)) {
+      const box = measure(child, visited);
+      if (box) inner.push(box);
+    }
+
     const stored = storedBox(group);
     if (stored) {
       boxes.set(group.id, stored);
+      // Подгруппа не должна торчать из родителя: рамку родителя могли
+      // сузить руками уже после того, как посчиталась дочерняя.
+      for (const child of groups.filter((g) => g.parent_id === group.id)) {
+        const box = boxes.get(child.id);
+        if (box) boxes.set(child.id, fitInside(box, stored));
+      }
       return stored;
     }
 
-    const parts: Box[] = [];
+    const parts: Box[] = [...inner];
     for (const node of nodes) {
       if (node.topology_group_id !== group.id) continue;
       const at = positions.get(node.id);
@@ -459,10 +482,6 @@ export function computeBoxes(
         x: at.x - NODE.width / 2, y: at.y - NODE.height / 2,
         width: NODE.width, height: NODE.height,
       });
-    }
-    for (const child of groups.filter((g) => g.parent_id === group.id)) {
-      const box = measure(child, visited);
-      if (box) parts.push(box);
     }
     // Пустая группа без заданной рамки не рисуется: пустой прямоугольник
     // только мешает, а сама группа никуда не делась.
@@ -483,4 +502,73 @@ export function computeBoxes(
 
   for (const group of groups.filter((g) => g.parent_id == null)) measure(group, new Set());
   return boxes;
+}
+
+/** Разложить содержимое группы решёткой внутри её рамки.
+ *
+ * Общая раскладка схемы про группы не знает: она разводит узлы по связям, и
+ * содержимое рамки у неё сбивается в кучу — особенно после того, как рамку
+ * подвинули или сузили руками. Разбирать эту кучу мышью по одной карточке —
+ * то, чего никто делать не станет.
+ *
+ * Решётка, а не пружины: внутри рамки места мало, узлов десяток, и ровные
+ * ряды читаются лучше любой симуляции. Порядок — тот, в котором устройства
+ * пришли с сервера (по коду), чтобы раскладка была одинаковой при повторном
+ * нажатии.
+ *
+ * Рамка при нужде подрастает вниз: втискивать двадцать карточек в рамку на
+ * четыре значило бы положить их друг на друга.
+ */
+export function layoutInsideGroup(
+  box: Box,
+  ids: number[],
+  /** Рамки подгрупп: их содержимое раскладывается своей кнопкой, а
+   * накрывать их карточками нельзя. */
+  inner: Box[] = [],
+): { positions: Map<number, Point>; box: Box } {
+  const gapX = 28;
+  const gapY = 26;
+  const side = 18;
+  // Ряды начинаются под подписью группы, а если внутри есть подгруппы — под
+  // ними: класть карточки поверх чужой рамки значит прятать её.
+  const top = inner.length
+    ? Math.max(...inner.map((b) => b.y + b.height)) - box.y + gapY
+    : 34;
+  const stepX = NODE.width + gapX;
+  const stepY = NODE.height + gapY;
+
+  const usable = Math.max(box.width - side * 2, NODE.width);
+  const columns = Math.max(1, Math.min(ids.length, Math.floor((usable + gapX) / stepX)));
+  const rows = Math.ceil(ids.length / columns);
+
+  const positions = new Map<number, Point>();
+  ids.forEach((id, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    positions.set(id, {
+      x: box.x + side + column * stepX + NODE.width / 2,
+      y: box.y + top + row * stepY + NODE.height / 2,
+    });
+  });
+
+  const needed = top + rows * stepY - gapY + side;
+  return {
+    positions,
+    box: needed > box.height ? { ...box, height: needed } : box,
+  };
+}
+
+/** Вложить рамку в рамку: сначала подвинуть, а если не влезает — ужать.
+ * Сверху отступ больше: там подпись группы. */
+function fitInside(box: Box, frame: Box): Box {
+  const pad = 10;
+  const top = 26;
+  const width = Math.min(box.width, Math.max(GROUP_MIN.width, frame.width - pad * 2));
+  const height = Math.min(box.height, Math.max(GROUP_MIN.height, frame.height - top - pad));
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(box.x, frame.x + pad), Math.max(frame.x + pad, frame.x + frame.width - width - pad)),
+    y: Math.min(Math.max(box.y, frame.y + top), Math.max(frame.y + top, frame.y + frame.height - height - pad)),
+  };
 }

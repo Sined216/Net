@@ -33,6 +33,7 @@ const ICONS: Record<string, string> = {
   trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3',
   folderPlus: 'M12 19H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v3M16 19h6M19 16v6',
   plug: 'M7 12h10M9.5 8.5V5M14.5 8.5V5M7 12v2a5 5 0 0 0 5 5v3',
+  grid: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
 };
 
 function button(icon: string, title: string, color: string, index: number, look: ToolsLook,
@@ -139,15 +140,18 @@ export function deviceTools(deviceId: number, actions: {
 }
 
 export function groupTools(groupId: number, actions: {
-  editGroup: Action; addSubgroup: Action; removeGroup: Action;
+  editGroup: Action; addSubgroup: Action; removeGroup: Action; layoutGroup: Action;
 }, color: string, look: ToolsLook): dia.ToolsView {
   const icon = look.paint.icon;
   return new dia.ToolsView({
     name: 'group',
     tools: [
       button(ICONS.pencil, 'Название, цвет и состав группы', icon, 0, look, () => actions.editGroup(groupId)),
-      button(ICONS.folderPlus, 'Добавить подгруппу', icon, 1, look, () => actions.addSubgroup(groupId)),
-      button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', 2, look,
+      // Общая раскладка про группы не знает, и содержимое рамки сбивается
+      // в кучу — особенно после того, как рамку двигали руками.
+      button(ICONS.grid, 'Разложить содержимое рядами', icon, 1, look, () => actions.layoutGroup(groupId)),
+      button(ICONS.folderPlus, 'Добавить подгруппу', icon, 2, look, () => actions.addSubgroup(groupId)),
+      button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', 3, look,
              () => actions.removeGroup(groupId)),
       new ResizeControl({ handleAttributes: { fill: look.paint.plate, stroke: color } }),
     ],
