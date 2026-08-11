@@ -8,7 +8,11 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [baseUrl, setBaseUrlField] = useState(currentBaseUrl());
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('change-me-please');
+  // Пароль не подставляется. Раньше в поле стоял `change-me-please` — пароль
+  // по умолчанию из времён, когда его никто не менял. На установке, где
+  // пароль свой, это ровно тот случай, когда человек жмёт «Войти» не глядя и
+  // получает «неверный пароль», не понимая почему.
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // signIn() только обновляет состояние пользователя в контексте — сам на
