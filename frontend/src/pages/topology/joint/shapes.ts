@@ -24,12 +24,19 @@ export const NODE = { width: NODE_WIDTH, height: 62 };
 export function nodeMetrics(look: TopologyAppearance) {
   const lines = [look.deviceSubtitle, look.deviceTemplate, look.deviceManufacturer]
     .filter(Boolean).length;
-  const titleY = 12 + look.deviceTitleSize;          // базовая линия названия
-  const step = look.deviceLineSize + 5;
-  const firstLineY = titleY + look.deviceLineSize + 3;
+  const pad = 11;
+  // Всё считается по середине строки, а не по базовой линии букв: от базовой
+  // линии положение зависит ещё и от размера шрифта, и кружок цвета модели,
+  // заданный отдельно, переставал совпадать с названием, стоило поменять его
+  // размер.
+  const titleY = pad + look.deviceTitleSize / 2;
+  const step = look.deviceLineSize + 6;
+  // Между названием и первой строкой — воздух: вплотную они читаются как
+  // один абзац, а это разные вещи.
+  const firstLineY = titleY + look.deviceTitleSize / 2 + 9 + look.deviceLineSize / 2;
   const height = lines
-    ? firstLineY + (lines - 1) * step + 10
-    : titleY + 12;
+    ? firstLineY + (lines - 1) * step + look.deviceLineSize / 2 + pad
+    : titleY + look.deviceTitleSize / 2 + pad;
   return { width: NODE_WIDTH, height, titleY, firstLineY, step, lines };
 }
 export const STUB_SIZE = 26;
@@ -56,23 +63,28 @@ export const DeviceShape = dia.Element.define(
         x: 1.5, y: 1.5, width: 'calc(w-3)', height: 'calc(h-3)', rx: 8.5, ry: 8.5,
         fill: '#ffffff',
       },
-      dot: { cx: 17, cy: 22, r: 4, fill: NEUTRAL },
+      // Кружок цвета модели стоит вровень с названием: его `cy` задаётся у
+      // экземпляра вместе с положением названия.
+      dot: { cx: 17, r: 4, fill: NEUTRAL },
       title: {
-        x: 28, fontFamily: 'inherit',
+        x: 28, fontFamily: 'inherit', textVerticalAnchor: 'middle',
         // Длинное название обрезается многоточием по месту, а не по числу
         // букв: ширину меряет браузер, и «Коммутатор цеха 1» не наезжает на
         // счётчик портов справа.
         textWrap: { width: -74, maxLineCount: 1, ellipsis: true },
       },
-      ports: { x: 'calc(w-11)', textAnchor: 'end', fill: '#868e96', fontFamily: 'inherit' },
+      ports: {
+        x: 'calc(w-11)', textAnchor: 'end', textVerticalAnchor: 'middle',
+        fill: '#868e96', fontFamily: 'inherit',
+      },
       // Три строки под названием: код, модель, фирма. Каждая включается
       // отдельно, выключенная просто пуста и места не занимает — её место
       // считается заранее, в nodeMetrics.
       // Размер, положение и обрезка длинного текста задаются у экземпляра:
       // они зависят от настроек вида и от того, какие строки включены.
-      line1: { x: 11, fontFamily: 'inherit' },
-      line2: { x: 11, fontFamily: 'inherit' },
-      line3: { x: 11, fontFamily: 'inherit' },
+      line1: { x: 11, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
+      line2: { x: 11, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
+      line3: { x: 11, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
     },
   },
   {
@@ -99,9 +111,18 @@ export const GroupShape = dia.Element.define(
         width: 'calc(w)', height: 'calc(h)', rx: 12, ry: 12,
         fill: 'transparent', stroke: '#4dabf7', strokeWidth: 1.5,
       },
-      labelBack: { x: 8, y: -9, height: 18, rx: 6, ry: 6, fill: '#ffffff' },
-      label: { x: 14, y: 4, fontSize: 12, fontWeight: 600, fill: '#4dabf7', fontFamily: 'inherit' },
-      // Размер подписи задаётся у экземпляра — он в настройках вида.
+      // Подложка меряется по самой подписи (`ref` и `calc`), а не по числу
+      // букв: ширина буквы у кириллицы и латиницы разная, и подобранный на
+      // глаз коэффициент оставлял то пустое поле справа, то обрезанный хвост.
+      labelBack: {
+        ref: 'label',
+        x: 'calc(x-9)', y: 'calc(y-5)', width: 'calc(w+18)', height: 'calc(h+10)',
+        rx: 7, ry: 7, fill: '#ffffff',
+      },
+      label: {
+        x: 14, fontSize: 12, fontWeight: 600, fill: '#4dabf7', fontFamily: 'inherit',
+        textVerticalAnchor: 'middle',
+      },
     },
   },
   {

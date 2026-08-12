@@ -99,16 +99,18 @@ function addGroups(
           rx: look.groupRadius, ry: look.groupRadius,
           fill: look.groupFill > 0 ? tint(accent, look.groupFill * fade) : 'transparent',
         },
+        // Врезкой подпись сидит на самом контуре рамки, внутри — чуть ниже
+        // него. Подложка едет за подписью сама: её размер и положение
+        // считаются от текста.
         label: {
           text: look.groupTitle === 'hidden' ? '' : title,
           fill: accent,
           fontSize: look.groupTitleSize,
+          y: look.groupTitle === 'onFrame' ? 0 : look.groupTitleSize,
         },
         labelBack: {
-          width: look.groupTitle === 'hidden' ? 0 : title.length * (look.groupTitleSize * 0.6) + 14,
-          height: look.groupTitleSize + 6,
+          display: look.groupTitle === 'hidden' ? 'none' : 'block',
           fill: look.groupTitle === 'onFrame' ? paint.canvas : 'transparent',
-          y: look.groupTitle === 'onFrame' ? -9 : 2,
         },
       },
     });
@@ -170,9 +172,11 @@ function addDevices(
             : null,
         },
         body: { fill: colors.fill },
-        dot: { fill: accent },
         // Крупная строка — название железки: на схеме ищут «станок №7», а
         // не «PLC-0002».
+        // Кружок цвета модели, название и счётчик портов стоят на одной
+        // средней линии — иначе при смене размера шрифта они разъезжаются.
+        dot: { cy: card.titleY, fill: accent },
         title: {
           text: node.name || node.template_name || node.device_type || node.code,
           fill: colors.title,
