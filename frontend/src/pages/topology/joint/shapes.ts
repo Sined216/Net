@@ -1,4 +1,5 @@
 import { dia } from '@joint/core';
+import type { TopologyAppearance } from '../appearance';
 
 /** Фигуры схемы на JointJS: устройство, рамка группы и заглушка свободного
  * конца кабеля.
@@ -8,7 +9,29 @@ import { dia } from '@joint/core';
  * вызов при каждом рендере плодил бы одинаковые типы.
  */
 
-export const NODE = { width: 178, height: 62 };
+export const NODE_WIDTH = 178;
+/** Размер карточки по умолчанию — им фигура объявляется; настоящий считается
+ * по настройкам, потому что строк под названием бывает от нуля до трёх. */
+export const NODE = { width: NODE_WIDTH, height: 62 };
+
+/** Сколько строк под названием и где они стоят.
+ *
+ * Состав карточки — настройка: одному нужен код с наклейки, другому фирма и
+ * модель. Поэтому и высота карточки не константа: три строки на карточке
+ * высотой в одну — это наложение текста друг на друга, а пустая карточка на
+ * три строки — дыра в схеме.
+ */
+export function nodeMetrics(look: TopologyAppearance) {
+  const lines = [look.deviceSubtitle, look.deviceTemplate, look.deviceManufacturer]
+    .filter(Boolean).length;
+  const titleY = 12 + look.deviceTitleSize;          // базовая линия названия
+  const step = look.deviceLineSize + 5;
+  const firstLineY = titleY + look.deviceLineSize + 3;
+  const height = lines
+    ? firstLineY + (lines - 1) * step + 10
+    : titleY + 12;
+  return { width: NODE_WIDTH, height, titleY, firstLineY, step, lines };
+}
 export const STUB_SIZE = 26;
 export const GROUP_MIN = { width: 240, height: 140 };
 export const NEUTRAL = '#adb5bd';
@@ -35,23 +58,21 @@ export const DeviceShape = dia.Element.define(
       },
       dot: { cx: 17, cy: 22, r: 4, fill: NEUTRAL },
       title: {
-        // 500, а не 700: название и так самое крупное на карточке, и жирность
-        // поверх размера делала его тяжёлым — на схеме из полусотни узлов это
-        // полсотни жирных строк подряд.
-        x: 28, y: 26, fontSize: 14, fontWeight: 500, fill: '#212529', fontFamily: 'inherit',
+        x: 28, fontFamily: 'inherit',
         // Длинное название обрезается многоточием по месту, а не по числу
         // букв: ширину меряет браузер, и «Коммутатор цеха 1» не наезжает на
         // счётчик портов справа.
         textWrap: { width: -74, maxLineCount: 1, ellipsis: true },
       },
-      ports: {
-        x: 'calc(w-11)', y: 26, fontSize: 12, fontWeight: 600, textAnchor: 'end',
-        fill: '#868e96', fontFamily: 'inherit',
-      },
-      subtitle: {
-        x: 11, y: 45, fontSize: 12, fill: '#868e96', fontFamily: 'inherit',
-        textWrap: { width: -22, maxLineCount: 1, ellipsis: true },
-      },
+      ports: { x: 'calc(w-11)', textAnchor: 'end', fill: '#868e96', fontFamily: 'inherit' },
+      // Три строки под названием: код, модель, фирма. Каждая включается
+      // отдельно, выключенная просто пуста и места не занимает — её место
+      // считается заранее, в nodeMetrics.
+      // Размер, положение и обрезка длинного текста задаются у экземпляра:
+      // они зависят от настроек вида и от того, какие строки включены.
+      line1: { x: 11, fontFamily: 'inherit' },
+      line2: { x: 11, fontFamily: 'inherit' },
+      line3: { x: 11, fontFamily: 'inherit' },
     },
   },
   {
@@ -61,7 +82,9 @@ export const DeviceShape = dia.Element.define(
       { tagName: 'circle', selector: 'dot' },
       { tagName: 'text', selector: 'title' },
       { tagName: 'text', selector: 'ports' },
-      { tagName: 'text', selector: 'subtitle' },
+      { tagName: 'text', selector: 'line1' },
+      { tagName: 'text', selector: 'line2' },
+      { tagName: 'text', selector: 'line3' },
     ],
   },
 );
@@ -78,6 +101,7 @@ export const GroupShape = dia.Element.define(
       },
       labelBack: { x: 8, y: -9, height: 18, rx: 6, ry: 6, fill: '#ffffff' },
       label: { x: 14, y: 4, fontSize: 12, fontWeight: 600, fill: '#4dabf7', fontFamily: 'inherit' },
+      // Размер подписи задаётся у экземпляра — он в настройках вида.
     },
   },
   {

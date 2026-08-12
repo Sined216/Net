@@ -24,7 +24,7 @@ export function AppearanceMenu({ value, onChange }: Props) {
         <Button variant="light" leftSection={<IconPalette size={16} />}>Вид</Button>
       </Popover.Target>
       <Popover.Dropdown p="sm">
-        <ScrollArea.Autosize mah={470} type="hover" offsetScrollbars>
+        <ScrollArea.Autosize mah={540} type="hover" offsetScrollbars>
           <Stack gap="xs" pr={6}>
             <Section title="Рамки групп" />
 
@@ -84,16 +84,65 @@ export function AppearanceMenu({ value, onChange }: Props) {
               onChange={(e) => set('groupCount', e.currentTarget.checked)}
             />
 
+            <Field label={`Размер подписи группы — ${value.groupTitleSize} px`}>
+              <Slider
+                size="sm" min={8} max={20} step={1} value={value.groupTitleSize}
+                disabled={value.groupTitle === 'hidden'}
+                onChange={(v) => set('groupTitleSize', v)}
+                marks={[{ value: 8 }, { value: 12 }, { value: 20 }]}
+              />
+            </Field>
+
             <Divider my={4} />
             <Section title="Узлы устройств" />
+            <Text size="xs" c="dimmed">
+              Строки под названием: включённые идут сверху вниз в этом порядке, карточка растёт и сжимается сама.
+            </Text>
             <Switch
-              size="xs" label="Код устройства под названием" checked={value.deviceSubtitle}
+              size="xs" label="Код устройства" checked={value.deviceSubtitle}
               onChange={(e) => set('deviceSubtitle', e.currentTarget.checked)}
+            />
+            <Switch
+              size="xs" label="Название модели" checked={value.deviceTemplate}
+              onChange={(e) => set('deviceTemplate', e.currentTarget.checked)}
+            />
+            <Switch
+              size="xs" label="Фирма-изготовитель" checked={value.deviceManufacturer}
+              onChange={(e) => set('deviceManufacturer', e.currentTarget.checked)}
             />
             <Switch
               size="xs" label="Счётчик портов" checked={value.devicePorts}
               onChange={(e) => set('devicePorts', e.currentTarget.checked)}
             />
+
+            <Field label={`Название — ${value.deviceTitleSize} px`}>
+              <Slider
+                size="sm" min={9} max={24} step={1} value={value.deviceTitleSize}
+                onChange={(v) => set('deviceTitleSize', v)}
+                marks={[{ value: 9 }, { value: 14 }, { value: 24 }]}
+              />
+            </Field>
+            <Field label={`Жирность названия — ${value.deviceTitleWeight}`}>
+              <Slider
+                size="sm" min={300} max={800} step={100} value={value.deviceTitleWeight}
+                onChange={(v) => set('deviceTitleWeight', v)}
+                marks={[{ value: 300 }, { value: 500 }, { value: 700 }]}
+              />
+            </Field>
+            <Field label={`Строки под названием — ${value.deviceLineSize} px`}>
+              <Slider
+                size="sm" min={8} max={18} step={1} value={value.deviceLineSize}
+                onChange={(v) => set('deviceLineSize', v)}
+                marks={[{ value: 8 }, { value: 12 }, { value: 18 }]}
+              />
+            </Field>
+            <Field label={`Жирность строк — ${value.deviceLineWeight}`}>
+              <Slider
+                size="sm" min={300} max={700} step={100} value={value.deviceLineWeight}
+                onChange={(v) => set('deviceLineWeight', v)}
+                marks={[{ value: 300 }, { value: 400 }, { value: 700 }]}
+              />
+            </Field>
             <Switch
               size="xs" label="Свечение по цвету модели" checked={value.deviceGlow}
               onChange={(e) => set('deviceGlow', e.currentTarget.checked)}
@@ -121,6 +170,14 @@ export function AppearanceMenu({ value, onChange }: Props) {
               disabled={!value.edgeLabels}
               onChange={(e) => set('edgeLabelName', e.currentTarget.checked)}
             />
+            <Field label={`Размер подписи порта — ${value.edgeLabelSize} px`}>
+              <Slider
+                size="sm" min={7} max={16} step={1} value={value.edgeLabelSize}
+                disabled={!value.edgeLabels}
+                onChange={(v) => set('edgeLabelSize', v)}
+                marks={[{ value: 7 }, { value: 10 }, { value: 16 }]}
+              />
+            </Field>
 
             <Divider my={4} />
             <Section title="Полотно" />

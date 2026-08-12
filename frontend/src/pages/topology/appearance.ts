@@ -17,10 +17,20 @@ export interface TopologyAppearance {
   /** Показывать число устройств рядом с названием группы. */
   groupCount: boolean;
 
-  /** Вторая строка узла — код устройства под названием. */
-  deviceSubtitle: boolean;
+  /** Строки под названием. Каждая — своя, потому что нужны они разным
+   * людям: снабженцу важна фирма и модель, наладчику — код на наклейке.
+   * Карточка растёт и сжимается по числу включённых строк. */
+  deviceSubtitle: boolean;      // код устройства
+  deviceTemplate: boolean;      // название модели
+  deviceManufacturer: boolean;  // фирма-изготовитель
   /** Счётчик «занято/всего» портов. */
   devicePorts: boolean;
+  /** Размер и жирность названия и строк под ним. Вкус, а не смысл: одному
+   * нужен плакат на стену, другому — плотная схема на весь цех. */
+  deviceTitleSize: number;
+  deviceTitleWeight: number;
+  deviceLineSize: number;
+  deviceLineWeight: number;
   /** Цветное свечение вокруг узла. Без него схема суше, но спокойнее. */
   deviceGlow: boolean;
   /** Тёмная карточка узла. На светлом полотне цветная рамка модели читается
@@ -37,6 +47,10 @@ export interface TopologyAppearance {
   /** Название порта в подписи рядом с номером. Номер остаётся всегда: это
    * то, чем порт опознают на железке. */
   edgeLabelName: boolean;
+  /** Размер подписи порта. */
+  edgeLabelSize: number;
+  /** Размер подписи группы. */
+  groupTitleSize: number;
 
   background: 'dots' | 'lines' | 'cross' | 'none';
 }
@@ -50,7 +64,13 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   groupCount: true,
 
   deviceSubtitle: true,
+  deviceTemplate: false,
+  deviceManufacturer: false,
   devicePorts: true,
+  deviceTitleSize: 14,
+  deviceTitleWeight: 500,
+  deviceLineSize: 12,
+  deviceLineWeight: 400,
   deviceGlow: true,
   deviceDark: true,
 
@@ -58,6 +78,8 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   edgeWidth: 2,
   edgeLabels: true,
   edgeLabelName: true,
+  edgeLabelSize: 10,
+  groupTitleSize: 12,
 
   background: 'dots',
 };

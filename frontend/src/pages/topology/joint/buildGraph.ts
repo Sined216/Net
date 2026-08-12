@@ -1,7 +1,8 @@
 import { dia, shapes } from '@joint/core';
 import { canvasColors, nodeColors, tint, type TopologyAppearance } from '../appearance';
 import {
-  DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, STUB_SIZE, withAlpha,
+  DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, nodeMetrics,
+  STUB_SIZE, withAlpha,
 } from './shapes';
 import { groupDepth } from '../groups';
 import { computeForceLayout, type LayoutNode, type Spring } from '../layout';
@@ -54,11 +55,12 @@ export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): 
 
   const colors = nodeColors(look.deviceDark, scheme);
   const paint = canvasColors(scheme);
-  const boxes = computeBoxes(groups, nodes, positions);
+  const card = nodeMetrics(look);
+  const boxes = computeBoxes(groups, nodes, positions, look);
 
   const groupCells = addGroups(graph, groups, nodes, boxes, look, paint);
-  const deviceCells = addDevices(graph, nodes, positions, boxes, groupCells, look, colors);
-  addLinks(graph, edges, deviceCells, positions, look, paint, router);
+  const deviceCells = addDevices(graph, nodes, positions, boxes, groupCells, look, colors, card);
+  addLinks(graph, edges, deviceCells, positions, look, paint, router, card);
 
   return { deviceCells, boxes };
 }
@@ -97,9 +99,14 @@ function addGroups(
           rx: look.groupRadius, ry: look.groupRadius,
           fill: look.groupFill > 0 ? tint(accent, look.groupFill * fade) : 'transparent',
         },
-        label: { text: look.groupTitle === 'hidden' ? '' : title, fill: accent },
+        label: {
+          text: look.groupTitle === 'hidden' ? '' : title,
+          fill: accent,
+          fontSize: look.groupTitleSize,
+        },
         labelBack: {
-          width: look.groupTitle === 'hidden' ? 0 : title.length * 7 + 14,
+          width: look.groupTitle === 'hidden' ? 0 : title.length * (look.groupTitleSize * 0.6) + 14,
+          height: look.groupTitleSize + 6,
           fill: look.groupTitle === 'onFrame' ? paint.canvas : 'transparent',
           y: look.groupTitle === 'onFrame' ? -9 : 2,
         },
@@ -123,6 +130,7 @@ function addDevices(
   groupCells: Map<number, dia.Element>,
   look: TopologyAppearance,
   colors: ReturnType<typeof nodeColors>,
+  card: ReturnType<typeof nodeMetrics>,
 ): Map<number, dia.Element> {
   const cells = new Map<number, dia.Element>();
   for (const node of nodes) {
@@ -130,14 +138,22 @@ function addDevices(
     const raw = positions.get(node.id)!;
     const groupCell = node.topology_group_id != null ? groupCells.get(node.topology_group_id) : undefined;
     const frame = node.topology_group_id != null ? boxes.get(node.topology_group_id) : undefined;
+    // Строки под названием — только включённые, в постоянном порядке:
+    // код, модель, фирма. Пустая фирма строку не занимает.
+    const lines = [
+      look.deviceSubtitle ? node.code : null,
+      look.deviceTemplate ? node.template_name || node.device_type : null,
+      look.deviceManufacturer ? node.manufacturer : null,
+    ].filter((text): text is string => !!text);
     // Узел не должен торчать из своей рамки. Перетаскивание за неё не
     // выпускает само полотно, но координаты, пришедшие из базы, оно не
     // подрезает: рамку могли сузить, а устройство — перенести в группу
     // из другого угла схемы.
-    const at = clampToFrame({ x: raw.x - NODE.width / 2, y: raw.y - NODE.height / 2 }, frame);
+    const at = clampToFrame({ x: raw.x - card.width / 2, y: raw.y - card.height / 2 }, frame, card);
 
     const cell = new DeviceShape({
       position: at,
+      size: { width: card.width, height: card.height },
       kind: 'device',
       deviceId: node.id,
       z: 10,
@@ -155,17 +171,23 @@ function addDevices(
         },
         body: { fill: colors.fill },
         dot: { fill: accent },
-        // Крупная строка — название железки, мелкая под ней — её код: на
-        // схеме ищут «станок №7», а не «PLC-0002».
-        title: { text: node.name || node.template_name || node.device_type || node.code, fill: colors.title },
+        // Крупная строка — название железки: на схеме ищут «станок №7», а
+        // не «PLC-0002».
+        title: {
+          text: node.name || node.template_name || node.device_type || node.code,
+          fill: colors.title,
+          y: card.titleY,
+          fontSize: look.deviceTitleSize,
+          fontWeight: look.deviceTitleWeight,
+        },
         ports: {
           text: look.devicePorts ? `${node.ports_connected}/${node.ports_total}` : '',
           fill: node.ports_connected > 0 ? colors.portsBusy : colors.portsIdle,
+          y: card.titleY,
+          fontSize: look.deviceLineSize,
+          fontWeight: 600,
         },
-        subtitle: {
-          text: look.deviceSubtitle ? node.code : '',
-          fill: colors.subtitle,
-        },
+        ...lineAttrs(lines, card, look, colors.subtitle),
       },
     });
     graph.addCell(cell);
@@ -186,6 +208,7 @@ function addLinks(
   look: TopologyAppearance,
   paint: CanvasPaint,
   router: 'orthogonal' | 'straight',
+  card: ReturnType<typeof nodeMetrics>,
 ) {
   // Кабели, приходящие в одно устройство, должны входить в него в разных
   // точках, иначе при ортогональной разводке они ложатся друг на друга и
@@ -274,9 +297,9 @@ function addLinks(
         },
         labels: look.edgeLabels ? [
           portLabelCell(portText(edge.port_a_number, edge.interface_a_label, look), paint, true,
-                        labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id)),
+                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id)),
           portLabelCell(portText(edge.port_b_number, edge.interface_b_label, look), paint, false,
-                        labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id)),
+                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id)),
         ] : [],
       }));
       continue;
@@ -291,7 +314,7 @@ function addLinks(
 
     const anchor = deviceCell.getBBox();
     const stub = new StubShape({
-      position: { x: anchor.x + NODE.width / 2 - STUB_SIZE / 2, y: anchor.y + NODE.height + 42 },
+      position: { x: anchor.x + card.width / 2 - STUB_SIZE / 2, y: anchor.y + card.height + 42 },
       kind: 'stub',
       linkId: edge.link_id,
       z: 10,
@@ -314,7 +337,7 @@ function addLinks(
         portLabelCell(
           liveIsA ? portText(edge.port_a_number, edge.interface_a_label, look)
                   : portText(edge.port_b_number, edge.interface_b_label, look),
-          paint, true,
+          paint, true, look.edgeLabelSize,
         ),
       ] : [],
     }));
@@ -330,13 +353,43 @@ function labelShift(ends: number[] | undefined, linkId: number): number {
 }
 
 /** Загнать узел внутрь рамки: рамка — это область, за которую он не выходит. */
-function clampToFrame(at: Point, frame: Box | undefined): Point {
+function clampToFrame(at: Point, frame: Box | undefined, card: { width: number; height: number }): Point {
   if (!frame) return at;
   const pad = 8;
   return {
-    x: Math.min(Math.max(at.x, frame.x + pad), Math.max(frame.x + pad, frame.x + frame.width - NODE.width - pad)),
-    y: Math.min(Math.max(at.y, frame.y + 24), Math.max(frame.y + 24, frame.y + frame.height - NODE.height - pad)),
+    x: Math.min(Math.max(at.x, frame.x + pad), Math.max(frame.x + pad, frame.x + frame.width - card.width - pad)),
+    y: Math.min(Math.max(at.y, frame.y + 24), Math.max(frame.y + 24, frame.y + frame.height - card.height - pad)),
   };
+}
+
+/** Строки под названием — по местам, посчитанным заранее. Выключенные
+ * остаются пустыми: убирать их из разметки нельзя, она общая на все узлы. */
+function lineAttrs(
+  lines: string[],
+  card: ReturnType<typeof nodeMetrics>,
+  look: TopologyAppearance,
+  fill: string,
+) {
+  const attrs: Record<string, unknown> = {};
+  for (let index = 0; index < 3; index++) {
+    const text = lines[index];
+    attrs[`line${index + 1}`] = text
+      ? {
+        text,
+        display: 'block',
+        y: card.firstLineY + index * card.step,
+        fontSize: look.deviceLineSize,
+        fontWeight: look.deviceLineWeight,
+        fill,
+        // Длинное название модели обрезается по месту, а не по числу букв.
+        textWrap: { width: -22, maxLineCount: 1, ellipsis: true },
+      }
+      // Выключенную строку прячем целиком. Видно её и так не было — на
+      // пустой текст JointJS кладёт прозрачный дефис-заполнитель, — но
+      // прятать то, чего не показываем, честнее, чем полагаться на это.
+      : { text: '', display: 'none' };
+  }
+  return attrs;
 }
 
 function portText(number: number | null | undefined, label: string | null | undefined,
@@ -361,7 +414,7 @@ const LABEL_DISTANCE = 26;
  * Размер ей задаётся по тексту (`ref` и `calc`) — без этого прямоугольник
  * остаётся нулевым и подложки не видно вовсе; ровно так она и не рисовалась,
  * хотя цвета ей были заданы. */
-function portLabelCell(text: string, paint: CanvasPaint, atSource: boolean, offset = 0) {
+function portLabelCell(text: string, paint: CanvasPaint, atSource: boolean, size: number, offset = 0) {
   return {
     position: { distance: atSource ? LABEL_DISTANCE : -LABEL_DISTANCE, offset },
     attrs: {
@@ -371,7 +424,7 @@ function portLabelCell(text: string, paint: CanvasPaint, atSource: boolean, offs
         fill: paint.plate, stroke: paint.plateBorder, strokeWidth: 1, rx: 4, ry: 4,
       },
       labelText: {
-        text, fontSize: 10, fontWeight: 600, fill: paint.plateText, fontFamily: 'inherit',
+        text, fontSize: size, fontWeight: 600, fill: paint.plateText, fontFamily: 'inherit',
         textAnchor: 'middle', textVerticalAnchor: 'middle',
       },
     },
@@ -446,7 +499,9 @@ export function computeBoxes(
   groups: TopologyGroupOut[],
   nodes: TopologyNode[],
   positions: Map<number, Point>,
+  look: TopologyAppearance,
 ): Map<number, Box> {
+  const card = nodeMetrics(look);
   const boxes = new Map<number, Box>();
 
   const measure = (group: TopologyGroupOut, visited: Set<number>): Box | null => {
@@ -479,8 +534,8 @@ export function computeBoxes(
       const at = positions.get(node.id);
       if (!at) continue;
       parts.push({
-        x: at.x - NODE.width / 2, y: at.y - NODE.height / 2,
-        width: NODE.width, height: NODE.height,
+        x: at.x - card.width / 2, y: at.y - card.height / 2,
+        width: card.width, height: card.height,
       });
     }
     // Пустая группа без заданной рамки не рисуется: пустой прямоугольник
@@ -525,6 +580,7 @@ export function layoutInsideGroup(
   /** Рамки подгрупп: их содержимое раскладывается своей кнопкой, а
    * накрывать их карточками нельзя. */
   inner: Box[] = [],
+  card: { width: number; height: number } = NODE,
 ): { positions: Map<number, Point>; box: Box } {
   const gapX = 28;
   const gapY = 26;
@@ -534,10 +590,10 @@ export function layoutInsideGroup(
   const top = inner.length
     ? Math.max(...inner.map((b) => b.y + b.height)) - box.y + gapY
     : 34;
-  const stepX = NODE.width + gapX;
-  const stepY = NODE.height + gapY;
+  const stepX = card.width + gapX;
+  const stepY = card.height + gapY;
 
-  const usable = Math.max(box.width - side * 2, NODE.width);
+  const usable = Math.max(box.width - side * 2, card.width);
   const columns = Math.max(1, Math.min(ids.length, Math.floor((usable + gapX) / stepX)));
   const rows = Math.ceil(ids.length / columns);
 
@@ -546,8 +602,8 @@ export function layoutInsideGroup(
     const column = index % columns;
     const row = Math.floor(index / columns);
     positions.set(id, {
-      x: box.x + side + column * stepX + NODE.width / 2,
-      y: box.y + top + row * stepY + NODE.height / 2,
+      x: box.x + side + column * stepX + card.width / 2,
+      y: box.y + top + row * stepY + card.height / 2,
     });
   });
 

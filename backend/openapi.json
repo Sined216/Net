@@ -3413,6 +3413,17 @@
             "title": "Id",
             "type": "integer"
           },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manufacturer"
+          },
           "name": {
             "anyOf": [
               {

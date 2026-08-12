@@ -26,6 +26,7 @@ import { loadAppearance, saveAppearance, type TopologyAppearance } from './topol
 import {
   buildGraph, computePositions, layoutInsideGroup, storedBox, type Box, type Point,
 } from './topology/joint/buildGraph';
+import { nodeMetrics } from './topology/joint/shapes';
 import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
@@ -176,7 +177,7 @@ export function TopologyPage() {
         .filter((g) => g.parent_id === groupId)
         .map((g) => boxesRef.current.get(g.id))
         .filter((b): b is Box => b != null);
-      const laid = layoutInsideGroup(box, inside, inner);
+      const laid = layoutInsideGroup(box, inside, inner, nodeMetrics(look));
       const grown = laid.box !== box
         ? [{ id: groupId, from: box, to: laid.box }]
         : [];

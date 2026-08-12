@@ -716,6 +716,10 @@ class TopologyNode(BaseModel):
     name: Optional[str] = None
     template_id: Optional[int] = None
     template_name: str
+    # Производитель берётся из модели: на карточке его показывают рядом с
+    # названием модели, и запрашивать ради этого весь список шаблонов
+    # (со всеми их портами) незачем.
+    manufacturer: Optional[str] = None
     device_type: str
     # Цвет модели — им красится рамка карточки. Раньше схема ради него
     # тянула весь список шаблонов со всеми их портами.

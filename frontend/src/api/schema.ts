@@ -2220,6 +2220,8 @@ export interface components {
             device_type: string;
             /** Id */
             id: number;
+            /** Manufacturer */
+            manufacturer?: string | null;
             /** Name */
             name?: string | null;
             /**
