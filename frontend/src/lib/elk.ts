@@ -91,6 +91,31 @@ export async function layoutLayered(
   }
 
   const pad = options.padding ?? { top: 34, side: 22 };
+  // Настройки алгоритма — общие для корня и для каждой рамки. ELK решает
+  // раскладку внутри рамки отдельной вложенной задачей и своих настроек у
+  // родителя не наследует: заданные только в корне, они действовали бы на
+  // расстояния между рамками, а внутри рамки зазоры оставались бы теми,
+  // что по умолчанию, — ровно так раньше и было, и раздвинуть тесную группу
+  // ползунком не получалось.
+  const spacing: Record<string, string> = {
+    'elk.algorithm': 'layered',
+    'elk.direction': options.direction,
+    // Без этого связь через рамку группы раскладке не видна: слои
+    // считаются отдельно внутри каждой рамки, и ряды соседних цехов
+    // выходят несогласованными.
+    'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+    'elk.layered.spacing.nodeNodeBetweenLayers': String(options.layerGap),
+    'elk.spacing.nodeNode': String(options.nodeGap),
+    // Линии не должны идти вплотную к карточкам: у них по концам подписи
+    // портов, и подпись, легшая на чужую карточку, не читается.
+    'elk.spacing.edgeNode': String(Math.round(options.nodeGap / 2)),
+    'elk.spacing.edgeEdge': '14',
+    // Куски сети, ни с чем не соединённые, укладываются рядом, а не
+    // растягивают собой первый ряд.
+    'elk.separateConnectedComponents': 'true',
+    'elk.spacing.componentComponent': String(options.layerGap),
+  };
+
   const build = (box: ElkBox): ElkNode => {
     const inner = childrenOf.get(box.id);
     if (!inner) return { id: box.id, width: box.width ?? 1, height: box.height ?? 1 };
@@ -98,6 +123,7 @@ export async function layoutLayered(
       id: box.id,
       children: inner.map(build),
       layoutOptions: {
+        ...spacing,
         'elk.padding': `[top=${pad.top},left=${pad.side},bottom=${pad.side},right=${pad.side}]`,
       },
     };
@@ -129,24 +155,7 @@ export async function layoutLayered(
   const graph: ElkNode = {
     id: ROOT,
     children: (childrenOf.get(ROOT) ?? []).map(build),
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': options.direction,
-      // Без этого связь через рамку группы раскладке не видна: слои
-      // считаются отдельно внутри каждой рамки, и ряды соседних цехов
-      // выходят несогласованными.
-      'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-      'elk.layered.spacing.nodeNodeBetweenLayers': String(options.layerGap),
-      'elk.spacing.nodeNode': String(options.nodeGap),
-      // Линии не должны идти вплотную к карточкам: у них по концам подписи
-      // портов, и подпись, легшая на чужую карточку, не читается.
-      'elk.spacing.edgeNode': String(Math.round(options.nodeGap / 2)),
-      'elk.spacing.edgeEdge': '14',
-      // Куски сети, ни с чем не соединённые, укладываются рядом, а не
-      // растягивают собой первый ряд.
-      'elk.separateConnectedComponents': 'true',
-      'elk.spacing.componentComponent': String(options.layerGap),
-    },
+    layoutOptions: spacing,
   };
   attach(graph);
 
