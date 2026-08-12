@@ -8,7 +8,7 @@ import type {
   VlanOut, VlanCreate,
   DeviceTemplateOut, DeviceTemplateCreate, DeviceTemplateUpdate,
   InterfaceTemplateOut, InterfaceTemplateCreate, InterfaceTemplateUpdate, PortsBulkCreate,
-  DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
+  DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate, DevicePositionsUpdate,
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
@@ -114,6 +114,11 @@ export const updateInterface = (id: number, body: InterfaceUpdate) => apiFetch<I
 export const deleteInterface = (id: number) => apiFetch<void>(`/interfaces/${id}`, { method: 'DELETE' });
 export const updateDevicePosition = (id: number, body: DevicePositionUpdate) =>
   apiFetch<DeviceOut>(`/devices/${id}/position`, { method: 'PATCH', body });
+/** Расположение сразу нескольких узлов: автоматическая раскладка двигает всю
+ * схему, и отдельный запрос на каждую железку — это сотня запросов на одно
+ * нажатие кнопки. */
+export const updateDevicePositions = (body: DevicePositionsUpdate) =>
+  apiFetch<void>('/devices/positions', { method: 'PATCH', body });
 
 // ---------- Topology groups ----------
 export const listTopologyGroups = () => apiFetch<TopologyGroupOut[]>('/topology-groups');

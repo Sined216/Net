@@ -166,6 +166,42 @@ def test_position_is_saved(client, headers, make_device):
     assert (response.json()["topology_x"], response.json()["topology_y"]) == (120.5, -40.0)
 
 
+def test_positions_are_saved_in_one_request(client, headers, make_device):
+    """Автоматическая раскладка двигает всю схему сразу, и отдельный запрос на
+    каждый узел здесь означал бы сотню запросов на одно нажатие кнопки."""
+    one = make_device()
+    two = make_device()
+    response = client.patch(
+        "/devices/positions",
+        json={"positions": [
+            {"id": one["id"], "x": 10.0, "y": 20.0},
+            {"id": two["id"], "x": -30.5, "y": 40.5},
+            # Устройства, которого уже нет: раскладка считалась по схеме, из
+            # которой его успели удалить.
+            {"id": 999_999, "x": 1.0, "y": 1.0},
+        ]},
+        headers=headers["editor"],
+    )
+    assert response.status_code == 204
+
+    saved = {
+        d["code"]: (d["topology_x"], d["topology_y"])
+        for d in client.get("/devices", headers=headers["viewer"]).json()["items"]
+    }
+    assert saved[one["code"]] == (10.0, 20.0)
+    assert saved[two["code"]] == (-30.5, 40.5)
+
+
+def test_positions_need_edit_rights(client, headers, make_device):
+    device = make_device()
+    response = client.patch(
+        "/devices/positions",
+        json={"positions": [{"id": device["id"], "x": 1.0, "y": 2.0}]},
+        headers=headers["viewer"],
+    )
+    assert response.status_code == 403
+
+
 def test_search_treats_wildcards_as_text(client, headers, make_device, db):
     """% и _ — шаблоны ILIKE, а не символы. Запрос «%» возвращал вообще всё,
     хотя человек ищет текст, а не пишет шаблон."""

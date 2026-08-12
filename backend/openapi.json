@@ -820,6 +820,30 @@
         "title": "DevicePage",
         "type": "object"
       },
+      "DevicePosition": {
+        "description": "То же, но с указанием, чьё это место: для записи сразу нескольких.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "id"
+        ],
+        "title": "DevicePosition",
+        "type": "object"
+      },
       "DevicePositionUpdate": {
         "description": "Позиция узла на топологии — сохраняется отдельно от общей формы\nредактирования устройства, обновляется при перетаскивании узла.",
         "properties": {
@@ -837,6 +861,21 @@
           "y"
         ],
         "title": "DevicePositionUpdate",
+        "type": "object"
+      },
+      "DevicePositionsUpdate": {
+        "description": "Расположение нескольких узлов сразу — результат автоматической\nраскладки схемы. Ограничение сверху не столько от злого умысла, сколько\nот опечатки в клиенте: схема на площадке больше пяти тысяч устройств не\nрисуется в любом случае.",
+        "properties": {
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/DevicePosition"
+            },
+            "maxItems": 5000,
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "title": "DevicePositionsUpdate",
         "type": "object"
       },
       "DeviceTagsUpdate": {
@@ -5785,6 +5824,64 @@
           }
         ],
         "summary": "Create Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/devices/positions": {
+      "patch": {
+        "description": "Расположение сразу всех узлов схемы — одним запросом.\n\nАвтоматическая раскладка двигает не одну железку, а всю схему: полторы\nсотни отдельных PATCH-ов на одно нажатие кнопки — это полторы сотни\nтранзакций и столько же сериализаций устройства в ответ, из которых\nклиенту не нужна ни одна.\n\nОбъявлено выше `/{device_id}`: иначе «positions» попадёт в этот путь как\nидентификатор. Про чужие идентификаторы запрос молчит — раскладка могла\nсчитаться по схеме, из которой устройство успели удалить, и ронять на\nэтом сохранение остальных незачем.",
+        "operationId": "update_device_positions_devices_positions_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePositionsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Device Positions",
         "tags": [
           "devices"
         ]

@@ -461,12 +461,19 @@ export function storedBox(group: TopologyGroupOut): Box | null {
 }
 
 /** Положение узлов: сохранённое в базе, затем сложившееся в этой сессии, и
- * только новым устройствам считается пружинная раскладка. */
+ * только новым устройствам — пружинная симуляция.
+ *
+ * Раскладка по связям («Разложить») сюда не заходит намеренно: она считает
+ * схему целиком и в отдельном потоке, то есть с ожиданием, а отрисовка
+ * ждать не может. Страница вызывает её сама и кладёт результат в `placed` —
+ * отсюда он и берётся, как любое другое положение. Здесь остаётся то, чего
+ * раскладка по связям не умеет: поставить одну новую железку между
+ * полусотней расставленных руками, не тронув их.
+ */
 export function computePositions(
   nodes: TopologyNode[],
   edges: TopologyEdge[],
   placed: React.RefObject<Map<number, Point>>,
-  relayout: number,
 ): Map<number, Point> {
   const layout: LayoutNode[] = nodes.map((n) => {
     // Сложившееся в этой сессии важнее сохранённого: запись позиции нарочно
@@ -474,9 +481,8 @@ export function computePositions(
     // поэтому в присланных узлах ещё лежат прежние координаты. Брать их
     // после перетаскивания рамки группы значило бы вернуть узлы туда, откуда
     // человек их только что увёз, — рамка уехала, а узлы прыгнули назад.
-    const saved = relayout > 0 ? undefined
-      : (placed.current!.get(n.id)
-        ?? (n.topology_x != null && n.topology_y != null ? { x: n.topology_x, y: n.topology_y } : undefined));
+    const saved = placed.current!.get(n.id)
+      ?? (n.topology_x != null && n.topology_y != null ? { x: n.topology_x, y: n.topology_y } : undefined);
     return {
       id: String(n.id),
       x: saved?.x ?? Math.random() * 1100,

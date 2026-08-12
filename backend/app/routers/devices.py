@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import Text, cast, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -167,6 +167,35 @@ def set_device_tags(device_id: int, payload: schemas.DeviceTagsUpdate, db: Sessi
     db.commit()
     db.refresh(device)
     return serialize.serialize_device(device, db=db)
+
+
+@router.patch("/positions", status_code=204)
+def update_device_positions(payload: schemas.DevicePositionsUpdate, db: Session = Depends(get_db),
+                             _: models.User = Depends(auth.can_edit),
+                             site_id: int = Depends(sites.current_site_id)):
+    """Расположение сразу всех узлов схемы — одним запросом.
+
+    Автоматическая раскладка двигает не одну железку, а всю схему: полторы
+    сотни отдельных PATCH-ов на одно нажатие кнопки — это полторы сотни
+    транзакций и столько же сериализаций устройства в ответ, из которых
+    клиенту не нужна ни одна.
+
+    Объявлено выше `/{device_id}`: иначе «positions» попадёт в этот путь как
+    идентификатор. Про чужие идентификаторы запрос молчит — раскладка могла
+    считаться по схеме, из которой устройство успели удалить, и ронять на
+    этом сохранение остальных незачем.
+    """
+    wanted = {item.id: item for item in payload.positions}
+    if not wanted:
+        return Response(status_code=204)
+    devices = db.query(models.Device).filter(
+        models.Device.site_id == site_id, models.Device.id.in_(wanted.keys())
+    ).all()
+    for device in devices:
+        device.topology_x = wanted[device.id].x
+        device.topology_y = wanted[device.id].y
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.patch("/{device_id}", response_model=schemas.DeviceOut)

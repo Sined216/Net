@@ -592,6 +592,19 @@ class DevicePositionUpdate(BaseModel):
     y: float
 
 
+class DevicePosition(DevicePositionUpdate):
+    """То же, но с указанием, чьё это место: для записи сразу нескольких."""
+    id: int
+
+
+class DevicePositionsUpdate(BaseModel):
+    """Расположение нескольких узлов сразу — результат автоматической
+    раскладки схемы. Ограничение сверху не столько от злого умысла, сколько
+    от опечатки в клиенте: схема на площадке больше пяти тысяч устройств не
+    рисуется в любом случае."""
+    positions: List[DevicePosition] = Field(default_factory=list, max_length=5000)
+
+
 class DeviceOut(DeviceBase):
     id: int
     code: str

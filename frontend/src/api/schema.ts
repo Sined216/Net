@@ -421,6 +421,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Device Positions
+         * @description Расположение сразу всех узлов схемы — одним запросом.
+         *
+         *     Автоматическая раскладка двигает не одну железку, а всю схему: полторы
+         *     сотни отдельных PATCH-ов на одно нажатие кнопки — это полторы сотни
+         *     транзакций и столько же сериализаций устройства в ответ, из которых
+         *     клиенту не нужна ни одна.
+         *
+         *     Объявлено выше `/{device_id}`: иначе «positions» попадёт в этот путь как
+         *     идентификатор. Про чужие идентификаторы запрос молчит — раскладка могла
+         *     считаться по схеме, из которой устройство успели удалить, и ронять на
+         *     этом сохранение остальных незачем.
+         */
+        patch: operations["update_device_positions_devices_positions_patch"];
+        trace?: never;
+    };
     "/devices/{device_id}": {
         parameters: {
             query?: never;
@@ -1424,6 +1454,18 @@ export interface components {
             total: number;
         };
         /**
+         * DevicePosition
+         * @description То же, но с указанием, чьё это место: для записи сразу нескольких.
+         */
+        DevicePosition: {
+            /** Id */
+            id: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
+        /**
          * DevicePositionUpdate
          * @description Позиция узла на топологии — сохраняется отдельно от общей формы
          *     редактирования устройства, обновляется при перетаскивании узла.
@@ -1433,6 +1475,17 @@ export interface components {
             x: number;
             /** Y */
             y: number;
+        };
+        /**
+         * DevicePositionsUpdate
+         * @description Расположение нескольких узлов сразу — результат автоматической
+         *     раскладки схемы. Ограничение сверху не столько от злого умысла, сколько
+         *     от опечатки в клиенте: схема на площадке больше пяти тысяч устройств не
+         *     рисуется в любом случае.
+         */
+        DevicePositionsUpdate: {
+            /** Positions */
+            positions?: components["schemas"]["DevicePosition"][];
         };
         /** DeviceTagsUpdate */
         DeviceTagsUpdate: {
@@ -3338,6 +3391,39 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DeviceOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_device_positions_devices_positions_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicePositionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

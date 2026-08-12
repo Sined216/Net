@@ -12,7 +12,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { highlighters, type dia } from '@joint/core';
 import {
   useCreateDevice, useDeleteDevice, useDeleteTopologyGroup, useSetTopologyGroupBox, useTags,
-  useTopology, useTopologyGroups, useUpdateDevicePosition,
+  useTopology, useTopologyGroups, useUpdateDevicePosition, useUpdateDevicePositions,
 } from '../api/hooks';
 import * as apiEndpoints from '../api/endpoints';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
@@ -28,6 +28,7 @@ import {
   buildGraph, cardText, computePositions, layoutInsideGroup, storedBox, type Box, type Point,
 } from './topology/joint/buildGraph';
 import { nodeMetrics, nodeSizes } from './topology/joint/shapes';
+import { computeAutoLayout } from './topology/layout';
 import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
@@ -78,6 +79,7 @@ export function TopologyPage() {
   const canEdit = useCan('edit');
   const queryClient = useQueryClient();
   const updatePosition = useUpdateDevicePosition();
+  const updatePositions = useUpdateDevicePositions();
   const deleteDevice = useDeleteDevice();
   const createDevice = useCreateDevice();
   const deleteGroup = useDeleteTopologyGroup();
@@ -101,9 +103,11 @@ export function TopologyPage() {
    * изменение данных значит гонять узлы по экрану под руками у человека. */
   const placed = useRef(new Map<number, Point>());
   const autoSaved = useRef(new Set<number>());
-  /** Для какого по счёту «Вписать» уже подгоняли масштаб. −1 — ещё ни разу,
+  /** Для какой по счёту раскладки уже подгоняли масштаб. −1 — ещё ни разу,
    * то есть первое наполнение схемы. */
   const fitted = useRef(-1);
+  /** Сколько раз схему разложили заново: сама раскладка живёт в `placed`, а
+   * этот счётчик просит перерисовку и подгонку масштаба под новое. */
   const [relayout, setRelayout] = useState(0);
   /** Перерисовать схему, не пересчитывая раскладку заново: положение узлов
    * живёт в `placed`, а он не состояние и сам перерисовку не вызывает. */
@@ -111,9 +115,6 @@ export function TopologyPage() {
   /** Рамки групп с прошлой отрисовки — нужны, чтобы знать, откуда рамка
    * уехала, и чтобы разложить содержимое внутри неё. */
   const boxesRef = useRef(new Map<number, Box>());
-  /** Раскладка до нажатия «Разложить»: сам пересчёт происходит внутри
-   * отрисовки, и «как было» к тому моменту уже затёрто. */
-  const beforeRelayout = useRef<Map<number, Point> | null>(null);
   /** Свежие действия и обработчики для полотна: оно ставит их один раз, а
    * данные под ними меняются. */
   const actionsRef = useRef<JointActions>(null!);
@@ -196,10 +197,8 @@ export function TopologyPage() {
           .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
         groups: grown,
       });
-      for (const [id, at] of laid.positions) {
-        placed.current.set(id, at);
-        updatePosition.mutate({ id, body: at });
-      }
+      for (const [id, at] of laid.positions) placed.current.set(id, at);
+      savePositions([...laid.positions].map(([id, at]) => ({ id, x: at.x, y: at.y })));
       if (grown.length) {
         boxesRef.current.set(groupId, laid.box);
         saveGroupBox(groupId, laid.box);
@@ -222,13 +221,29 @@ export function TopologyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Записать расположение узлов: по одному или всё сразу.
+   *
+   * Раскладка схемы двигает все узлы разом, и отдельный запрос на каждый —
+   * это сотня запросов на одно нажатие кнопки. Одиночное перетаскивание так
+   * и остаётся одиночным запросом: он короче и не тащит за собой список. */
+  const savePositions = useCallback((moves: { id: number; x: number; y: number }[]) => {
+    if (moves.length === 0) return;
+    if (moves.length === 1) {
+      updatePosition.mutate({ id: moves[0].id, body: { x: moves[0].x, y: moves[0].y } }, { onError: notifyError });
+      return;
+    }
+    updatePositions.mutate(moves, { onError: notifyError });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Разослать координаты шага — в ту или другую сторону. */
   const applyStep = useCallback((step: LayoutStep, back: boolean) => {
-    for (const move of step.devices ?? []) {
+    const moves = (step.devices ?? []).map((move) => {
       const at = back ? move.from : move.to;
       placed.current.set(move.id, at);
-      updatePosition.mutate({ id: move.id, body: at });
-    }
+      return { id: move.id, x: at.x, y: at.y };
+    });
+    savePositions(moves);
     for (const frame of step.groups ?? []) {
       saveGroupBox(frame.id, back ? frame.from : frame.to);
     }
@@ -248,12 +263,67 @@ export function TopologyPage() {
         .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
     };
     history.push(step);
-    for (const move of moves) {
-      placed.current.set(move.id, { x: move.x, y: move.y });
-      updatePosition.mutate({ id: move.id, body: { x: move.x, y: move.y } });
-    }
+    for (const move of moves) placed.current.set(move.id, { x: move.x, y: move.y });
+    savePositions(moves);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history]);
+
+  /** Разложить всю схему по связям.
+   *
+   * Считает ELK в отдельном потоке, поэтому здесь ожидание — и поэтому же
+   * раскладка живёт своей кнопкой, а не считается при отрисовке: рисовать
+   * схему, дожидаясь раскладчика, значит показывать пустое полотно.
+   *
+   * Рамки групп записываются вместе с узлами: цех раскладывается как рамка
+   * со своим содержимым, и оставить рамку на прежнем месте значит увезти
+   * карточки из-под неё.
+   */
+  const [laying, setLaying] = useState(false);
+  const relayoutAll = useCallback(async () => {
+    if (nodes.length === 0 || laying) return;
+    if (!confirm('Разложить схему по связям? Расположение узлов и рамки групп будут пересчитаны.')) return;
+    setLaying(true);
+    try {
+      const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
+      const card = nodeMetrics(look);
+      const laid = await computeAutoLayout(
+        nodes.map((n) => ({
+          id: n.id,
+          width: sizes.get(n.id)?.width ?? card.width,
+          height: sizes.get(n.id)?.height ?? card.height,
+          group: n.topology_group_id ?? null,
+        })),
+        groups,
+        edges
+          .filter((e) => e.device_a_id != null && e.device_b_id != null)
+          .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! })),
+      );
+
+      history.push({
+        title: 'раскладка схемы',
+        devices: [...laid.positions]
+          .map(([id, to]) => ({ id, from: placed.current.get(id), to }))
+          .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
+        groups: [...laid.boxes]
+          .map(([id, to]) => ({ id, from: boxesRef.current.get(id), to }))
+          .filter((frame): frame is { id: number; from: Box; to: Box } => frame.from != null),
+      });
+      for (const [id, at] of laid.positions) placed.current.set(id, at);
+      savePositions([...laid.positions].map(([id, at]) => ({ id, x: at.x, y: at.y })));
+      for (const [id, box] of laid.boxes) {
+        boxesRef.current.set(id, box);
+        saveGroupBox(id, box);
+      }
+      // Схему после раскладки показываем целиком: она только что уехала
+      // вся, и смотреть на прежний угол не на что.
+      setRelayout((n) => n + 1);
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setLaying(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, groups, look, laying, history]);
 
   const paper = useJointPaper({
     canEdit, scheme, background: look.background, actions: actionsRef, handlers,
@@ -322,20 +392,7 @@ export function TopologyPage() {
     graph.clear();
     if (nodes.length === 0) return;
 
-    const positions = computePositions(nodes, edges, placed, relayout);
-    // «Разложить» пересчитывает раскладку прямо здесь, поэтому и шаг
-    // истории записывается здесь: к моменту нажатия кнопки новых координат
-    // ещё не существует, а к моменту выхода отсюда прежние уже затёрты.
-    const was = beforeRelayout.current;
-    if (was) {
-      beforeRelayout.current = null;
-      history.push({
-        title: 'раскладка схемы',
-        devices: [...positions]
-          .map(([id, to]) => ({ id, from: was.get(id), to }))
-          .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
-      });
-    }
+    const positions = computePositions(nodes, edges, placed);
     const { deviceCells, boxes } = buildGraph(
       graph, { nodes, edges, groups }, { look, scheme, router: look.edgeRouter, positions },
     );
@@ -467,7 +524,8 @@ export function TopologyPage() {
                 Клик по узлу открывает панель: править, копировать, в группу, удалить и «протянуть кабель» — за
                 последнюю кнопку тянут до другого устройства, а порты выбираются в окне. Клик по рамке группы — своя
                 панель: правка, раскладка содержимого рядами, подгруппа, удаление; рамку двигают мышью и растягивают
-                за угол. Оранжевый кружок с «?» — свободный конец кабеля: его тянут на устройство, чтобы воткнуть в
+                за угол. «Разложить» расставляет всю схему по кабелям: ядро сети слева, за ним цеховые, за ними
+                железки; рамки групп переезжают вместе со своим содержимым. Оранжевый кружок с «?» — свободный конец кабеля: его тянут на устройство, чтобы воткнуть в
                 порт. Клик по линии открывает правку связи, Delete удаляет выделенное. Узел за рамку своей группы не
                 выходит, а состав группы меняется только явно.
                 {canEdit && ' Shift с растяжкой по пустому месту выделяет несколько устройств рамкой, Shift по узлу'
@@ -484,11 +542,7 @@ export function TopologyPage() {
           {canEdit && (
             <Button
               variant="default" leftSection={<IconLayoutDistributeHorizontal size={16} />}
-              onClick={() => {
-                if (!confirm('Разложить схему заново? Расположение узлов, выставленное руками, будет пересчитано.')) return;
-                beforeRelayout.current = new Map(placed.current);
-                setRelayout((n) => n + 1);
-              }}
+              onClick={relayoutAll} loading={laying}
             >
               Разложить
             </Button>

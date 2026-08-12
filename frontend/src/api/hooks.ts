@@ -370,6 +370,14 @@ export function useUpdateDevicePosition() {
     mutationFn: ({ id, body }: { id: number; body: DevicePositionUpdate }) => api.updateDevicePosition(id, body),
   });
 }
+/** Расположение сразу нескольких узлов — результат автоматической раскладки
+ * или перемещения выделенной пачки. */
+export function useUpdateDevicePositions() {
+  return useMutation({
+    mutationFn: (positions: { id: number; x: number; y: number }[]) =>
+      api.updateDevicePositions({ positions }),
+  });
+}
 
 // ---------- Topology groups ----------
 export function useCreateTopologyGroup() {

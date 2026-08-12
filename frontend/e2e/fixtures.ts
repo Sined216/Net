@@ -26,7 +26,7 @@ async function contextFor(username: string, password: string): Promise<APIReques
   return request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
 }
 
-async function json(api: APIRequestContext, method: 'post' | 'patch', path: string, data: unknown) {
+async function json(api: APIRequestContext, method: 'post' | 'patch' | 'put', path: string, data: unknown) {
   const response = await api[method](path, { data });
   if (!response.ok()) throw new Error(`${method.toUpperCase()} ${path}: ${response.status()} ${await response.text()}`);
   return response.json();
@@ -48,12 +48,24 @@ export async function ensureUiUser(): Promise<{ username: string; password: stri
   const username = `e2e-${Date.now()}`;
   const temporary = 'e2e-vremennyj-parol';
 
-  await json(admin, 'post', '/auth/users', {
+  const created = await json(admin, 'post', '/auth/users', {
     full_name: 'Тестовый пользователь',
     username,
     password: temporary,
     role: 'editor',
   });
+
+  // Площадки нужно выдать явно: по роли их видит только администратор, а
+  // всем остальным без площадки показывать нечего — вместо схемы страница
+  // сообщает, что доступа нет. Появилось это вместе с изоляцией площадок,
+  // уже после самих тестов.
+  const sites = await (await admin.get('/sites')).json();
+  for (const site of sites) {
+    const access: number[] = await (await admin.get(`/sites/${site.id}/access`)).json();
+    await json(admin, 'put', `/sites/${site.id}/access`, {
+      user_ids: [...new Set([...access, created.id])],
+    });
+  }
   await admin.dispose();
 
   // Смена пароля владельцем снимает требование сменить пароль.

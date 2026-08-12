@@ -97,6 +97,7 @@ export type DeviceCreate = S['DeviceCreate'];
 export type DeviceUpdate = S['DeviceUpdate'];
 export type DeviceTagsUpdate = S['DeviceTagsUpdate'];
 export type DevicePositionUpdate = S['DevicePositionUpdate'];
+export type DevicePositionsUpdate = S['DevicePositionsUpdate'];
 export type DeviceOut = S['DeviceOut'];
 export type DeviceListItem = S['DeviceListItem'];
 export type DevicePage = S['DevicePage'];
