@@ -159,14 +159,26 @@ export async function computeAutoLayout(
   return { positions, boxes };
 }
 
+export interface GroupLayoutCard {
+  id: number;
+  width: number;
+  height: number;
+}
+
 /** Раскладка содержимого одной группы по связям.
  *
  * Это ELK, но не тот же вызов, что у «Разложить» всей схемы: здесь только
- * собственные устройства группы, без иерархии. Подгруппы в задачу не
- * попадают — они не переезжают и не перестраиваются, а раскладке про них
- * известно ровно то, чтобы не положить карточку поверх чужой рамки: ряды
- * начинаются под уже стоящими подгруппами, как раньше начиналась решётка.
- * Раскладывать их же самих — работа их собственной кнопки на своей панели.
+ * собственные устройства группы и её прямые подгруппы — как плоская задача,
+ * без иерархии внутрь.
+ *
+ * Подгруппа встаёт в раскладку тем же узлом, что и устройство, — своим
+ * прежним размером, каким его сюда прислали: раскладка выбирает ей место по
+ * кабелям (кабель к устройству внутри подгруппы считается кабелем к самой
+ * подгруппе), но не перекраивает то, что внутри неё. Меняется только
+ * положение рамки; во сколько раз она была и остаётся, решает уже не эта
+ * функция — переставить содержимое подгруппы (и вложенные в неё рамки
+ * вместе с ним, той же передвижкой, что и при перетаскивании рукой) обязан
+ * вызывающий, эта функция знает только про один уровень.
  *
  * Раньше содержимое группы клали решёткой: тут её и десяток узлов, решётка
  * читается — но решётка не смотрит на кабели, и коммутатор с восемью
@@ -175,42 +187,59 @@ export async function computeAutoLayout(
  */
 export async function computeGroupLayout(
   box: Box,
-  cards: { id: number; width: number; height: number }[],
-  links: { a: number; b: number }[],
+  devices: GroupLayoutCard[],
+  subgroups: GroupLayoutCard[],
+  /** Связи между устройствами группы и подгруппами — уже приведённые к
+   * местным идентификаторам (`d{id}` / `g{id}`), потому что превратить
+   * кабель, ведущий внутрь чужой подгруппы, в связь с ней самой может
+   * только тот, кто знает всё дерево групп. */
+  links: { from: string; to: string }[],
   gaps: { row: number; node: number },
-  /** Рамки подгрупп — то, что раскладка обходит, но не трогает. */
-  inner: Box[] = [],
-): Promise<{ positions: Map<number, Point>; box: Box }> {
-  if (cards.length === 0) return { positions: new Map(), box };
+): Promise<{ positions: Map<number, Point>; subgroupBoxes: Map<number, Box>; box: Box }> {
+  if (devices.length === 0 && subgroups.length === 0) {
+    return { positions: new Map(), subgroupBoxes: new Map(), box };
+  }
 
   const laid = await layoutLayered(
-    cards.map((card) => ({ id: `d${card.id}`, width: card.width, height: card.height })),
-    links.map((link) => ({ from: `d${link.a}`, to: `d${link.b}` })),
+    [
+      ...devices.map((card) => ({ id: `d${card.id}`, width: card.width, height: card.height })),
+      ...subgroups.map((card) => ({ id: `g${card.id}`, width: card.width, height: card.height })),
+    ],
+    links,
     { direction: 'RIGHT', layerGap: gaps.row, nodeGap: gaps.node },
   );
 
   const side = 18;
-  // Ряды начинаются под подписью группы, а если внутри есть подгруппы — под
-  // ними: класть карточки поверх чужой рамки значит прятать её.
-  const top = inner.length
-    ? Math.max(...inner.map((b) => b.y + b.height)) - box.y + Math.round(gaps.node * 0.6)
-    : 34;
+  const top = 34;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const card of cards) {
-    const at = laid.get(`d${card.id}`);
-    if (!at) continue;
+  const consider = (key: string, width: number, height: number) => {
+    const at = laid.get(key);
+    if (!at) return;
     minX = Math.min(minX, at.x); minY = Math.min(minY, at.y);
-    maxX = Math.max(maxX, at.x + at.width); maxY = Math.max(maxY, at.y + at.height);
-  }
+    maxX = Math.max(maxX, at.x + width); maxY = Math.max(maxY, at.y + height);
+  };
+  for (const card of devices) consider(`d${card.id}`, card.width, card.height);
+  for (const card of subgroups) consider(`g${card.id}`, card.width, card.height);
 
   const positions = new Map<number, Point>();
-  for (const card of cards) {
+  for (const card of devices) {
     const at = laid.get(`d${card.id}`);
     if (!at) continue;
     positions.set(card.id, {
       x: box.x + side + (at.x - minX) + card.width / 2,
       y: box.y + top + (at.y - minY) + card.height / 2,
+    });
+  }
+  const subgroupBoxes = new Map<number, Box>();
+  for (const card of subgroups) {
+    const at = laid.get(`g${card.id}`);
+    if (!at) continue;
+    subgroupBoxes.set(card.id, {
+      x: box.x + side + (at.x - minX),
+      y: box.y + top + (at.y - minY),
+      width: card.width,
+      height: card.height,
     });
   }
 
@@ -220,6 +249,7 @@ export async function computeGroupLayout(
   };
   return {
     positions,
+    subgroupBoxes,
     box: {
       ...box,
       width: Math.max(box.width, needed.width),

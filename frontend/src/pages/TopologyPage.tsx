@@ -176,44 +176,107 @@ export function TopologyPage() {
       const box = boxesRef.current.get(groupId);
       if (!box || layingGroups.current.has(groupId)) return;
       const inside = nodes.filter((n) => n.topology_group_id === groupId).map((n) => n.id);
-      if (inside.length === 0) return;
-      const inner = groups
+      const directSubgroups = groups
         .filter((g) => g.parent_id === groupId)
-        .map((g) => boxesRef.current.get(g.id))
-        .filter((b): b is Box => b != null);
+        .map((g) => ({ id: g.id, box: boxesRef.current.get(g.id) }))
+        .filter((entry): entry is { id: number; box: Box } => entry.box != null);
+      if (inside.length === 0 && directSubgroups.length === 0) return;
+      const directSubgroupIds = new Set(directSubgroups.map((g) => g.id));
+
+      // Все подгруппы, вложенные в данную (на любую глубину) — их вместе с
+      // содержимым нужно будет сдвинуть, если сдвинулась сама данная
+      // подгруппа: раскладка переставляет только прямые подгруппы целиком,
+      // не трогая то, что внутри, а «внутри» бывает вложено ещё раз.
+      const nestedGroupIds = (rootId: number): number[] => {
+        const out: number[] = [];
+        const stack = [rootId];
+        while (stack.length) {
+          const at = stack.pop()!;
+          for (const g of groups) if (g.parent_id === at) { out.push(g.id); stack.push(g.id); }
+        }
+        return out;
+      };
+      // Кабель к устройству внутри подгруппы — для этой раскладки кабель к
+      // самой подгруппе: она встаёт по связям целиком, а не россыпью узлов.
+      // Кабель, ушедший за пределы данной группы и всех её подгрупп, здесь
+      // никого не держит.
+      const localNodeOf = (deviceId: number): string | null => {
+        const at = nodes.find((n) => n.id === deviceId)?.topology_group_id ?? null;
+        if (at === groupId) return `d${deviceId}`;
+        let group = at;
+        while (group != null) {
+          if (directSubgroupIds.has(group)) return `g${group}`;
+          group = groups.find((g) => g.id === group)?.parent_id ?? null;
+        }
+        return null;
+      };
+      const seenLinks = new Set<string>();
+      const localLinks = edges
+        .filter((e) => e.device_a_id != null && e.device_b_id != null)
+        .map((e) => ({ from: localNodeOf(e.device_a_id!), to: localNodeOf(e.device_b_id!) }))
+        .filter((l): l is { from: string; to: string } => l.from != null && l.to != null && l.from !== l.to)
+        .filter((l) => {
+          const key = [l.from, l.to].sort().join('~');
+          if (seenLinks.has(key)) return false;
+          seenLinks.add(key);
+          return true;
+        });
 
       layingGroups.current.add(groupId);
       try {
         const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
         const card = nodeMetrics(look);
-        const insideSet = new Set(inside);
         const laid = await computeGroupLayout(
           box,
           inside.map((id) => ({
             id, width: sizes.get(id)?.width ?? card.width, height: sizes.get(id)?.height ?? card.height,
           })),
-          edges
-            .filter((e) => e.device_a_id != null && e.device_b_id != null
-              && insideSet.has(e.device_a_id) && insideSet.has(e.device_b_id))
-            .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! })),
+          directSubgroups.map((g) => ({ id: g.id, width: g.box.width, height: g.box.height })),
+          localLinks,
           { row: look.layoutRowGap, node: look.layoutNodeGap },
-          inner,
         );
-        const grown = laid.box !== box
-          ? [{ id: groupId, from: box, to: laid.box }]
-          : [];
+
+        // Устройства группы — прямым результатом раскладки. Подгруппы —
+        // тоже, но переставляется только их рамка: содержимое (и вложенные
+        // в них рамки) едет следом той же передвижкой, какой оно едет за
+        // рамкой при перетаскивании рукой.
+        const deviceMoves = new Map(inside.map((id) => [id, laid.positions.get(id)!]));
+        const groupMoves = new Map<number, Box>();
+        for (const sub of directSubgroups) {
+          const to = laid.subgroupBoxes.get(sub.id);
+          if (!to) continue;
+          groupMoves.set(sub.id, to);
+          const dx = to.x - sub.box.x, dy = to.y - sub.box.y;
+          if (dx === 0 && dy === 0) continue;
+          const carried = new Set([sub.id, ...nestedGroupIds(sub.id)]);
+          for (const node of nodes) {
+            if (node.topology_group_id == null || !carried.has(node.topology_group_id)) continue;
+            const at = placed.current.get(node.id)
+              ?? (node.topology_x != null && node.topology_y != null
+                ? { x: node.topology_x, y: node.topology_y } : null);
+            if (at) deviceMoves.set(node.id, { x: at.x + dx, y: at.y + dy });
+          }
+          for (const nestedId of nestedGroupIds(sub.id)) {
+            const nestedBox = boxesRef.current.get(nestedId);
+            if (nestedBox) groupMoves.set(nestedId, { ...nestedBox, x: nestedBox.x + dx, y: nestedBox.y + dy });
+          }
+        }
+        if (laid.box !== box) groupMoves.set(groupId, laid.box);
+
         history.push({
           title: 'раскладка группы',
-          devices: inside
-            .map((id) => ({ id, from: placed.current.get(id), to: laid.positions.get(id)! }))
+          devices: [...deviceMoves]
+            .map(([id, to]) => ({ id, from: placed.current.get(id), to }))
             .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
-          groups: grown,
+          groups: [...groupMoves]
+            .map(([id, to]) => ({ id, from: boxesRef.current.get(id), to }))
+            .filter((frame): frame is { id: number; from: Box; to: Box } => frame.from != null),
         });
-        for (const [id, at] of laid.positions) placed.current.set(id, at);
-        savePositions([...laid.positions].map(([id, at]) => ({ id, x: at.x, y: at.y })));
-        if (grown.length) {
-          boxesRef.current.set(groupId, laid.box);
-          saveGroupBox(groupId, laid.box);
+        for (const [id, at] of deviceMoves) placed.current.set(id, at);
+        savePositions([...deviceMoves].map(([id, at]) => ({ id, x: at.x, y: at.y })));
+        for (const [id, frame] of groupMoves) {
+          boxesRef.current.set(id, frame);
+          saveGroupBox(id, frame);
         }
         setRedraw((n) => n + 1);
       } catch (error) {
