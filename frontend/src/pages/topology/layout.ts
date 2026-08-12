@@ -158,3 +158,72 @@ export async function computeAutoLayout(
   }
   return { positions, boxes };
 }
+
+/** Раскладка содержимого одной группы по связям.
+ *
+ * Это ELK, но не тот же вызов, что у «Разложить» всей схемы: здесь только
+ * собственные устройства группы, без иерархии. Подгруппы в задачу не
+ * попадают — они не переезжают и не перестраиваются, а раскладке про них
+ * известно ровно то, чтобы не положить карточку поверх чужой рамки: ряды
+ * начинаются под уже стоящими подгруппами, как раньше начиналась решётка.
+ * Раскладывать их же самих — работа их собственной кнопки на своей панели.
+ *
+ * Раньше содержимое группы клали решёткой: тут её и десяток узлов, решётка
+ * читается — но решётка не смотрит на кабели, и коммутатор с восемью
+ * подключениями вперемешку с остальными восемью читать неудобнее, чем по
+ * связям.
+ */
+export async function computeGroupLayout(
+  box: Box,
+  cards: { id: number; width: number; height: number }[],
+  links: { a: number; b: number }[],
+  gaps: { row: number; node: number },
+  /** Рамки подгрупп — то, что раскладка обходит, но не трогает. */
+  inner: Box[] = [],
+): Promise<{ positions: Map<number, Point>; box: Box }> {
+  if (cards.length === 0) return { positions: new Map(), box };
+
+  const laid = await layoutLayered(
+    cards.map((card) => ({ id: `d${card.id}`, width: card.width, height: card.height })),
+    links.map((link) => ({ from: `d${link.a}`, to: `d${link.b}` })),
+    { direction: 'RIGHT', layerGap: gaps.row, nodeGap: gaps.node },
+  );
+
+  const side = 18;
+  // Ряды начинаются под подписью группы, а если внутри есть подгруппы — под
+  // ними: класть карточки поверх чужой рамки значит прятать её.
+  const top = inner.length
+    ? Math.max(...inner.map((b) => b.y + b.height)) - box.y + Math.round(gaps.node * 0.6)
+    : 34;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const card of cards) {
+    const at = laid.get(`d${card.id}`);
+    if (!at) continue;
+    minX = Math.min(minX, at.x); minY = Math.min(minY, at.y);
+    maxX = Math.max(maxX, at.x + at.width); maxY = Math.max(maxY, at.y + at.height);
+  }
+
+  const positions = new Map<number, Point>();
+  for (const card of cards) {
+    const at = laid.get(`d${card.id}`);
+    if (!at) continue;
+    positions.set(card.id, {
+      x: box.x + side + (at.x - minX) + card.width / 2,
+      y: box.y + top + (at.y - minY) + card.height / 2,
+    });
+  }
+
+  const needed = {
+    width: side * 2 + (maxX - minX),
+    height: top + (maxY - minY) + side,
+  };
+  return {
+    positions,
+    box: {
+      ...box,
+      width: Math.max(box.width, needed.width),
+      height: Math.max(box.height, needed.height),
+    },
+  };
+}

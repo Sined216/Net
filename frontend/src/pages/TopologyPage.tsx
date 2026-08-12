@@ -25,10 +25,10 @@ import { DeviceFormModal } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
-  buildGraph, cardText, computePositions, layoutInsideGroup, storedBox, type Box, type Point,
+  buildGraph, cardText, computePositions, storedBox, type Box, type Point,
 } from './topology/joint/buildGraph';
 import { nodeMetrics, nodeSizes } from './topology/joint/shapes';
-import { computeAutoLayout } from './topology/layout';
+import { computeAutoLayout, computeGroupLayout } from './topology/layout';
 import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
@@ -115,6 +115,10 @@ export function TopologyPage() {
   /** Рамки групп с прошлой отрисовки — нужны, чтобы знать, откуда рамка
    * уехала, и чтобы разложить содержимое внутри неё. */
   const boxesRef = useRef(new Map<number, Box>());
+  /** Группы, для которых сейчас считается раскладка: ELK — асинхронный
+   * вызов, и второй клик по той же панели до ответа первого не должен
+   * запускать вторую раскладку поверх первой. */
+  const layingGroups = useRef(new Set<number>());
   /** Свежие действия и обработчики для полотна: оно ставит их один раз, а
    * данные под ними меняются. */
   const actionsRef = useRef<JointActions>(null!);
@@ -168,42 +172,55 @@ export function TopologyPage() {
       if (group) setEditingGroup({ group, parentId: null });
     },
     addSubgroup: (groupId: number) => setEditingGroup({ group: null, parentId: groupId }),
-    layoutGroup: (groupId: number) => {
+    layoutGroup: async (groupId: number) => {
       const box = boxesRef.current.get(groupId);
-      if (!box) return;
-      // Порядок — тот, в котором устройства пришли с сервера (по коду):
-      // повторное нажатие тогда даёт ту же раскладку, а не тасует карточки.
+      if (!box || layingGroups.current.has(groupId)) return;
       const inside = nodes.filter((n) => n.topology_group_id === groupId).map((n) => n.id);
       if (inside.length === 0) return;
       const inner = groups
         .filter((g) => g.parent_id === groupId)
         .map((g) => boxesRef.current.get(g.id))
         .filter((b): b is Box => b != null);
-      // Шаг решётки — по самой широкой карточке группы: карточки теперь
-      // разной ширины, и класть их через шаг самой узкой значит наложить.
-      const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
-      const step = {
-        width: Math.max(...inside.map((id) => sizes.get(id)?.width ?? 0), nodeMetrics(look).width),
-        height: nodeMetrics(look).height,
-      };
-      const laid = layoutInsideGroup(box, inside, inner, step);
-      const grown = laid.box !== box
-        ? [{ id: groupId, from: box, to: laid.box }]
-        : [];
-      history.push({
-        title: 'раскладка группы',
-        devices: inside
-          .map((id) => ({ id, from: placed.current.get(id), to: laid.positions.get(id)! }))
-          .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
-        groups: grown,
-      });
-      for (const [id, at] of laid.positions) placed.current.set(id, at);
-      savePositions([...laid.positions].map(([id, at]) => ({ id, x: at.x, y: at.y })));
-      if (grown.length) {
-        boxesRef.current.set(groupId, laid.box);
-        saveGroupBox(groupId, laid.box);
+
+      layingGroups.current.add(groupId);
+      try {
+        const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
+        const card = nodeMetrics(look);
+        const insideSet = new Set(inside);
+        const laid = await computeGroupLayout(
+          box,
+          inside.map((id) => ({
+            id, width: sizes.get(id)?.width ?? card.width, height: sizes.get(id)?.height ?? card.height,
+          })),
+          edges
+            .filter((e) => e.device_a_id != null && e.device_b_id != null
+              && insideSet.has(e.device_a_id) && insideSet.has(e.device_b_id))
+            .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! })),
+          { row: look.layoutRowGap, node: look.layoutNodeGap },
+          inner,
+        );
+        const grown = laid.box !== box
+          ? [{ id: groupId, from: box, to: laid.box }]
+          : [];
+        history.push({
+          title: 'раскладка группы',
+          devices: inside
+            .map((id) => ({ id, from: placed.current.get(id), to: laid.positions.get(id)! }))
+            .filter((move): move is { id: number; from: Point; to: Point } => move.from != null),
+          groups: grown,
+        });
+        for (const [id, at] of laid.positions) placed.current.set(id, at);
+        savePositions([...laid.positions].map(([id, at]) => ({ id, x: at.x, y: at.y })));
+        if (grown.length) {
+          boxesRef.current.set(groupId, laid.box);
+          saveGroupBox(groupId, laid.box);
+        }
+        setRedraw((n) => n + 1);
+      } catch (error) {
+        notifyError(error);
+      } finally {
+        layingGroups.current.delete(groupId);
       }
-      setRedraw((n) => n + 1);
     },
     removeGroup: (groupId: number) => {
       const group = groups.find((g) => g.id === groupId);

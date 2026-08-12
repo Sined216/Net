@@ -1,7 +1,7 @@
 import { dia, shapes } from '@joint/core';
 import { canvasColors, nodeColors, tint, type TopologyAppearance } from '../appearance';
 import {
-  DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, NODE, nodeMetrics, nodeSizes,
+  DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, nodeMetrics, nodeSizes,
   STUB_SIZE, withAlpha, type NodeSize,
 } from './shapes';
 import { groupDepth } from '../groups';
@@ -584,61 +584,6 @@ export function computeBoxes(
 
   for (const group of groups.filter((g) => g.parent_id == null)) measure(group, new Set());
   return boxes;
-}
-
-/** Разложить содержимое группы решёткой внутри её рамки.
- *
- * Общая раскладка схемы про группы не знает: она разводит узлы по связям, и
- * содержимое рамки у неё сбивается в кучу — особенно после того, как рамку
- * подвинули или сузили руками. Разбирать эту кучу мышью по одной карточке —
- * то, чего никто делать не станет.
- *
- * Решётка, а не пружины: внутри рамки места мало, узлов десяток, и ровные
- * ряды читаются лучше любой симуляции. Порядок — тот, в котором устройства
- * пришли с сервера (по коду), чтобы раскладка была одинаковой при повторном
- * нажатии.
- *
- * Рамка при нужде подрастает вниз: втискивать двадцать карточек в рамку на
- * четыре значило бы положить их друг на друга.
- */
-export function layoutInsideGroup(
-  box: Box,
-  ids: number[],
-  /** Рамки подгрупп: их содержимое раскладывается своей кнопкой, а
-   * накрывать их карточками нельзя. */
-  inner: Box[] = [],
-  card: { width: number; height: number } = NODE,
-): { positions: Map<number, Point>; box: Box } {
-  const gapX = 28;
-  const gapY = 26;
-  const side = 18;
-  // Ряды начинаются под подписью группы, а если внутри есть подгруппы — под
-  // ними: класть карточки поверх чужой рамки значит прятать её.
-  const top = inner.length
-    ? Math.max(...inner.map((b) => b.y + b.height)) - box.y + gapY
-    : 34;
-  const stepX = card.width + gapX;
-  const stepY = card.height + gapY;
-
-  const usable = Math.max(box.width - side * 2, card.width);
-  const columns = Math.max(1, Math.min(ids.length, Math.floor((usable + gapX) / stepX)));
-  const rows = Math.ceil(ids.length / columns);
-
-  const positions = new Map<number, Point>();
-  ids.forEach((id, index) => {
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    positions.set(id, {
-      x: box.x + side + column * stepX + card.width / 2,
-      y: box.y + top + row * stepY + card.height / 2,
-    });
-  });
-
-  const needed = top + rows * stepY - gapY + side;
-  return {
-    positions,
-    box: needed > box.height ? { ...box, height: needed } : box,
-  };
 }
 
 /** Вложить рамку в рамку: сначала подвинуть, а если не влезает — ужать.
