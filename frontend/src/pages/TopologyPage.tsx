@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Button, Group, Paper, SegmentedControl, Select, Stack, Text, Title, useComputedColorScheme,
+  Button, Group, Paper, Popover, SegmentedControl, Select, Stack, Text, Title,
+  useComputedColorScheme,
 } from '@mantine/core';
 import {
-  IconArrowBackUp, IconArrowForwardUp, IconFocusCentered, IconLayoutDistributeHorizontal,
-  IconPlus, IconUsersGroup,
+  IconArrowBackUp, IconArrowForwardUp, IconFocusCentered, IconHelp,
+  IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup,
 } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,9 +25,9 @@ import { DeviceFormModal } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
-  buildGraph, computePositions, layoutInsideGroup, storedBox, type Box, type Point,
+  buildGraph, cardText, computePositions, layoutInsideGroup, storedBox, type Box, type Point,
 } from './topology/joint/buildGraph';
-import { nodeMetrics } from './topology/joint/shapes';
+import { nodeMetrics, nodeSizes } from './topology/joint/shapes';
 import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
@@ -177,7 +178,14 @@ export function TopologyPage() {
         .filter((g) => g.parent_id === groupId)
         .map((g) => boxesRef.current.get(g.id))
         .filter((b): b is Box => b != null);
-      const laid = layoutInsideGroup(box, inside, inner, nodeMetrics(look));
+      // Шаг решётки — по самой широкой карточке группы: карточки теперь
+      // разной ширины, и класть их через шаг самой узкой значит наложить.
+      const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
+      const step = {
+        width: Math.max(...inside.map((id) => sizes.get(id)?.width ?? 0), nodeMetrics(look).width),
+        height: nodeMetrics(look).height,
+      };
+      const laid = layoutInsideGroup(box, inside, inner, step);
       const grown = laid.box !== box
         ? [{ id: groupId, from: box, to: laid.box }]
         : [];
@@ -270,11 +278,15 @@ export function TopologyPage() {
     },
     onLinkClick: (linkId) => setEditingLinkId(linkId),
     onDevicesMoved: (moves) => moveDevices(moves, moves.length > 1 ? 'перемещение группы узлов' : 'перемещение узла'),
-    onGroupMoved: (groupId, box) => {
-      const was = boxesRef.current.get(groupId);
-      if (was) history.push({ title: 'рамка группы', groups: [{ id: groupId, from: was, to: box }] });
-      boxesRef.current.set(groupId, box);
-      saveGroupBox(groupId, box);
+    onGroupsMoved: (frames) => {
+      const step = frames
+        .map((frame) => ({ id: frame.id, from: boxesRef.current.get(frame.id), to: frame.box }))
+        .filter((frame): frame is { id: number; from: Box; to: Box } => frame.from != null);
+      history.push({ title: frames.length > 1 ? 'рамка группы с подгруппами' : 'рамка группы', groups: step });
+      for (const frame of frames) {
+        boxesRef.current.set(frame.id, frame.box);
+        saveGroupBox(frame.id, frame.box);
+      }
     },
     onDelete: (target, devices) => {
       // Выделенных рамкой — пачкой и с одним вопросом: спрашивать по разу на
@@ -398,7 +410,10 @@ export function TopologyPage() {
   }
 
   return (
-    <Stack h="100%" gap="sm">
+    // Высота задаётся от окна, а не «сто процентов»: у родителя своей
+    // высоты нет, и проценты от неё ничего не значат — полотно оставалось бы
+    // на своих шестистах пикселях.
+    <Stack gap="sm" style={{ height: 'calc(100vh - 2 * var(--app-shell-padding, 16px))' }}>
       <Group justify="space-between">
         <Title order={2}>Схема связей</Title>
         <Group>
@@ -441,6 +456,26 @@ export function TopologyPage() {
               </Button>
             </Button.Group>
           )}
+          <Popover width={420} position="bottom-end" shadow="md" withArrow>
+            <Popover.Target>
+              <Button variant="default" px={10} title="Как пользоваться схемой">
+                <IconHelp size={16} />
+              </Button>
+            </Popover.Target>
+            <Popover.Dropdown>
+              <Text size="sm">
+                Клик по узлу открывает панель: править, копировать, в группу, удалить и «протянуть кабель» — за
+                последнюю кнопку тянут до другого устройства, а порты выбираются в окне. Клик по рамке группы — своя
+                панель: правка, раскладка содержимого рядами, подгруппа, удаление; рамку двигают мышью и растягивают
+                за угол. Оранжевый кружок с «?» — свободный конец кабеля: его тянут на устройство, чтобы воткнуть в
+                порт. Клик по линии открывает правку связи, Delete удаляет выделенное. Узел за рамку своей группы не
+                выходит, а состав группы меняется только явно.
+                {canEdit && ' Shift с растяжкой по пустому месту выделяет несколько устройств рамкой, Shift по узлу'
+                  + ' добавляет его к выделенным: дальше их двигают за любое из них и удаляют разом. Ctrl+Z'
+                  + ' возвращает расположение назад, Ctrl+Shift+Z — вперёд; заведение и удаление так не отменяются.'}
+              </Text>
+            </Popover.Dropdown>
+          </Popover>
           <AppearanceMenu value={look} onChange={changeLook} />
           {/* Разложить и вписать — разные жесты: первое пересчитывает
               расположение узлов, второе только подгоняет масштаб под то,
@@ -474,21 +509,13 @@ export function TopologyPage() {
         </Group>
       </Group>
 
-      <Paper withBorder style={{ height: 640, overflow: 'hidden' }}>
+      {/* Полотно занимает всё, что осталось от экрана: схему рассматривают,
+          и каждая строка под ней — это отрезанный кусок картинки. Подсказка
+          переехала под «?» в панели: читают её один раз, а место она
+          занимала всегда. */}
+      <Paper withBorder style={{ flex: 1, minHeight: 320, overflow: 'hidden' }}>
         <div ref={holder} style={{ width: '100%', height: '100%' }} />
       </Paper>
-
-      <Text c="dimmed" size="sm">
-        Клик по узлу открывает панель: править, копировать, в группу, удалить и «протянуть кабель» — за последнюю
-        кнопку тянут до другого устройства, а порты выбираются в окне. Клик по рамке группы — своя панель: правка,
-        подгруппа, удаление; рамку двигают мышью и растягивают за угол. Оранжевый кружок с «?» — свободный конец
-        кабеля: его тянут на устройство, чтобы воткнуть в порт. Клик по линии открывает правку связи, Delete удаляет
-        выделенное. Узел за рамку своей группы не выходит, а состав группы меняется только явно.
-        {canEdit && ' Shift с растяжкой по пустому месту выделяет несколько устройств рамкой, Shift по узлу добавляет'
-          + ' его к выделенным: дальше их двигают за любое из них и удаляют разом.'}
-        {canEdit && ' Ctrl+Z возвращает расположение назад, Ctrl+Shift+Z — вперёд; заведение и удаление так не'
-          + ' отменяются. На панели рамки есть «разложить содержимое рядами».'}
-      </Text>
       {paper.markedCount > 1 && (
         <Group gap="xs">
           <Text size="sm">Выделено устройств: {paper.markedCount}</Text>

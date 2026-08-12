@@ -39,6 +39,72 @@ export function nodeMetrics(look: TopologyAppearance) {
     : titleY + look.deviceTitleSize / 2 + pad;
   return { width: NODE_WIDTH, height, titleY, firstLineY, step, lines };
 }
+/** Ширина карточки: от и до.
+ *
+ * Меньше нижней границы карточка выглядит обрубком даже под коротким
+ * именем, а верхняя не даёт одному длинному названию — а они бывают в
+ * полстроки — растянуть карточку на пол-экрана и развалить всю раскладку.
+ * За границей название по-прежнему обрезается многоточием.
+ */
+const WIDTH_LIMITS = { min: 150, max: 420 };
+
+/** Ширина текста — как её посчитает браузер, а не «число букв на коэффициент».
+ *
+ * Коэффициент врёт: у кириллицы, латиницы и цифр разная ширина буквы, и
+ * подобранный на глаз множитель оставляет то пустое поле, то обрезанный
+ * хвост. Мерка одна на все замеры и живёт между вызовами: создавать канву на
+ * каждую карточку — тысяча канв на тысячу устройств.
+ */
+let ruler: CanvasRenderingContext2D | null | undefined;
+
+function textWidth(text: string, size: number, weight: number): number {
+  if (!text) return 0;
+  if (ruler === undefined) ruler = document.createElement('canvas').getContext('2d');
+  if (!ruler) return text.length * size * 0.6;  // канвы нет — считаем на глаз
+  const family = getComputedStyle(document.body).fontFamily || 'sans-serif';
+  ruler.font = `${weight} ${size}px ${family}`;
+  return ruler.measureText(text).width;
+}
+
+/** Размер каждой карточки: высота общая, ширина — под свой текст.
+ *
+ * Раньше ширина была постоянной, и длинное название обрезалось многоточием
+ * даже там, где на схеме места вагон. Теперь карточка растёт под то, что на
+ * ней написано, — в разумных пределах.
+ */
+export function nodeSizes(
+  nodes: { id: number; title: string; ports: string; lines: string[] }[],
+  look: TopologyAppearance,
+): Map<number, NodeSize> {
+  const card = nodeMetrics(look);
+  const sizes = new Map<number, NodeSize>();
+  for (const node of nodes) {
+    // Верхняя строка: кружок, название, зазор и счётчик портов у правого края.
+    const reserved = 28 + 11 + (node.ports ? 12 + textWidth(node.ports, look.deviceLineSize, 600) : 0);
+    const top = reserved + textWidth(node.title, look.deviceTitleSize, look.deviceTitleWeight);
+    const rest = node.lines.length
+      ? 22 + Math.max(...node.lines.map((t) => textWidth(t, look.deviceLineSize, look.deviceLineWeight)))
+      : 0;
+    const width = Math.min(Math.max(Math.ceil(Math.max(top, rest)), WIDTH_LIMITS.min), WIDTH_LIMITS.max);
+    sizes.set(node.id, {
+      width,
+      height: card.height,
+      // Сколько места осталось названию — то же число, из которого считалась
+      // ширина. Раньше запас под счётчик портов стоял в разметке отдельной
+      // константой, и на широкой карточке название всё равно обрезалось: два
+      // числа про одно и то же неизбежно расходятся.
+      titleRoom: Math.max(width - reserved, 20),
+    });
+  }
+  return sizes;
+}
+
+export interface NodeSize {
+  width: number;
+  height: number;
+  titleRoom: number;
+}
+
 export const STUB_SIZE = 26;
 export const GROUP_MIN = { width: 240, height: 140 };
 export const NEUTRAL = '#adb5bd';
@@ -66,13 +132,9 @@ export const DeviceShape = dia.Element.define(
       // Кружок цвета модели стоит вровень с названием: его `cy` задаётся у
       // экземпляра вместе с положением названия.
       dot: { cx: 17, r: 4, fill: NEUTRAL },
-      title: {
-        x: 28, fontFamily: 'inherit', textVerticalAnchor: 'middle',
-        // Длинное название обрезается многоточием по месту, а не по числу
-        // букв: ширину меряет браузер, и «Коммутатор цеха 1» не наезжает на
-        // счётчик портов справа.
-        textWrap: { width: -74, maxLineCount: 1, ellipsis: true },
-      },
+      // Ширина под обрезку многоточием задаётся у экземпляра: она зависит
+      // от того, сколько на этой карточке занял счётчик портов.
+      title: { x: 28, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
       ports: {
         x: 'calc(w-11)', textAnchor: 'end', textVerticalAnchor: 'middle',
         fill: '#868e96', fontFamily: 'inherit',

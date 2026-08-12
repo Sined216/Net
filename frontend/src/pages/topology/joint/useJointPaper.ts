@@ -43,7 +43,10 @@ export interface PaperHandlers {
    * рамку группы уезжает всё её содержимое, а выделенную рамкой пачку тянут
    * целиком — и отменять такое движение надо тоже целиком. */
   onDevicesMoved: (moves: { id: number; x: number; y: number }[]) => void;
-  onGroupMoved: (groupId: number, box: Box) => void;
+  /** Рамки, переехавшие одним жестом. Списком по той же причине, что и
+   * устройства: за рамкой группы едут и рамки подгрупп, и записать надо все
+   * — иначе подгруппы возвращаются на прежнее место при первой перерисовке. */
+  onGroupsMoved: (frames: { id: number; box: Box }[]) => void;
   /** Delete по выделенному. `devices` — устройства, выделенные рамкой; когда
    * их несколько, `selection` не в счёт. */
   onDelete: (selection: Selection, devices: number[]) => void;
@@ -418,9 +421,17 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
       if (!canEdit) return;
       const model = view.model;
       const moves: { id: number; x: number; y: number }[] = [];
+      const frames: { id: number; box: Box }[] = [];
       const remember = (element: dia.Element) => {
         const center = element.getBBox().center();
         moves.push({ id: element.get('deviceId'), x: center.x, y: center.y });
+      };
+      const rememberFrame = (element: dia.Element) => {
+        const box = element.getBBox();
+        frames.push({
+          id: element.get('groupId'),
+          box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        });
       };
 
       if (lead && String(model.id) === lead.id) {
@@ -433,17 +444,18 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
       if (model.get('kind') === 'device') {
         remember(model as dia.Element);
       } else if (model.get('kind') === 'group') {
-        const box = model.getBBox();
-        handlers.current.onGroupMoved(model.get('groupId'), {
-          x: box.x, y: box.y, width: box.width, height: box.height,
-        });
-        // Содержимое уехало вместе с рамкой — его новые координаты тоже нужно
-        // записать: в базе они абсолютные.
+        rememberFrame(model as dia.Element);
+        // Содержимое уехало вместе с рамкой — его новое положение тоже нужно
+        // записать: в базе координаты абсолютные. Это касается и подгрупп:
+        // их рамки хранятся своими, и без записи они возвращались на прежнее
+        // место, стоило отпустить мышь.
         for (const child of model.getEmbeddedCells({ deep: true })) {
           if (child.get('kind') === 'device') remember(child as dia.Element);
+          else if (child.get('kind') === 'group') rememberFrame(child as dia.Element);
         }
       }
       if (moves.length) handlers.current.onDevicesMoved(moves);
+      if (frames.length) handlers.current.onGroupsMoved(frames);
     });
 
     // Растянули рамку за угол. Размер меняется на каждое движение мыши, а
@@ -455,9 +467,10 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
       window.clearTimeout(resizeTimer);
       resizeTimer = window.setTimeout(() => {
         const box = (cell as dia.Element).getBBox();
-        handlers.current.onGroupMoved(cell.get('groupId'), {
-          x: box.x, y: box.y, width: box.width, height: box.height,
-        });
+        handlers.current.onGroupsMoved([{
+          id: cell.get('groupId'),
+          box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        }]);
       }, 350);
     });
 
