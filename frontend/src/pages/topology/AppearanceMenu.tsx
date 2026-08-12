@@ -180,6 +180,26 @@ export function AppearanceMenu({ value, onChange }: Props) {
             </Field>
 
             <Divider my={4} />
+            <Section title="Автоматическая раскладка" />
+            <Text size="xs" c="dimmed">
+              Действуют при нажатии «Разложить»: узлы, расставленные руками, эти настройки не двигают.
+            </Text>
+            <Field label={`Между рядами — ${value.layoutRowGap} px`}>
+              <Slider
+                size="sm" min={60} max={260} step={10} value={value.layoutRowGap}
+                onChange={(v) => set('layoutRowGap', v)}
+                marks={[{ value: 60 }, { value: 120 }, { value: 260 }]}
+              />
+            </Field>
+            <Field label={`Между узлами в ряду — ${value.layoutNodeGap} px`}>
+              <Slider
+                size="sm" min={16} max={140} step={4} value={value.layoutNodeGap}
+                onChange={(v) => set('layoutNodeGap', v)}
+                marks={[{ value: 16 }, { value: 44 }, { value: 140 }]}
+              />
+            </Field>
+
+            <Divider my={4} />
             <Section title="Полотно" />
             <Field label="Фон">
               <SegmentedControl

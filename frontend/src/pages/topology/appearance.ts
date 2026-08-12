@@ -52,6 +52,13 @@ export interface TopologyAppearance {
   /** Размер подписи группы. */
   groupTitleSize: number;
 
+  /** Расстояние между рядами при автоматической раскладке («Разложить»).
+   * Между рядами идут кабели с подписями портов — слишком тесно подписи
+   * налезают друг на друга и на соседний ряд. */
+  layoutRowGap: number;
+  /** Расстояние между узлами внутри ряда при той же раскладке. */
+  layoutNodeGap: number;
+
   background: 'dots' | 'lines' | 'cross' | 'none';
 }
 
@@ -80,6 +87,9 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   edgeLabelName: true,
   edgeLabelSize: 10,
   groupTitleSize: 12,
+
+  layoutRowGap: 120,
+  layoutNodeGap: 44,
 
   background: 'dots',
 };

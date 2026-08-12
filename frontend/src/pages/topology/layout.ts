@@ -88,10 +88,6 @@ export interface AutoCard {
   group: number | null;
 }
 
-/** Между рядами: там идут кабели с подписями портов. */
-const ROW_GAP = 120;
-/** Между карточками в ряду. */
-const CARD_GAP = 44;
 /** Отступ от карточек до рамки группы. Сверху больше: там подпись. */
 const FRAME_PADDING = { top: 46, side: 26 };
 
@@ -113,6 +109,9 @@ export async function computeAutoLayout(
   cards: AutoCard[],
   groups: { id: number; parent_id?: number | null }[],
   links: { a: number; b: number }[],
+  /** Расстояние между рядами и между узлами в ряду — настройка вида, чтобы
+   * можно было раздвинуть тесную схему без правки кода. */
+  gaps: { row: number; node: number },
 ): Promise<{ positions: Map<number, Point>; boxes: Map<number, Box> }> {
   const busy = new Set<number>();
   for (const card of cards) {
@@ -138,7 +137,7 @@ export async function computeAutoLayout(
       })),
     ],
     links.map((link) => ({ from: `d${link.a}`, to: `d${link.b}` })),
-    { direction: 'RIGHT', layerGap: ROW_GAP, nodeGap: CARD_GAP, padding: FRAME_PADDING },
+    { direction: 'RIGHT', layerGap: gaps.row, nodeGap: gaps.node, padding: FRAME_PADDING },
   );
 
   const positions = new Map<number, Point>();

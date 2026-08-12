@@ -297,6 +297,7 @@ export function TopologyPage() {
         edges
           .filter((e) => e.device_a_id != null && e.device_b_id != null)
           .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! })),
+        { row: look.layoutRowGap, node: look.layoutNodeGap },
       );
 
       history.push({
