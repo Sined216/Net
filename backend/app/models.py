@@ -295,7 +295,6 @@ class Device(Base):
     # устройство ищут в таблицах коммутации соседей, и к конкретному гнезду
     # он не привязан.
     mac = Column(MACADDR)
-    location = Column(Text)
     role = Column(Text)
     install_date = Column(Date)
     notes = Column(Text)
@@ -538,7 +537,6 @@ class ImportRow(Base):
     template_name = Column(Text)
     type_name = Column(Text)
     management_ip = Column(Text)
-    location = Column(Text)
     notes = Column(Text)
     group_name = Column(Text)
     tags_text = Column(Text)

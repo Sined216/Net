@@ -1325,8 +1325,6 @@ export interface components {
         DeviceCreate: {
             /** Install Date */
             install_date?: string | null;
-            /** Location */
-            location?: string | null;
             /** Mac */
             mac?: string | null;
             /** Management Ip */
@@ -1363,8 +1361,6 @@ export interface components {
             id: number;
             /** Install Date */
             install_date?: string | null;
-            /** Location */
-            location?: string | null;
             /** Mac */
             mac?: string | null;
             /** Management Ip */
@@ -1422,8 +1418,6 @@ export interface components {
              * @default []
              */
             interfaces: components["schemas"]["InterfaceOut"][];
-            /** Location */
-            location?: string | null;
             /** Mac */
             mac?: string | null;
             /** Management Ip */
@@ -1605,8 +1599,6 @@ export interface components {
         DeviceUpdate: {
             /** Install Date */
             install_date?: string | null;
-            /** Location */
-            location?: string | null;
             /** Mac */
             mac?: string | null;
             /** Management Ip */
@@ -1666,8 +1658,6 @@ export interface components {
             id: number;
             /** Imported At */
             imported_at?: string | null;
-            /** Location */
-            location?: string | null;
             /** Management Ip */
             management_ip?: string | null;
             /** Name */
@@ -3354,7 +3344,6 @@ export interface operations {
                 code?: string | null;
                 name?: string | null;
                 management_ip?: string | null;
-                location?: string | null;
                 sort?: string;
                 desc?: boolean;
                 limit?: number;

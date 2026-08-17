@@ -23,7 +23,6 @@ export function LinkFormModal({
   const [connector, setConnector] = useState(link.connector_type ?? '');
   const [length, setLength] = useState<number | ''>(link.length_m ?? '');
   const [speed, setSpeed] = useState<number | ''>(link.speed_mbps ?? '');
-  const [confirmed, setConfirmed] = useState(link.confirmed ? 'true' : 'false');
   const [notes, setNotes] = useState(link.notes ?? '');
   const [portA, setPortA] = useState<string | null>(link.interface_a_id ? String(link.interface_a_id) : null);
   const [portB, setPortB] = useState<string | null>(link.interface_b_id ? String(link.interface_b_id) : null);
@@ -87,7 +86,6 @@ export function LinkFormModal({
           connector_type: nn(connector),
           length_m: nnFloat(length === '' ? null : String(length)),
           speed_mbps: nnInt(speed === '' ? null : String(speed)),
-          confirmed: confirmed === 'true',
           notes: nn(notes),
         },
       });
@@ -149,14 +147,11 @@ export function LinkFormModal({
             <TextInput label="Разъём" placeholder="RJ45 / LC..." value={connector} onChange={(e) => setConnector(e.currentTarget.value)} />
             <NumberInput label="Длина, м" value={length} onChange={(v) => setLength(v === '' ? '' : Number(v))} decimalScale={1} />
           </Group>
-          <Group grow>
-            <NumberInput label="Скорость, Мбит/с" value={speed} onChange={(v) => setSpeed(v === '' ? '' : Number(v))} />
-            <Select
-              label="Подтверждена"
-              data={[{ value: 'true', label: 'да' }, { value: 'false', label: 'нет' }]}
-              value={confirmed} onChange={(v) => setConfirmed(v ?? 'true')}
-            />
-          </Group>
+          {/* «Подтверждена» здесь больше нет: до появления опроса сети все
+              связи заведены руками и подтверждены, и поле в форме означало
+              выбор без последствий. Столбец в базе остался под этап 4 — см.
+              раздел 4.1 ТЗ. */}
+          <NumberInput label="Скорость, Мбит/с" value={speed} onChange={(v) => setSpeed(v === '' ? '' : Number(v))} />
           <Textarea label="Заметки" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} rows={2} />
           <Group justify="space-between" mt="sm">
             <Button

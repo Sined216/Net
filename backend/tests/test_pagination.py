@@ -24,7 +24,7 @@ def many_devices(client, headers, template, db):
     for n in range(50):
         response = client.post(
             "/devices",
-            json={"template_id": template.id, "name": f"Станок {n:02d}", "location": f"Цех {n % 3}"},
+            json={"template_id": template.id, "name": f"Станок {n:02d}"},
             headers=headers["editor"],
         )
         assert response.status_code == 201
@@ -60,8 +60,11 @@ def test_search_and_filters_are_done_by_the_database(client, headers, many_devic
     assert found["total"] == 1
     assert found["items"][0]["name"] == "Станок 07"
 
-    by_place = client.get("/devices", params={"q": "Цех 1"}, headers=headers["viewer"]).json()
-    assert by_place["total"] > 1
+    # Кусок названия находит всех, у кого он встречается: «Станок 0» — это
+    # с 00 по 09. Раньше здесь искали по расположению, но такого поля у
+    # устройства больше нет — его заменила группа на топологии.
+    by_part = client.get("/devices", params={"q": "Станок 0"}, headers=headers["viewer"]).json()
+    assert by_part["total"] == 10
 
     # Спецсимволы ILIKE — это текст, а не шаблон.
     assert client.get("/devices", params={"q": "%"}, headers=headers["viewer"]).json()["total"] == 0

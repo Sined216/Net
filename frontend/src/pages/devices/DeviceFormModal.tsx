@@ -28,7 +28,6 @@ export interface DeviceDraft {
   management_ip?: string | null;
   mac?: string | null;
   role?: string | null;
-  location?: string | null;
   notes?: string | null;
   topology_group_id?: number | null;
   tag_ids?: number[];
@@ -65,7 +64,6 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
   const [mgmtIp, setMgmtIp] = useState(device?.management_ip ?? draft?.management_ip ?? '');
   const [mac, setMac] = useState(device?.mac ?? draft?.mac ?? '');
   const [role, setRole] = useState<string | null>(device?.role ?? draft?.role ?? null);
-  const [location, setLocation] = useState(device?.location ?? draft?.location ?? '');
   const [notes, setNotes] = useState(device?.notes ?? draft?.notes ?? '');
   const [groupId, setGroupId] = useState<string | null>(
     device?.topology_group_id != null ? String(device.topology_group_id)
@@ -125,7 +123,6 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
       name: nn(name),
       management_ip: nn(mgmtIp),
       mac: nn(mac),
-      location: nn(location),
       role: (role as DeviceRole) || null,
       notes: nn(notes),
       topology_group_id: groupId ? parseInt(groupId, 10) : null,
@@ -217,14 +214,15 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
             placeholder="a4:bb:6d:11:22:33"
             value={mac} onChange={(e) => setMac(e.currentTarget.value)}
           />
-          <Group grow>
-            <TextInput label="Расположение" placeholder="цех / шкаф" value={location} onChange={(e) => setLocation(e.currentTarget.value)} />
-            <Select
-              label="Группа на топологии" placeholder="— без группы —" clearable
-              data={topologyGroups.map((g) => ({ value: String(g.id), label: g.name }))}
-              value={groupId} onChange={setGroupId}
-            />
-          </Group>
+          {/* «Расположение» свободным текстом отсюда убрано: место железки
+              задаёт группа на топологии — она проверяемая, вложенная и видна
+              на схеме, а два способа записать одно и то же расходились при
+              первой же правке. */}
+          <Select
+            label="Группа на топологии" placeholder="— без группы —" clearable
+            data={topologyGroups.map((g) => ({ value: String(g.id), label: g.name }))}
+            value={groupId} onChange={setGroupId}
+          />
           <Textarea label="Заметки" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} rows={2} />
           <div>
             <Text size="sm" fw={500} mb={4}>Теги</Text>

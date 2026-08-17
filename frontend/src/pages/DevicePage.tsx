@@ -112,7 +112,6 @@ export function DevicePage() {
           <Field label="Производитель">{template?.manufacturer || '—'}</Field>
           <Field label="IP управления">{device.management_ip || '—'}</Field>
           <Field label="MAC">{device.mac || '—'}</Field>
-          <Field label="Расположение">{device.location || '—'}</Field>
           <Field label="Роль">{device.role || '—'}</Field>
           <Field label="Установлено">{device.install_date || '—'}</Field>
           <Field label="Порты">{busyCount} из {interfaces.length} занято</Field>

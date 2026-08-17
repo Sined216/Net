@@ -141,7 +141,6 @@ export interface DeviceQuery {
   code?: string;
   name?: string;
   management_ip?: string;
-  location?: string;
   tag_id?: number;
   device_type_id?: number;
   template_id?: number;

@@ -102,7 +102,7 @@ export function ImportPage() {
 
       <Text c="dimmed" size="sm">
         Строки из файла попадают сюда, а не сразу в спецификацию оборудования. «Добавить» открывает обычное окно
-        устройства с тем, что удалось разобрать: шаблон, IP, расположение. Чего в файле нет — заполняется руками.
+        устройства с тем, что удалось разобрать: шаблон, IP, группа. Чего в файле нет — заполняется руками.
         Связи из файла не заводятся: кабель соединяет порты, а портов до заведения устройства ещё нет.
         Зелёным подсвечены название и адрес, которые в спецификации уже есть, — такую строку, скорее всего,
         переносить не нужно. Кроме таблиц принимается выгрузка Siemens Automation Tool (.xml): из неё
@@ -123,7 +123,8 @@ export function ImportPage() {
           {isLoading
             ? 'Загрузка…'
             : 'Пусто. Загрузите .xlsx или .csv — колонки распознаются по названиям: имя, шаблон (модель), IP, '
-              + 'расположение, группа, теги. Либо .xml — выгрузку Siemens Automation Tool, её структура известна заранее.'}
+              + 'группа, теги. Остальные попадут в «Ещё из файла» — они не пропадут, но полем устройства не станут. '
+              + 'Либо .xml — выгрузку Siemens Automation Tool, её структура известна заранее.'}
         </Text>
       ) : (
         <>
@@ -138,7 +139,6 @@ export function ImportPage() {
                 <SortTh field="name" sort={sort} onSort={toggleSort}>Название</SortTh>
                 <SortTh field="template_name" sort={sort} onSort={toggleSort}>Шаблон устройства</SortTh>
                 <SortTh w={130} field="management_ip" sort={sort} onSort={toggleSort}>IP</SortTh>
-                <SortTh field="location" sort={sort} onSort={toggleSort}>Расположение</SortTh>
                 <SortTh field="group_name" sort={sort} onSort={toggleSort}>Группа и теги</SortTh>
                 <Table.Th>Ещё из файла</Table.Th>
                 <SortTh w={160} field="status" sort={sort} onSort={toggleSort}>Состояние</SortTh>
@@ -167,7 +167,6 @@ export function ImportPage() {
                     ) : <Text c="dimmed" size="sm">—</Text>}
                   </Table.Td>
                   <SameAsExisting value={row.management_ip} deviceId={row.same_ip_device_id} what="адресом" />
-                  <Table.Td><Text size="sm">{row.location ?? '—'}</Text></Table.Td>
                   <Table.Td>
                     {row.group_name && (
                       <Group gap={6} wrap="nowrap">
@@ -235,7 +234,6 @@ export function ImportPage() {
             template_id: adding.suggested_template_id,
             name: adding.name,
             management_ip: adding.management_ip,
-            location: adding.location,
             notes: [adding.notes, extraAsNote(adding)].filter(Boolean).join('\n') || null,
             topology_group_id: adding.suggested_group_id,
             tag_ids: adding.suggested_tag_ids,
@@ -249,7 +247,7 @@ export function ImportPage() {
 
 /** По каким колонкам таблица упорядочивается. «Ещё из файла» здесь нет: это
  * мешанина неразобранных колонок, и порядок по ней ничего не значит. */
-type SortKey = 'row_number' | 'name' | 'template_name' | 'management_ip' | 'location'
+type SortKey = 'row_number' | 'name' | 'template_name' | 'management_ip'
   | 'group_name' | 'status';
 
 /** Заголовок, по которому упорядочивают.

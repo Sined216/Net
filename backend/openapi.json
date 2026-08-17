@@ -394,18 +394,6 @@
             ],
             "title": "Install Date"
           },
-          "location": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Location"
-          },
           "mac": {
             "anyOf": [
               {
@@ -519,17 +507,6 @@
               }
             ],
             "title": "Install Date"
-          },
-          "location": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Location"
           },
           "mac": {
             "anyOf": [
@@ -694,17 +671,6 @@
             },
             "title": "Interfaces",
             "type": "array"
-          },
-          "location": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Location"
           },
           "mac": {
             "anyOf": [
@@ -1244,18 +1210,6 @@
             ],
             "title": "Install Date"
           },
-          "location": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Location"
-          },
           "mac": {
             "anyOf": [
               {
@@ -1463,17 +1417,6 @@
               }
             ],
             "title": "Imported At"
-          },
-          "location": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Location"
           },
           "management_ip": {
             "anyOf": [
@@ -5733,22 +5676,6 @@
                 }
               ],
               "title": "Management Ip"
-            }
-          },
-          {
-            "in": "query",
-            "name": "location",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Location"
             }
           },
           {

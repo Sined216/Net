@@ -18,8 +18,8 @@ def entries(client, headers, **params):
 
 def test_device_history_shows_what_changed(client, headers, make_device):
     """Ради этого журнал и читают: что именно поправили в записи."""
-    device = make_device(name="Станок 1", location="Цех 1")
-    client.patch(f"/devices/{device['id']}", json={"location": "Цех 2"}, headers=headers["editor"])
+    device = make_device(name="Станок 1")
+    client.patch(f"/devices/{device['id']}", json={"name": "Станок 2"}, headers=headers["editor"])
 
     page = entries(client, headers["viewer"], entity_type="device", entity_id=device["id"])
     assert page["total"] == 2, "заведение и правка"
@@ -28,9 +28,9 @@ def test_device_history_shows_what_changed(client, headers, make_device):
     assert update["action"] == "update"
     assert update["entity_label"] == "Устройство"
     assert update["user_name"] == "Editor"
-    # Изменилось только расположение — остальные поля в разнице не мешаются.
+    # Изменилось только название — остальные поля в разнице не мешаются.
     assert [(c["label"], c["old"], c["new"]) for c in update["changes"]] == [
-        ("расположение", "Цех 1", "Цех 2"),
+        ("название", "Станок 1", "Станок 2"),
     ]
 
 

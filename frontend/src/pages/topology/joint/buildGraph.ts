@@ -298,7 +298,11 @@ function addLinks(
             strokeWidth: look.edgeWidth,
             strokeDasharray: edge.line_style === 'dashed' ? '7 5'
               : edge.line_style === 'dotted' ? '2 4' : undefined,
-            opacity: edge.confirmed ? 0.9 : 0.45,
+            // Полупрозрачная линия означала «связь не подтверждена». Пока
+            // опроса сети нет, все связи заведены руками и подтверждены —
+            // разной прозрачности было взяться неоткуда, а объяснять её
+            // приходилось каждому. Признак остался в базе под этап 4.
+            opacity: 0.9,
             targetMarker: null,
           },
         },

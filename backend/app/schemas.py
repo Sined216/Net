@@ -214,7 +214,6 @@ class ImportRowOut(BaseModel):
     template_name: Optional[str] = None
     type_name: Optional[str] = None
     management_ip: Optional[str] = None
-    location: Optional[str] = None
     notes: Optional[str] = None
     group_name: Optional[str] = None
     tags_text: Optional[str] = None
@@ -493,7 +492,6 @@ class DeviceBase(BaseModel):
     # Управляющий MAC железки — не MAC порта: по нему устройство ищут в
     # таблицах коммутации соседей, и к конкретному гнезду он не привязан.
     mac: Optional[MacAddressStr] = None
-    location: Optional[str] = None
     role: Optional[DeviceRole] = None
     install_date: Optional[date] = None
     notes: Optional[str] = None
@@ -504,7 +502,6 @@ class DeviceCreate(DeviceBase):
     # Длины — только на вводе: DeviceOut наследует DeviceBase, и ограничение
     # там сделало бы нечитаемой запись, заведённую раньше.
     name: Optional[str] = Field(default=None, max_length=200)
-    location: Optional[str] = Field(default=None, max_length=200)
     tag_ids: List[int] = []
 
 
@@ -516,7 +513,6 @@ class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(default=None, max_length=200)
     management_ip: Optional[IPAddressStr] = None
     mac: Optional[MacAddressStr] = None
-    location: Optional[str] = Field(default=None, max_length=200)
     role: Optional[DeviceRole] = None
     install_date: Optional[date] = None
     notes: Optional[str] = None
@@ -539,7 +535,6 @@ class DeviceListItem(BaseModel):
     name: Optional[str] = None
     management_ip: Optional[str] = None
     mac: Optional[str] = None
-    location: Optional[str] = None
     role: Optional[DeviceRole] = None
     install_date: Optional[date] = None
     notes: Optional[str] = None

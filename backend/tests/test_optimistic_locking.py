@@ -23,7 +23,7 @@ def test_stale_device_edit_is_rejected(client, headers, make_device):
     device = make_device()
     seen = device["version"]
 
-    client.patch(f"/devices/{device['id']}", json={"version": seen, "location": "Цех 1"},
+    client.patch(f"/devices/{device['id']}", json={"version": seen, "name": "Станок 1"},
                  headers=headers["editor"])
 
     late = client.patch(
@@ -36,14 +36,14 @@ def test_stale_device_edit_is_rejected(client, headers, make_device):
 
     # Правка первого на месте, а не затёрта.
     current = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
-    assert current["location"] == "Цех 1"
+    assert current["name"] == "Станок 1"
     assert current["notes"] is None
 
 
 def test_edit_with_fresh_version_passes(client, headers, make_device):
     """Обновил страницу — сохраняется как обычно."""
     device = make_device()
-    first = client.patch(f"/devices/{device['id']}", json={"version": device["version"], "location": "Цех 1"},
+    first = client.patch(f"/devices/{device['id']}", json={"version": device["version"], "name": "Станок 1"},
                          headers=headers["editor"]).json()
     second = client.patch(f"/devices/{device['id']}", json={"version": first["version"], "notes": "и заметка"},
                           headers=headers["editor"])
@@ -55,7 +55,7 @@ def test_request_without_version_is_not_checked(client, headers, make_device):
     """Старый клиент и служебные вызовы работают как раньше: без номера
     проверять нечего."""
     device = make_device()
-    client.patch(f"/devices/{device['id']}", json={"location": "Цех 1"}, headers=headers["editor"])
+    client.patch(f"/devices/{device['id']}", json={"name": "Станок 1"}, headers=headers["editor"])
     late = client.patch(f"/devices/{device['id']}", json={"notes": "без номера"}, headers=headers["editor"])
     assert late.status_code == 200
 

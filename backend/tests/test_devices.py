@@ -66,7 +66,7 @@ def test_update_device(client, headers, make_device):
     device = make_device()
     response = client.patch(
         f"/devices/{device['id']}",
-        json={"name": "Коммутатор цеха 1", "location": "Шкаф ШК-1"},
+        json={"name": "Коммутатор цеха 1"},
         headers=headers["editor"],
     )
     assert response.status_code == 200

@@ -157,7 +157,7 @@ export function TopologyPage() {
         });
         setAddingDevice({
           draft: {
-            template_id: source.template_id, name: source.name, location: source.location,
+            template_id: source.template_id, name: source.name,
             role: source.role, notes: source.notes, topology_group_id: source.topology_group_id,
             tag_ids: source.tags.map((t) => t.id),
             // IP, MAC и дата установки у каждой железки свои — копировать их

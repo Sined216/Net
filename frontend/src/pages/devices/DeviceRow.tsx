@@ -77,7 +77,6 @@ export function DeviceRow({
         </Table.Td>
         <Table.Td><Text size="sm" c="dimmed">{typeName}</Text></Table.Td>
         <Table.Td><Text size="sm">{device.management_ip || '—'}</Text></Table.Td>
-        <Table.Td><Text size="sm">{device.location || '—'}</Text></Table.Td>
         <Table.Td><Text size="sm" c={groupName === '—' ? 'dimmed' : undefined}>{groupName}</Text></Table.Td>
         <Table.Td>
           <Group gap={4}>

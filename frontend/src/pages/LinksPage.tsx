@@ -104,7 +104,7 @@ export function LinksPage() {
             <Table.Th>Устройство A</Table.Th><Table.Th>Порт A</Table.Th>
             <Table.Th>Устройство B</Table.Th><Table.Th>Порт B</Table.Th>
             <Table.Th>Шаблон</Table.Th><Table.Th>Разъём</Table.Th><Table.Th>Длина, м</Table.Th>
-            <Table.Th>Источник</Table.Th><Table.Th>Подтв.</Table.Th><Table.Th w={80} />
+            <Table.Th>Источник</Table.Th><Table.Th>Состояние</Table.Th><Table.Th w={80} />
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -128,9 +128,13 @@ export function LinksPage() {
                 <Table.Td>{l.length_m ?? '—'}</Table.Td>
                 <Table.Td>{l.source}</Table.Td>
                 <Table.Td>
-                  {dangling
-                    ? <Badge color="orange" variant="light">подвешен</Badge>
-                    : l.confirmed ? '✓' : <Badge color="yellow" variant="light">не подтв.</Badge>}
+                  {/* Подвешенный конец — единственное состояние кабеля,
+                      которое видно снаружи и требует действия. Признак
+                      «подтверждена» отсюда убран: пока опроса сети нет, все
+                      связи заведены руками и подтверждены, и колонка,
+                      всегда показывающая одно и то же, только занимала место
+                      и просила объяснений. Поле в базе осталось — см. этап 4. */}
+                  {dangling ? <Badge color="orange" variant="light">подвешен</Badge> : '—'}
                 </Table.Td>
                 <Table.Td>
                   <Group gap={4}>

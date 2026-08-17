@@ -44,7 +44,6 @@ FIELD_LABELS = {
     "name": "название",
     "code": "код",
     "management_ip": "IP управления",
-    "location": "расположение",
     "role": "роль",
     "install_date": "дата установки",
     "notes": "заметки",
