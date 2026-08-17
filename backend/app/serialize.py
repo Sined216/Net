@@ -209,17 +209,19 @@ def serialize_links(db: Session, links: List[models.Link]) -> List[schemas.LinkO
     ends: Dict[int, schemas.LinkEndOut] = {}
     if iface_ids:
         rows = (
-            db.query(models.Interface, models.Device)
+            db.query(models.Interface, models.Device, models.DeviceTemplate)
             .join(models.Device, models.Device.id == models.Interface.device_id)
+            .outerjoin(models.DeviceTemplate, models.DeviceTemplate.id == models.Device.template_id)
             .filter(models.Interface.id.in_(set(iface_ids)))
             .all()
         )
         ends = {
             iface.id: schemas.LinkEndOut(
                 device_id=device.id, device_code=device.code, device_name=device.name,
+                device_template_name=template.name if template else None,
                 interface_id=iface.id, interface_label=iface.label, port_number=iface.port_number,
             )
-            for iface, device in rows
+            for iface, device, template in rows
         }
 
     result = []

@@ -3,7 +3,7 @@ import { Button, Group, Modal, NumberInput, Select, Stack, Text, TextInput, Text
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconTrash } from '@tabler/icons-react';
 import { useAttachLinkEnd, useDeleteLink, useFreePorts, useReconnectLinkEnd, useUpdateLink } from '../../api/hooks';
-import { nn, nnFloat, nnInt } from '../../lib/utils';
+import { deviceLabel, nn, nnFloat, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { useCan } from '../../auth/permissions';
 import type { FreePortOut, LinkEndOut, LinkOut, LinkTemplateOut } from '../../api/types';
@@ -195,18 +195,16 @@ function mergeFree(...lists: FreePortOut[][]): FreePortOut[] {
 function portOptions(free: FreePortOut[], current: LinkEndOut | null | undefined) {
   const groups = new Map<number, { group: string; items: { value: string; label: string }[] }>();
   const add = (deviceId: number, deviceCode: string, deviceName: string | null | undefined,
+                templateName: string | null | undefined,
                 interfaceId: number, portNumber: number, label: string) => {
     if (!groups.has(deviceId)) {
-      groups.set(deviceId, {
-        group: deviceName ? `${deviceCode} — ${deviceName}` : deviceCode,
-        items: [],
-      });
+      groups.set(deviceId, { group: deviceLabel(deviceCode, deviceName, templateName), items: [] });
     }
     groups.get(deviceId)!.items.push({ value: String(interfaceId), label: `№${portNumber} · ${label}` });
   };
 
   if (current) {
-    add(current.device_id, current.device_code, current.device_name,
+    add(current.device_id, current.device_code, current.device_name, current.device_template_name,
         current.interface_id, current.port_number, `${current.interface_label} (сейчас)`);
   }
   for (const port of free) {
@@ -214,7 +212,8 @@ function portOptions(free: FreePortOut[], current: LinkEndOut | null | undefined
     // прежний порт освобождается и приезжает в списке свободных, а Mantine
     // на двух одинаковых значениях роняет страницу целиком.
     if (current && port.interface_id === current.interface_id) continue;
-    add(port.device_id, port.device_code, port.device_name, port.interface_id, port.port_number, port.label);
+    add(port.device_id, port.device_code, port.device_name, port.device_template_name,
+        port.interface_id, port.port_number, port.label);
   }
   return [...groups.values()];
 }

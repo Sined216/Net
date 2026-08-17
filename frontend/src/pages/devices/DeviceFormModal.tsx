@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Badge, Button, Checkbox, Group, Modal, ScrollArea, Select, Stack, Table, Text, TextInput, Textarea,
 } from '@mantine/core';
-import { IconPencil } from '@tabler/icons-react';
+import { IconPencil, IconPlus } from '@tabler/icons-react';
 import {
-  useConnectorTypes, useCreateDevice, useDeviceInterfaces, useDeviceTemplates, useMoveImportRow,
-  useSetDeviceTags, useTags, useTopologyGroups, useUpdateDevice,
+  useConnectorTypes, useCreateDevice, useDeviceInterfaces, useDeviceTemplates, useDeviceTypes,
+  useMoveImportRow, useSetDeviceTags, useTags, useTopologyGroups, useUpdateDevice,
 } from '../../api/hooks';
 import { TemplateFormModal } from '../TemplatesPage';
 import { flattenTagsOrdered, nn } from '../../lib/utils';
@@ -25,6 +25,7 @@ export interface DeviceDraft {
   template_id?: number | null;
   name?: string | null;
   management_ip?: string | null;
+  role?: string | null;
   location?: string | null;
   notes?: string | null;
   topology_group_id?: number | null;
@@ -51,6 +52,7 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
   const isEdit = !!device;
   const canEdit = useCan('edit');
   const { data: templates = [] } = useDeviceTemplates();
+  const { data: deviceTypes = [] } = useDeviceTypes();
   const { data: tags = [] } = useTags();
   const { data: topologyGroups = [] } = useTopologyGroups();
   const { data: connectors = [] } = useConnectorTypes();
@@ -59,14 +61,17 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
   );
   const [name, setName] = useState(device?.name ?? draft?.name ?? '');
   const [mgmtIp, setMgmtIp] = useState(device?.management_ip ?? draft?.management_ip ?? '');
-  const [role, setRole] = useState<string | null>(device?.role ?? null);
+  const [role, setRole] = useState<string | null>(device?.role ?? draft?.role ?? null);
   const [location, setLocation] = useState(device?.location ?? draft?.location ?? '');
   const [notes, setNotes] = useState(device?.notes ?? draft?.notes ?? '');
   const [groupId, setGroupId] = useState<string | null>(
     device?.topology_group_id != null ? String(device.topology_group_id)
       : draft?.topology_group_id != null ? String(draft.topology_group_id) : null,
   );
-  const [editingTemplate, setEditingTemplate] = useState(false);
+  // 'edit' — правка уже выбранного шаблона, 'new' — заведение нового прямо
+  // отсюда, чтобы не бросать начатую форму устройства ради похода на другую
+  // вкладку.
+  const [templateModal, setTemplateModal] = useState<'edit' | 'new' | null>(null);
   const [tagIds, setTagIds] = useState<Set<number>>(
     new Set(device ? (device.tags ?? []).map((t) => t.id) : (draft?.tag_ids ?? [])),
   );
@@ -101,6 +106,24 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
       connector: connectors.find((c) => c.id === iface.connector_id)?.name ?? null,
       busy: false,
     }));
+
+  // Список моделей группируется по категории техники (коммутатор, сервер,
+  // ЧПУ...) и ищется по названию — плоский список без поиска на полусотне
+  // моделей заставлял читать его целиком, чтобы найти нужную.
+  const templateOptions = useMemo(() => {
+    const byType = new Map<number, { group: string; items: { value: string; label: string }[] }>();
+    const noType: { value: string; label: string }[] = [];
+    for (const t of [...templates].sort((a, b) => a.name.localeCompare(b.name))) {
+      const item = { value: String(t.id), label: `${t.name} (${t.interfaces.length} порт.)` };
+      const type = deviceTypes.find((dt) => dt.id === t.device_type_id);
+      if (!type) { noType.push(item); continue; }
+      if (!byType.has(type.id)) byType.set(type.id, { group: type.name, items: [] });
+      byType.get(type.id)!.items.push(item);
+    }
+    const groups = [...byType.values()].sort((a, b) => a.group.localeCompare(b.group));
+    if (noType.length) groups.push({ group: 'Без категории', items: noType });
+    return groups;
+  }, [templates, deviceTypes]);
 
   function toggleTag(id: number) {
     setTagIds((prev) => {
@@ -160,18 +183,24 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
           {!isEdit ? (
             <>
               <Select
-                label="Шаблон устройства" placeholder="— выбрать —" required
-                data={[...templates].sort((a, b) => a.name.localeCompare(b.name)).map((t) => ({
-                  value: String(t.id), label: `${t.name} (${t.interfaces.length} порт.)`,
-                }))}
+                label="Шаблон устройства" placeholder="— выбрать или найти —" required searchable
+                data={templateOptions}
                 value={templateId} onChange={setTemplateId}
               />
               <Group gap={6}>
-                <Text size="xs" c="dimmed">Нет нужного шаблона? Заведите его во вкладке «Шаблоны».</Text>
+                <Text size="xs" c="dimmed">Нет нужного шаблона?</Text>
+                {canEdit && (
+                  <Button
+                    size="compact-xs" variant="subtle" leftSection={<IconPlus size={13} />}
+                    onClick={() => setTemplateModal('new')}
+                  >
+                    Создать шаблон
+                  </Button>
+                )}
                 {template && canEdit && (
                   <Button
                     size="compact-xs" variant="subtle" leftSection={<IconPencil size={13} />}
-                    onClick={() => setEditingTemplate(true)}
+                    onClick={() => setTemplateModal('edit')}
                   >
                     Править шаблон
                   </Button>
@@ -184,7 +213,7 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
               {template && canEdit && (
                 <Button
                   size="compact-xs" variant="subtle" leftSection={<IconPencil size={13} />}
-                  onClick={() => setEditingTemplate(true)}
+                  onClick={() => setTemplateModal('edit')}
                 >
                   Править шаблон
                 </Button>
@@ -227,11 +256,18 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
           </Group>
         </Stack>
       </form>
-      {/* Правка шаблона прямо отсюда: состав портов задаёт шаблон, и заметив
-          нехватку порта в списке ниже, незачем уходить на другую вкладку и
-          терять начатое заведение устройства. */}
-      {editingTemplate && template && (
-        <TemplateFormModal template={template} onClose={() => setEditingTemplate(false)} />
+      {/* Заведение и правка шаблона прямо отсюда: состав портов задаёт
+          шаблон, и заметив нехватку модели или порта в списке ниже, незачем
+          уходить на другую вкладку и терять начатое заведение устройства. */}
+      {templateModal === 'edit' && template && (
+        <TemplateFormModal template={template} onClose={() => setTemplateModal(null)} />
+      )}
+      {templateModal === 'new' && (
+        <TemplateFormModal
+          template={null}
+          onClose={() => setTemplateModal(null)}
+          onCreated={(id) => setTemplateId(String(id))}
+        />
       )}
     </Modal>
   );

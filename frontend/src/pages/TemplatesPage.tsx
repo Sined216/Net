@@ -171,11 +171,14 @@ interface DraftPort {
 /** Форма шаблона — создание и редактирование в одном месте. В режиме
  * создания порты копятся в черновике и уходят одним запросом при сабмите;
  * в режиме редактирования каждое изменение порта сразу летит на бэкенд. */
-export function TemplateFormModal({ template, draftName, onClose }: {
+export function TemplateFormModal({ template, draftName, onClose, onCreated }: {
   template: DeviceTemplateOut | null;
   /** Название для нового шаблона — например взятое из строки файла импорта. */
   draftName?: string;
   onClose: () => void;
+  /** Заведённый шаблон — например, окну заведения устройства, открывшему
+   * это окно кнопкой «создать шаблон», нужно сразу его выбрать. */
+  onCreated?: (templateId: number) => void;
 }) {
   const isEdit = !!template;
   const { data: types = [] } = useDeviceTypes();
@@ -285,13 +288,22 @@ export function TemplateFormModal({ template, draftName, onClose }: {
       manufacturer: nn(manufacturer), notes: nn(notes), color: nn(color),
       ports_editable_on_device: portsEditable,
     };
-    const onSuccess = () => { notifySuccess(isEdit ? 'Шаблон обновлён' : 'Шаблон создан'); onClose(); };
     if (isEdit) {
-      updateTemplate.mutate({ id: template!.id, body }, { onSuccess, onError: notifyError });
+      updateTemplate.mutate(
+        { id: template!.id, body },
+        { onSuccess: () => { notifySuccess('Шаблон обновлён'); onClose(); }, onError: notifyError },
+      );
     } else {
       createTemplate.mutate(
         { ...body, interfaces: draftPorts.map(({ label, connector_id }) => ({ label, connector_id })) },
-        { onSuccess, onError: notifyError },
+        {
+          onSuccess: (created) => {
+            notifySuccess('Шаблон создан');
+            onCreated?.(created.id);
+            onClose();
+          },
+          onError: notifyError,
+        },
       );
     }
   }

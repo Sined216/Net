@@ -1,3 +1,12 @@
+/** Подпись устройства в выпадающих списках: код — то, что напечатано на
+ * наклейке, и всегда есть; имя — то, как его называют люди, бывает пустым;
+ * модель — чтобы отличить одинаковый на вид узел от соседнего, когда кодов
+ * и имён на схеме много и они друг на друга похожи. */
+export function deviceLabel(code: string, name?: string | null, templateName?: string | null): string {
+  const base = name ? `${code} — ${name}` : code;
+  return templateName ? `${base} · ${templateName}` : base;
+}
+
 /** Пустая строка из формы -> null, чтобы не ловить ошибки INET/MACADDR на бэкенде. */
 export function nn(v: string | null | undefined): string | null {
   const t = (v ?? '').trim();

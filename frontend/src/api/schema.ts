@@ -686,6 +686,12 @@ export interface paths {
          *
          *     Занятым считается и порт с подвешенным кабелем: кабель в него воткнут,
          *     второй его конец просто некуда включить.
+         *
+         *     `device_id` сужает список до одной железки — без него на площадке с
+         *     большим числом свободных портов общий (по коду устройства) список из
+         *     `limit` записей мог не дотянуться до нужного устройства вовсе: правка
+         *     связи на схеме просила «переткнуть» кабель в другой порт той же
+         *     железки, а порт в выпадающем списке не появлялся.
          */
         get: operations["free_interfaces_interfaces_free_get"];
         put?: never;
@@ -1619,6 +1625,8 @@ export interface components {
             device_id: number;
             /** Device Name */
             device_name?: string | null;
+            /** Device Template Name */
+            device_template_name?: string | null;
             /** Interface Id */
             interface_id: number;
             /** Label */
@@ -1859,6 +1867,8 @@ export interface components {
             device_id: number;
             /** Device Name */
             device_name?: string | null;
+            /** Device Template Name */
+            device_template_name?: string | null;
             /** Interface Id */
             interface_id: number;
             /** Interface Label */
@@ -3910,6 +3920,7 @@ export interface operations {
             query?: {
                 q?: string | null;
                 exclude_device_id?: number | null;
+                device_id?: number | null;
                 limit?: number;
             };
             header?: {

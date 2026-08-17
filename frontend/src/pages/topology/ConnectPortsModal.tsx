@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useCreateLink, useDevice, useLinkTemplates } from '../../api/hooks';
+import { useCreateLink, useDevice, useDeviceTemplates, useLinkTemplates } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
-import { nnInt } from '../../lib/utils';
-import type { DeviceOut, InterfaceOut } from '../../api/types';
+import { deviceLabel, nnInt } from '../../lib/utils';
+import type { DeviceOut, DeviceTemplateOut, InterfaceOut } from '../../api/types';
 
 /** Что именно соединять, схема не знает: линия тянется между устройствами, а
  * связь в модели — между конкретными портами. Поэтому после перетаскивания
@@ -20,6 +20,9 @@ export function ConnectPortsModal({
   const { data: source, isLoading: loadingSource } = useDevice(sourceId);
   const { data: target, isLoading: loadingTarget } = useDevice(targetId);
   const { data: linkTemplates = [] } = useLinkTemplates();
+  // Название модели в подписи устройства: код и имя не всегда различают
+  // между собой похожие узлы на плотной схеме, а модель — почти всегда.
+  const { data: deviceTemplates = [] } = useDeviceTemplates();
   const createLink = useCreateLink();
 
   const freeSource = useFreePorts(source);
@@ -55,18 +58,18 @@ export function ConnectPortsModal({
         <Stack>
           {nothingFree ? (
             <Alert color="yellow">
-              У {freeSource.length === 0 ? deviceLabel(source) : deviceLabel(target)} нет свободных портов.
-              Освободите порт или добавьте новый в карточке устройства.
+              У {freeSource.length === 0 ? label(source, deviceTemplates) : label(target, deviceTemplates)} нет
+              свободных портов. Освободите порт или добавьте новый в карточке устройства.
             </Alert>
           ) : (
             <>
               <Select
-                label={deviceLabel(source)}
+                label={label(source, deviceTemplates)}
                 description="Порт, от которого тянется кабель"
                 data={freeSource} value={chosenA} onChange={setPortA} searchable required
               />
               <Select
-                label={deviceLabel(target)}
+                label={label(target, deviceTemplates)}
                 description="Порт на другом конце"
                 data={freeTarget} value={chosenB} onChange={setPortB} searchable required
               />
@@ -101,9 +104,10 @@ export function portLabel(iface: InterfaceOut): string {
   return connector ? `№${iface.port_number} · ${iface.label} · ${connector}` : `№${iface.port_number} · ${iface.label}`;
 }
 
-function deviceLabel(device: DeviceOut | undefined): string {
+function label(device: DeviceOut | undefined, templates: DeviceTemplateOut[]): string {
   if (!device) return 'устройства';
-  return device.name ? `${device.code} — ${device.name}` : device.code;
+  const templateName = templates.find((t) => t.id === device.template_id)?.name;
+  return deviceLabel(device.code, device.name, templateName);
 }
 
 /** Занятые порты в список не попадают: связь на порт можно повесить только

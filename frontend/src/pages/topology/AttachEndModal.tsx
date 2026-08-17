@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Text } from '@mantine/core';
-import { useAttachLinkEnd, useDevice } from '../../api/hooks';
+import { useAttachLinkEnd, useDevice, useDeviceTemplates } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { deviceLabel } from '../../lib/utils';
 import { portLabel } from './ConnectPortsModal';
 
 /** Куда воткнуть повисший конец кабеля.
@@ -21,6 +22,7 @@ export function AttachEndModal({
   // Нужна одна железка — та, на которую бросили конец кабеля. Раньше ради
   // неё приезжали все устройства площадки со всеми портами.
   const { data: device } = useDevice(deviceId);
+  const { data: templates = [] } = useDeviceTemplates();
   const attach = useAttachLinkEnd();
 
   // Порт занят, даже если на том конце кабеля никого нет: воткнуть в него
@@ -47,7 +49,9 @@ export function AttachEndModal({
     );
   }
 
-  const label = device ? (device.name ? `${device.code} — ${device.name}` : device.code) : 'устройство';
+  const label = device
+    ? deviceLabel(device.code, device.name, templates.find((t) => t.id === device.template_id)?.name)
+    : 'устройство';
 
   return (
     <Modal opened onClose={onClose} title="Подключить свободный конец" size="md">

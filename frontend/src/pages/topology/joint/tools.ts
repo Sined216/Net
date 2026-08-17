@@ -34,6 +34,7 @@ const ICONS: Record<string, string> = {
   folderPlus: 'M12 19H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v3M16 19h6M19 16v6',
   plug: 'M7 12h10M9.5 8.5V5M14.5 8.5V5M7 12v2a5 5 0 0 0 5 5v3',
   grid: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+  devicePlus: 'M3 6h13v12H3zM16 10h6M19 7v6',
 };
 
 function button(icon: string, title: string, color: string, index: number, look: ToolsLook,
@@ -140,7 +141,7 @@ export function deviceTools(deviceId: number, actions: {
 }
 
 export function groupTools(groupId: number, actions: {
-  editGroup: Action; addSubgroup: Action; removeGroup: Action; layoutGroup: Action;
+  editGroup: Action; addSubgroup: Action; addDeviceToGroup: Action; removeGroup: Action; layoutGroup: Action;
 }, color: string, look: ToolsLook): dia.ToolsView {
   const icon = look.paint.icon;
   return new dia.ToolsView({
@@ -150,8 +151,10 @@ export function groupTools(groupId: number, actions: {
       // Общая раскладка про группы не знает, и содержимое рамки сбивается
       // в кучу — особенно после того, как рамку двигали руками.
       button(ICONS.grid, 'Разложить содержимое рядами', icon, 1, look, () => actions.layoutGroup(groupId)),
-      button(ICONS.folderPlus, 'Добавить подгруппу', icon, 2, look, () => actions.addSubgroup(groupId)),
-      button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', 3, look,
+      button(ICONS.devicePlus, 'Добавить устройство в эту группу', icon, 2, look,
+             () => actions.addDeviceToGroup(groupId)),
+      button(ICONS.folderPlus, 'Добавить подгруппу', icon, 3, look, () => actions.addSubgroup(groupId)),
+      button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', 4, look,
              () => actions.removeGroup(groupId)),
       new ResizeControl({ handleAttributes: { fill: look.paint.plate, stroke: color } }),
     ],

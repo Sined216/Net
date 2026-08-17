@@ -161,8 +161,9 @@ def free_interfaces(q: str | None = None, exclude_device_id: int | None = None,
     ).subquery()
 
     query = (
-        db.query(models.Interface, models.Device)
+        db.query(models.Interface, models.Device, models.DeviceTemplate)
         .join(models.Device, models.Device.id == models.Interface.device_id)
+        .outerjoin(models.DeviceTemplate, models.DeviceTemplate.id == models.Device.template_id)
         .filter(models.Interface.site_id == site_id)
         .filter(models.Interface.id.notin_(db.query(busy)))
     )
@@ -184,8 +185,9 @@ def free_interfaces(q: str | None = None, exclude_device_id: int | None = None,
         schemas.FreePortOut(
             interface_id=iface.id, label=iface.label, port_number=iface.port_number,
             device_id=device.id, device_code=device.code, device_name=device.name,
+            device_template_name=template.name if template else None,
         )
-        for iface, device in rows
+        for iface, device, template in rows
     ]
 
 

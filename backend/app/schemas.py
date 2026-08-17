@@ -561,6 +561,9 @@ class LinkEndOut(BaseModel):
     device_id: int
     device_code: str
     device_name: Optional[str] = None
+    # Модель техники — устройств одного кода на схеме бывает много, а
+    # угадать нужное по одному лишь коду и произвольному имени трудно.
+    device_template_name: Optional[str] = None
     interface_id: int
     interface_label: str
     port_number: int
@@ -574,6 +577,7 @@ class FreePortOut(BaseModel):
     device_id: int
     device_code: str
     device_name: Optional[str] = None
+    device_template_name: Optional[str] = None
 
 
 class DeviceTagsUpdate(BaseModel):

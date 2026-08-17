@@ -11,7 +11,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { highlighters, type dia } from '@joint/core';
 import {
-  useCreateDevice, useDeleteDevice, useDeleteTopologyGroup, useSetTopologyGroupBox, useTags,
+  useDeleteDevice, useDeleteTopologyGroup, useSetTopologyGroupBox, useTags,
   useTopology, useTopologyGroups, useUpdateDevicePosition, useUpdateDevicePositions,
 } from '../api/hooks';
 import * as apiEndpoints from '../api/endpoints';
@@ -21,7 +21,7 @@ import { GroupEditModal } from './topology/GroupEditModal';
 import { DeviceGroupModal } from './topology/DeviceGroupModal';
 import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 import { DeviceModalById, LinkModalById } from './topology/OpenById';
-import { DeviceFormModal } from './devices/DeviceFormModal';
+import { DeviceFormModal, type DeviceDraft } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
@@ -66,6 +66,15 @@ const EMPTY: never[] = [];
  * чтобы узлы можно было двигать. */
 const GROUP_SLACK = 90;
 
+/** Заведение устройства с полотна: пустой запрос — обычная кнопка «плюс»,
+ * заполненный черновик — копия или «устройство в эту группу». */
+interface AddDeviceRequest {
+  draft?: DeviceDraft;
+  /** Устройство рядом с которым поставить новое — копия встаёт рядом с
+   * оригиналом, а не в центре экрана, как обычное новое устройство. */
+  placeNear?: number;
+}
+
 export function TopologyPage() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   // Отбор по тегу делает сервер: спрятать устройство значит спрятать и его
@@ -81,7 +90,6 @@ export function TopologyPage() {
   const updatePosition = useUpdateDevicePosition();
   const updatePositions = useUpdateDevicePositions();
   const deleteDevice = useDeleteDevice();
-  const createDevice = useCreateDevice();
   const deleteGroup = useDeleteTopologyGroup();
   const setGroupBox = useSetTopologyGroupBox();
 
@@ -89,7 +97,7 @@ export function TopologyPage() {
   // красятся от темы интерфейса, а не наугад.
   const scheme = useComputedColorScheme('light');
   const [look, setLook] = useState<TopologyAppearance>(loadAppearance);
-  const [addingDevice, setAddingDevice] = useState(false);
+  const [addingDevice, setAddingDevice] = useState<AddDeviceRequest | null>(null);
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [editingLinkId, setEditingLinkId] = useState<number | null>(null);
   const [connecting, setConnecting] = useState<{ sourceId: number; targetId: number } | null>(null);
@@ -137,24 +145,25 @@ export function TopologyPage() {
       // надо всю железку — с расположением, ролью и заметками. Поэтому
       // сначала она приезжает целиком, тем же запросом, что и для окна
       // правки: второй раз он уже возьмётся из кэша.
+      //
+      // Дальше — не немедленное создание, а обычное окно заведения с уже
+      // заполненными полями: почти всегда после копии нужно поправить хотя
+      // бы название, а молча заведённую копию для этого приходилось
+      // открывать снова, уже как правку.
       try {
         const source = await queryClient.fetchQuery({
           queryKey: ['device', deviceId],
           queryFn: () => apiEndpoints.getDevice(deviceId),
         });
-        createDevice.mutate({
-          template_id: source.template_id, name: source.name, location: source.location,
-          role: source.role, notes: source.notes, topology_group_id: source.topology_group_id,
-          tag_ids: source.tags.map((t) => t.id),
-          // IP и дата установки у каждой железки свои — копировать их значит
-          // получить конфликт адресов.
-        }, {
-          onSuccess: (created) => {
-            notifySuccess(`Создано устройство ${created.code}`);
-            const at = placed.current.get(deviceId);
-            if (at) updatePosition.mutate({ id: created.id, body: { x: at.x + 60, y: at.y + 90 } });
+        setAddingDevice({
+          draft: {
+            template_id: source.template_id, name: source.name, location: source.location,
+            role: source.role, notes: source.notes, topology_group_id: source.topology_group_id,
+            tag_ids: source.tags.map((t) => t.id),
+            // IP и дата установки у каждой железки свои — копировать их
+            // значит получить конфликт адресов.
           },
-          onError: notifyError,
+          placeNear: deviceId,
         });
       } catch (error) {
         notifyError(error);
@@ -172,6 +181,7 @@ export function TopologyPage() {
       if (group) setEditingGroup({ group, parentId: null });
     },
     addSubgroup: (groupId: number) => setEditingGroup({ group: null, parentId: groupId }),
+    addDeviceToGroup: (groupId: number) => setAddingDevice({ draft: { topology_group_id: groupId } }),
     layoutGroup: async (groupId: number) => {
       const box = boxesRef.current.get(groupId);
       if (!box || layingGroups.current.has(groupId)) return;
@@ -555,8 +565,15 @@ export function TopologyPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [canEdit, history]);
 
-  /** Новое устройство появляется в середине видимой области. */
-  function placeNewDevice(deviceId: number) {
+  /** Новое устройство появляется в середине видимой области — если только
+   * это не копия: та встаёт рядом с оригиналом, чтобы не искать её потом по
+   * всей схеме. */
+  function placeNewDevice(deviceId: number, request: AddDeviceRequest | null) {
+    const near = request?.placeNear != null ? placed.current.get(request.placeNear) : null;
+    if (near) {
+      updatePosition.mutate({ id: deviceId, body: { x: near.x + 60, y: near.y + 90 } });
+      return;
+    }
     const view = paperRef.current;
     if (!view) return;
     const area = view.getArea();
@@ -653,7 +670,7 @@ export function TopologyPage() {
             Вписать
           </Button>
           {canEdit && (
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setAddingDevice(true)}>
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setAddingDevice({})}>
               Устройство
             </Button>
           )}
@@ -676,7 +693,11 @@ export function TopologyPage() {
 
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
       {addingDevice && (
-        <DeviceFormModal device={null} onCreated={placeNewDevice} onClose={() => setAddingDevice(false)} />
+        <DeviceFormModal
+          device={null} draft={addingDevice.draft}
+          onCreated={(id) => placeNewDevice(id, addingDevice)}
+          onClose={() => setAddingDevice(null)}
+        />
       )}
       {editingDeviceId != null && (
         <DeviceModalById deviceId={editingDeviceId} onClose={() => setEditingDeviceId(null)} />

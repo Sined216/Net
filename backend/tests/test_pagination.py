@@ -142,6 +142,9 @@ def test_links_come_with_labels(client, headers, make_device):
     assert link["end_a"]["device_code"] == one["code"]
     assert link["end_a"]["port_number"] == 1
     assert link["end_b"]["device_name"] == "Второй"
+    # Модель техники — рядом с кодом и именем, чтобы на плотной схеме отличить
+    # похожие друг на друга узлы.
+    assert link["end_a"]["device_template_name"] == "Тестовый коммутатор"
 
 
 def test_links_filtered_by_device(client, headers, make_device):
@@ -173,6 +176,7 @@ def test_free_ports_are_found_by_the_database(client, headers, make_device):
     busy_ids = {one["interfaces"][0]["id"], two["interfaces"][0]["id"]}
     assert busy_ids.isdisjoint({p["interface_id"] for p in free})
     assert len(free) == 2
+    assert all(p["device_template_name"] == "Тестовый коммутатор" for p in free)
 
     # Свой же порт в списке не нужен: сам с собой порт не соединяют.
     without_own = client.get("/interfaces/free", params={"exclude_device_id": one["id"]},

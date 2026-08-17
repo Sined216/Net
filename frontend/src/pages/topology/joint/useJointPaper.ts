@@ -29,6 +29,9 @@ export interface JointActions {
   remove: (deviceId: number) => void;
   editGroup: (groupId: number) => void;
   addSubgroup: (groupId: number) => void;
+  /** Завести устройство прямо в этой группе — не заводить отдельно и потом
+   * перекладывать. */
+  addDeviceToGroup: (groupId: number) => void;
   removeGroup: (groupId: number) => void;
   /** Разложить содержимое группы рядами внутри её рамки. */
   layoutGroup: (groupId: number) => void;
@@ -117,6 +120,7 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     remove: (id) => actions.current.remove(id),
     editGroup: (id) => actions.current.editGroup(id),
     addSubgroup: (id) => actions.current.addSubgroup(id),
+    addDeviceToGroup: (id) => actions.current.addDeviceToGroup(id),
     removeGroup: (id) => actions.current.removeGroup(id),
     layoutGroup: (id) => actions.current.layoutGroup(id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
