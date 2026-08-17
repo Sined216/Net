@@ -1,4 +1,5 @@
 import type { ElkAlgorithm } from '../../lib/elk';
+import { CANVAS } from '../../theme';
 
 /** Внешний вид схемы связей.
  *
@@ -160,7 +161,7 @@ export function nodeColors(dark: boolean, scheme: ColorScheme) {
     };
   }
   return {
-    fill: scheme === 'dark' ? '#25262b' : '#1a1b1e',
+    fill: scheme === 'dark' ? CANVAS.card : '#1a1b1e',
     title: '#f8f9fa',
     subtitle: '#909296',
     portsIdle: '#909296',
@@ -172,15 +173,17 @@ export type ColorScheme = 'light' | 'dark';
 
 /** Цвета того, что лежит на полотне поверх линий: подписи портов, врезка
  * подписи группы, кнопки панелей. Своими значениями, а не переменными темы:
- * в атрибутах SVG переменные CSS работают не везде. */
+ * в атрибутах SVG переменные CSS работают не везде. Сами значения берутся
+ * из темы (`CANVAS`), а не пишутся здесь второй раз: разойтись им нельзя —
+ * полотно это и есть фон страницы. */
 export function canvasColors(scheme: ColorScheme) {
   const dark = scheme === 'dark';
   return {
     /** Фон полотна — им закрашивается врезка подписи группы. */
-    canvas: dark ? '#1a1b1e' : '#ffffff',
+    canvas: dark ? CANVAS.background : '#ffffff',
     /** Подложка подписи и кнопки. */
-    plate: dark ? '#2c2e33' : '#ffffff',
-    plateBorder: dark ? '#5c5f66' : '#dee2e6',
+    plate: dark ? CANVAS.surface : '#ffffff',
+    plateBorder: dark ? CANVAS.border : '#dee2e6',
     plateText: dark ? '#c1c2c5' : '#495057',
     /** Значок на кнопке панели. */
     icon: dark ? '#c1c2c5' : '#495057',

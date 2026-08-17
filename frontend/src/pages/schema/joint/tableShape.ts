@@ -1,5 +1,6 @@
 import { dia } from '@joint/core';
 import type { SchemaColumn, SchemaTable } from '../../../api/types';
+import { CANVAS } from '../../../theme';
 
 /** Карточка таблицы базы на схеме: заголовок, число строк, примечание и
  * список колонок.
@@ -39,7 +40,7 @@ export interface TablePaint {
 export function tablePaint(dark: boolean): TablePaint {
   return dark
     ? {
-      body: '#25262b', header: '#2c2e33', border: '#5c5f66',
+      body: CANVAS.card, header: CANVAS.surface, border: CANVAS.border,
       title: '#f8f9fa', text: '#c1c2c5', dimmed: '#909296',
       key: '#fab005', unique: '#da77f2',
     }

@@ -86,13 +86,23 @@ function insideParent(element: dia.Element, x: number, y: number): { x: number; 
   };
 }
 
-/** Фон полотна из настроек вида — своими именами JointJS. */
-const GRID: Record<TopologyAppearance['background'], dia.Paper.GridOptions | false> = {
-  dots: { name: 'dot', color: '#ced4da', thickness: 1 },
-  lines: { name: 'mesh', color: '#e9ecef', thickness: 1 },
-  cross: { name: 'doubleMesh', color: '#e9ecef', thickness: 1 },
-  none: false,
-};
+/** Фон полотна из настроек вида — своими именами JointJS.
+ *
+ * Цвет зависит от темы: сетка — это подсказка о масштабе, а не часть схемы,
+ * и заметнее самой схемы быть не должна. Светло-серый, годящийся на белом
+ * полотне, на тёмном превращается в яркую рябь по всему экрану — тем
+ * заметнее, чем темнее фон. */
+function gridFor(background: TopologyAppearance['background'], scheme: 'light' | 'dark') {
+  const color = scheme === 'dark' ? '#2a2e35' : '#ced4da';
+  const mesh = scheme === 'dark' ? '#22262c' : '#e9ecef';
+  const grid: Record<TopologyAppearance['background'], dia.Paper.GridOptions | false> = {
+    dots: { name: 'dot', color, thickness: 1 },
+    lines: { name: 'mesh', color: mesh, thickness: 1 },
+    cross: { name: 'doubleMesh', color: mesh, thickness: 1 },
+    none: false,
+  };
+  return grid[background];
+}
 
 export function useJointPaper({ canEdit, scheme, background, actions, handlers }: {
   canEdit: boolean;
@@ -203,7 +213,7 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
       width: Math.max(element.clientWidth, 320),
       height: Math.max(element.clientHeight, 320),
       gridSize: 10,
-      drawGrid: GRID[loadAppearance().background],
+      drawGrid: gridFor(loadAppearance().background, scheme),
       // Сколько движений мыши между нажатием и отпусканием ещё считается
       // щелчком. По умолчанию — ноль: дрогнула рука на пиксель, и JointJS
       // считает это перетаскиванием, а клика не было вовсе. Из-за этого
@@ -522,10 +532,11 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit]);
 
-  // Фон полотна меняется настройкой вида, а полотно создаётся один раз.
+  // Фон полотна меняется настройкой вида и темой интерфейса, а полотно
+  // создаётся один раз.
   useEffect(() => {
-    paperRef.current?.setGrid(GRID[background]);
-  }, [background]);
+    paperRef.current?.setGrid(gridFor(background, scheme));
+  }, [background, scheme]);
 
   // Delete удаляет выделенное.
   useEffect(() => {
