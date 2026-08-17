@@ -134,6 +134,7 @@ def serialize_device(device: models.Device, link_map: Optional[Dict[int, LinkEnd
         code=device.code,
         name=device.name,
         management_ip=device.management_ip,
+        mac=device.mac,
         location=device.location,
         role=device.role,
         install_date=device.install_date,
@@ -186,7 +187,7 @@ def serialize_device_list(db: Session, devices: List[models.Device]) -> List[sch
     return [
         schemas.DeviceListItem(
             id=d.id, version=d.version or 1, template_id=d.template_id, code=d.code, name=d.name,
-            management_ip=d.management_ip, location=d.location, role=d.role,
+            management_ip=d.management_ip, mac=d.mac, location=d.location, role=d.role,
             install_date=d.install_date, notes=d.notes,
             topology_group_id=d.topology_group_id,
             topology_x=d.topology_x, topology_y=d.topology_y,

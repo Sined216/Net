@@ -490,6 +490,9 @@ class DeviceBase(BaseModel):
     template_id: int
     name: Optional[str] = None
     management_ip: Optional[IPAddressStr] = None
+    # Управляющий MAC железки — не MAC порта: по нему устройство ищут в
+    # таблицах коммутации соседей, и к конкретному гнезду он не привязан.
+    mac: Optional[MacAddressStr] = None
     location: Optional[str] = None
     role: Optional[DeviceRole] = None
     install_date: Optional[date] = None
@@ -512,6 +515,7 @@ class DeviceUpdate(BaseModel):
     version: Optional[int] = None
     name: Optional[str] = Field(default=None, max_length=200)
     management_ip: Optional[IPAddressStr] = None
+    mac: Optional[MacAddressStr] = None
     location: Optional[str] = Field(default=None, max_length=200)
     role: Optional[DeviceRole] = None
     install_date: Optional[date] = None
@@ -534,6 +538,7 @@ class DeviceListItem(BaseModel):
     code: str
     name: Optional[str] = None
     management_ip: Optional[str] = None
+    mac: Optional[str] = None
     location: Optional[str] = None
     role: Optional[DeviceRole] = None
     install_date: Optional[date] = None
@@ -731,6 +736,9 @@ class TopologyNode(BaseModel):
     id: int
     code: str
     name: Optional[str] = None
+    # Адрес управления — строкой на карточке, по настройке вида: наладчику
+    # он нужен, чтобы зайти на железку прямо со схемы, не открывая карточку.
+    management_ip: Optional[str] = None
     template_id: Optional[int] = None
     template_name: str
     # Производитель берётся из модели: на карточке его показывают рядом с

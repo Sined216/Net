@@ -160,8 +160,10 @@ export function TopologyPage() {
             template_id: source.template_id, name: source.name, location: source.location,
             role: source.role, notes: source.notes, topology_group_id: source.topology_group_id,
             tag_ids: source.tags.map((t) => t.id),
-            // IP и дата установки у каждой железки свои — копировать их
-            // значит получить конфликт адресов.
+            // IP, MAC и дата установки у каждой железки свои — копировать их
+            // значит получить два устройства с одним адресом. MAC к тому же
+            // уникален физически: одинаковый у двух железок — это не
+            // документация, а ошибка в ней.
           },
           placeNear: deviceId,
         });

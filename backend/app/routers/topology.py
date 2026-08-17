@@ -64,6 +64,7 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
     nodes = [
         schemas.TopologyNode(
             id=d.id, code=d.code, name=d.name,
+            management_ip=str(d.management_ip) if d.management_ip else None,
             template_id=d.template_id,
             template_name=d.template.name if d.template else "",
             manufacturer=d.template.manufacturer if d.template else None,

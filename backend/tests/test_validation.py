@@ -160,3 +160,41 @@ def test_client_cannot_forge_link_source(client, headers, make_device):
     assert response.status_code == 201
     assert response.json()["source"] == "manual"
     assert response.json()["confirmed"] is True
+
+
+@pytest.mark.parametrize(
+    "written,stored",
+    [
+        ("a4:bb:6d:11:22:33", "a4:bb:6d:11:22:33"),
+        ("A4-BB-6D-11-22-33", "a4:bb:6d:11:22:33"),
+        ("a4bb.6d11.2233", "a4:bb:6d:11:22:33"),
+    ],
+)
+def test_device_mac_is_normalized(client, headers, make_device, written, stored):
+    """У устройства свой MAC — управляющий, не портовый. Приводится к одному
+    виду той же базой и по той же причине, что и у порта."""
+    device = make_device()
+    response = client.patch(
+        f"/devices/{device['id']}", json={"mac": written}, headers=headers["editor"]
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["mac"] == stored
+
+
+def test_invalid_device_mac_is_rejected(client, headers, make_device):
+    device = make_device()
+    response = client.patch(
+        f"/devices/{device['id']}", json={"mac": "не мак"}, headers=headers["editor"]
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("query", ["a4:bb", "A4-BB", "a4bb6d", "A4BB6D1122"])
+def test_device_mac_is_searchable_in_any_notation(client, headers, make_device, query):
+    """Искать MAC приходится тем, что скопировали из чужой выгрузки, — а там
+    разделители любые. Отбор списка устройств не должен от этого зависеть."""
+    device = make_device()
+    client.patch(f"/devices/{device['id']}", json={"mac": "A4-BB-6D-11-22-33"}, headers=headers["editor"])
+
+    page = client.get("/devices", params={"q": query}, headers=headers["viewer"]).json()
+    assert [item["id"] for item in page["items"]] == [device["id"]]

@@ -24,6 +24,9 @@ export interface TopologyAppearance {
    * людям: снабженцу важна фирма и модель, наладчику — код на наклейке.
    * Карточка растёт и сжимается по числу включённых строк. */
   deviceSubtitle: boolean;      // код устройства
+  /** Адрес управления. Наладчику он нужен, чтобы зайти на железку прямо со
+   * схемы; снабженцу — никогда, поэтому и включается отдельно. */
+  deviceIp: boolean;
   deviceTemplate: boolean;      // название модели
   deviceManufacturer: boolean;  // фирма-изготовитель
   /** Счётчик «занято/всего» портов. */
@@ -82,6 +85,7 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   groupCount: true,
 
   deviceSubtitle: true,
+  deviceIp: false,
   deviceTemplate: false,
   deviceManufacturer: false,
   devicePorts: true,

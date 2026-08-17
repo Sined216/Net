@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import Text, cast, or_
+from sqlalchemy import Text, cast, false, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -56,6 +56,10 @@ def list_devices(tag_id: int | None = None, template_id: int | None = None,
             models.Device.name.ilike(like),
             models.Device.location.ilike(like),
             cast(models.Device.management_ip, Text).ilike(like),
+            # MAC ищется по нормализованной базой записи: набрать его можно
+            # хоть «A4-BB-6D», хоть «a4bb.6d», а в базе он в одном виде —
+            # поэтому разделители из запроса вычищаются, а не сравниваются.
+            _mac_like(models.Device.mac, q),
         ))
     # Отбор по отдельной колонке — для таблицы, где под каждым заголовком
     # своё поле. Условия складываются: набрали «SW» в коде и «цех» в
@@ -85,6 +89,30 @@ def _like(value: str) -> str:
     ищет текст, а не пишет выражение (та же оговорка, что и в общем поиске)."""
     escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+# Разделители, которыми MAC пишут в разных выгрузках: двоеточие, дефис,
+# точка. База хранит адрес в одном виде (MACADDR), и сравнивать с ним кусок
+# запроса «как есть» бессмысленно — «A4-BB» не найдёт «a4:bb:...».
+_MAC_SEPARATORS = ":-."
+
+
+def _mac_like(column, value: str):
+    """Поиск по куску MAC независимо от того, как его записали.
+
+    Разделители вычищаются с обеих сторон: из запроса — здесь, из хранимого
+    значения — средствами базы. Пустой после чистки запрос (человек искал
+    «10.10.» — точки ушли, остались цифры) ничему не мешает: он просто
+    совпадёт с адресами, содержащими эти цифры подряд.
+    """
+    cleaned = value
+    for sep in _MAC_SEPARATORS:
+        cleaned = cleaned.replace(sep, "")
+    if not cleaned:
+        # Совпасть не с чем: пустой кусок дал бы «нравится всем».
+        return false()
+    stored = func.replace(cast(column, Text), ":", "")
+    return stored.ilike(_like(cleaned))
 
 
 @router.get("/{device_id}", response_model=schemas.DeviceOut)

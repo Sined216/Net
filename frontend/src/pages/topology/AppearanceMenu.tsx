@@ -103,6 +103,10 @@ export function AppearanceMenu({ value, onChange }: Props) {
               onChange={(e) => set('deviceSubtitle', e.currentTarget.checked)}
             />
             <Switch
+              size="xs" label="IP управления" checked={value.deviceIp}
+              onChange={(e) => set('deviceIp', e.currentTarget.checked)}
+            />
+            <Switch
               size="xs" label="Название модели" checked={value.deviceTemplate}
               onChange={(e) => set('deviceTemplate', e.currentTarget.checked)}
             />

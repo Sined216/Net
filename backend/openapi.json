@@ -406,6 +406,17 @@
             ],
             "title": "Location"
           },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
           "management_ip": {
             "anyOf": [
               {
@@ -519,6 +530,17 @@
               }
             ],
             "title": "Location"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
           },
           "management_ip": {
             "anyOf": [
@@ -683,6 +705,17 @@
               }
             ],
             "title": "Location"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
           },
           "management_ip": {
             "anyOf": [
@@ -1222,6 +1255,17 @@
               }
             ],
             "title": "Location"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
           },
           "management_ip": {
             "anyOf": [
@@ -3473,6 +3517,17 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "management_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Management Ip"
           },
           "manufacturer": {
             "anyOf": [

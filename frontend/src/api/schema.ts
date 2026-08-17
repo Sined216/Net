@@ -1327,6 +1327,8 @@ export interface components {
             install_date?: string | null;
             /** Location */
             location?: string | null;
+            /** Mac */
+            mac?: string | null;
             /** Management Ip */
             management_ip?: string | null;
             /** Name */
@@ -1363,6 +1365,8 @@ export interface components {
             install_date?: string | null;
             /** Location */
             location?: string | null;
+            /** Mac */
+            mac?: string | null;
             /** Management Ip */
             management_ip?: string | null;
             /** Name */
@@ -1420,6 +1424,8 @@ export interface components {
             interfaces: components["schemas"]["InterfaceOut"][];
             /** Location */
             location?: string | null;
+            /** Mac */
+            mac?: string | null;
             /** Management Ip */
             management_ip?: string | null;
             /** Name */
@@ -1601,6 +1607,8 @@ export interface components {
             install_date?: string | null;
             /** Location */
             location?: string | null;
+            /** Mac */
+            mac?: string | null;
             /** Management Ip */
             management_ip?: string | null;
             /** Name */
@@ -2283,6 +2291,8 @@ export interface components {
             device_type: string;
             /** Id */
             id: number;
+            /** Management Ip */
+            management_ip?: string | null;
             /** Manufacturer */
             manufacturer?: string | null;
             /** Name */

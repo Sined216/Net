@@ -22,7 +22,7 @@ export const NODE = { width: NODE_WIDTH, height: 62 };
  * три строки — дыра в схеме.
  */
 export function nodeMetrics(look: TopologyAppearance) {
-  const lines = [look.deviceSubtitle, look.deviceTemplate, look.deviceManufacturer]
+  const lines = [look.deviceSubtitle, look.deviceIp, look.deviceTemplate, look.deviceManufacturer]
     .filter(Boolean).length;
   const pad = 11;
   // Всё считается по середине строки, а не по базовой линии букв: от базовой
@@ -139,14 +139,15 @@ export const DeviceShape = dia.Element.define(
         x: 'calc(w-11)', textAnchor: 'end', textVerticalAnchor: 'middle',
         fill: '#868e96', fontFamily: 'inherit',
       },
-      // Три строки под названием: код, модель, фирма. Каждая включается
-      // отдельно, выключенная просто пуста и места не занимает — её место
-      // считается заранее, в nodeMetrics.
+      // Строки под названием: код, адрес управления, модель, фирма. Каждая
+      // включается отдельно, выключенная просто пуста и места не занимает —
+      // её место считается заранее, в nodeMetrics.
       // Размер, положение и обрезка длинного текста задаются у экземпляра:
       // они зависят от настроек вида и от того, какие строки включены.
       line1: { x: 11, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
       line2: { x: 11, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
       line3: { x: 11, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
+      line4: { x: 11, fontFamily: 'inherit', textVerticalAnchor: 'middle' },
     },
   },
   {
@@ -159,9 +160,15 @@ export const DeviceShape = dia.Element.define(
       { tagName: 'text', selector: 'line1' },
       { tagName: 'text', selector: 'line2' },
       { tagName: 'text', selector: 'line3' },
+      { tagName: 'text', selector: 'line4' },
     ],
   },
 );
+
+/** Сколько строк под названием карточка умеет показать. Разметка фигуры
+ * общая на все узлы и списком не повторяется — поэтому мест ровно столько,
+ * сколько селекторов заведено выше. */
+export const CARD_LINES = 4;
 
 /** Рамка группы: прямоугольник позади узлов с подписью, врезанной в контур. */
 export const GroupShape = dia.Element.define(

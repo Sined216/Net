@@ -1,7 +1,7 @@
 import { dia, shapes } from '@joint/core';
 import { canvasColors, nodeColors, tint, type TopologyAppearance } from '../appearance';
 import {
-  DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, nodeMetrics, nodeSizes,
+  CARD_LINES, DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, nodeMetrics, nodeSizes,
   STUB_SIZE, withAlpha, type NodeSize,
 } from './shapes';
 import { groupDepth } from '../groups';
@@ -53,9 +53,11 @@ export function cardText(node: TopologyNode, look: TopologyAppearance) {
     id: node.id,
     title: node.name || node.template_name || node.device_type || node.code,
     ports: look.devicePorts ? `${node.ports_connected}/${node.ports_total}` : '',
-    // Порядок постоянный: код, модель, фирма. Пустая фирма строку не занимает.
+    // Порядок постоянный: код, адрес, модель, фирма. Пустое значение строку
+    // не занимает — адрес управления заполнен далеко не у всякой железки.
     lines: [
       look.deviceSubtitle ? node.code : null,
+      look.deviceIp ? node.management_ip : null,
       look.deviceTemplate ? node.template_name || node.device_type : null,
       look.deviceManufacturer ? node.manufacturer : null,
     ].filter((text): text is string => !!text),
@@ -377,7 +379,7 @@ function lineAttrs(
   fill: string,
 ) {
   const attrs: Record<string, unknown> = {};
-  for (let index = 0; index < 3; index++) {
+  for (let index = 0; index < CARD_LINES; index++) {
     const text = lines[index];
     attrs[`line${index + 1}`] = text
       ? {

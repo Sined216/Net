@@ -26,6 +26,7 @@ export interface DeviceDraft {
   template_id?: number | null;
   name?: string | null;
   management_ip?: string | null;
+  mac?: string | null;
   role?: string | null;
   location?: string | null;
   notes?: string | null;
@@ -62,6 +63,7 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
   );
   const [name, setName] = useState(device?.name ?? draft?.name ?? '');
   const [mgmtIp, setMgmtIp] = useState(device?.management_ip ?? draft?.management_ip ?? '');
+  const [mac, setMac] = useState(device?.mac ?? draft?.mac ?? '');
   const [role, setRole] = useState<string | null>(device?.role ?? draft?.role ?? null);
   const [location, setLocation] = useState(device?.location ?? draft?.location ?? '');
   const [notes, setNotes] = useState(device?.notes ?? draft?.notes ?? '');
@@ -122,6 +124,7 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
     const body = {
       name: nn(name),
       management_ip: nn(mgmtIp),
+      mac: nn(mac),
       location: nn(location),
       role: (role as DeviceRole) || null,
       notes: nn(notes),
@@ -208,6 +211,12 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
             <TextInput label="IP управления" value={mgmtIp} onChange={(e) => setMgmtIp(e.currentTarget.value)} />
             <Select label="Роль" data={ROLES} value={role} onChange={setRole} clearable />
           </Group>
+          <TextInput
+            label="MAC-адрес"
+            description="Управляющий адрес железки, не порта. Разделители любые — запись приводится к одному виду"
+            placeholder="a4:bb:6d:11:22:33"
+            value={mac} onChange={(e) => setMac(e.currentTarget.value)}
+          />
           <Group grow>
             <TextInput label="Расположение" placeholder="цех / шкаф" value={location} onChange={(e) => setLocation(e.currentTarget.value)} />
             <Select

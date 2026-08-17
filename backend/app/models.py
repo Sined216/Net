@@ -291,6 +291,10 @@ class Device(Base):
     code = Column(Text, unique=True, nullable=False)
     name = Column(Text)
     management_ip = Column(INET)
+    # Управляющий MAC железки — не то же самое, что MAC порта: по нему
+    # устройство ищут в таблицах коммутации соседей, и к конкретному гнезду
+    # он не привязан.
+    mac = Column(MACADDR)
     location = Column(Text)
     role = Column(Text)
     install_date = Column(Date)

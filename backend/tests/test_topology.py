@@ -46,6 +46,18 @@ def test_nodes_carry_counts_instead_of_ports(client, headers, linked_pair):
     assert node["device_type"] == "Коммутатор"
 
 
+def test_node_carries_management_ip(client, headers, linked_pair):
+    """Адрес управления показывается строкой на карточке — значит схема
+    должна его отдавать. Раньше за ним приходилось идти в карточку
+    устройства отдельным запросом."""
+    one, _two, _link = linked_pair
+    client.patch(f"/devices/{one['id']}", json={"management_ip": "10.10.5.7"}, headers=headers["editor"])
+
+    body = client.get("/topology", headers=headers["viewer"]).json()
+    node = next(n for n in body["nodes"] if n["id"] == one["id"])
+    assert node["management_ip"] == "10.10.5.7"
+
+
 def test_edges_carry_port_numbers_and_labels(client, headers, linked_pair):
     """Подпись у конца кабеля — «№1 · Порт 1»; и номер, и название приходят
     готовыми, чтобы их не искать по всем портам площадки."""
