@@ -23,6 +23,7 @@ import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 import { DeviceModalById, LinkModalById } from './topology/OpenById';
 import { DeviceFormModal, type DeviceDraft } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
+import { CanvasMenu } from './topology/CanvasMenu';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
   buildGraph, cardText, computePositions, storedBox, type Box, type Point,
@@ -127,9 +128,8 @@ export function TopologyPage() {
    * вызов, и второй клик по той же панели до ответа первого не должен
    * запускать вторую раскладку поверх первой. */
   const layingGroups = useRef(new Set<number>());
-  /** Свежие действия и обработчики для полотна: оно ставит их один раз, а
-   * данные под ними меняются. */
-  const actionsRef = useRef<JointActions>(null!);
+  /** Свежие обработчики для полотна: оно ставит их один раз, а данные под
+   * ними меняются. */
   const handlers = useRef<PaperHandlers>(null!);
 
   function changeLook(next: TopologyAppearance) {
@@ -323,7 +323,6 @@ export function TopologyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [nodes, groups]);
 
-  actionsRef.current = actions;
 
   const saveGroupBox = useCallback((groupId: number, box: Box) => {
     setGroupBox.mutate({ id: groupId, body: box }, { onError: notifyError });
@@ -437,7 +436,7 @@ export function TopologyPage() {
   }, [nodes, edges, groups, look, laying, history]);
 
   const paper = useJointPaper({
-    canEdit, scheme, background: look.background, actions: actionsRef, handlers,
+    canEdit, scheme, background: look.background, handlers,
   });
 
   handlers.current = {
@@ -469,18 +468,32 @@ export function TopologyPage() {
         saveGroupBox(frame.id, frame.box);
       }
     },
-    onDelete: (target, devices) => {
-      // Выделенных рамкой — пачкой и с одним вопросом: спрашивать по разу на
+    onDelete: (target, marked) => {
+      const devices = [...marked.devices];
+      const groupIds = [...marked.groups];
+      // Выделенное рамкой — пачкой и с одним вопросом: спрашивать по разу на
       // каждую железку означает десять окон подряд, а на десятом человек
       // жмёт «да» не читая.
-      if (devices.length > 1) {
-        if (!confirm(`Удалить устройств: ${devices.length}? Вместе с их портами и связями.`)) return;
+      if (devices.length + groupIds.length > 1) {
+        // Про группы сказано отдельно: удаление рамки устройства не трогает,
+        // и человек должен видеть, что за пачку он сносит.
+        const parts = [
+          devices.length ? `устройств: ${devices.length}` : null,
+          groupIds.length ? `групп: ${groupIds.length} (устройства в них останутся)` : null,
+        ].filter(Boolean).join(', ');
+        if (!confirm(`Удалить ${parts}?`)) return;
         for (const id of devices) deleteDevice.mutate(id, { onError: notifyError });
+        for (const id of groupIds) deleteGroup.mutate(id, { onError: notifyError });
         paper.clearMarked();
         return;
       }
       if (devices.length === 1) {
         actions.remove(devices[0]);
+        paper.clearMarked();
+        return;
+      }
+      if (groupIds.length === 1) {
+        actions.removeGroup(groupIds[0]);
         paper.clearMarked();
         return;
       }
@@ -639,16 +652,24 @@ export function TopologyPage() {
             </Popover.Target>
             <Popover.Dropdown>
               <Text size="sm">
-                Клик по узлу открывает панель: править, копировать, в группу, удалить и «протянуть кабель» — за
-                последнюю кнопку тянут до другого устройства, а порты выбираются в окне. Клик по рамке группы — своя
-                панель: правка, раскладка содержимого рядами, подгруппа, удаление; рамку двигают мышью и растягивают
-                за угол. «Разложить» расставляет всю схему по кабелям: ядро сети слева, за ним цеховые, за ними
-                железки; рамки групп переезжают вместе со своим содержимым. Оранжевый кружок с «?» — свободный конец кабеля: его тянут на устройство, чтобы воткнуть в
-                порт. Клик по линии открывает правку связи, Delete удаляет выделенное. Узел за рамку своей группы не
-                выходит, а состав группы меняется только явно.
-                {canEdit && ' Shift с растяжкой по пустому месту выделяет несколько устройств рамкой, Shift по узлу'
-                  + ' добавляет его к выделенным: дальше их двигают за любое из них и удаляют разом. Ctrl+Z'
-                  + ' возвращает расположение назад, Ctrl+Shift+Z — вперёд; заведение и удаление так не отменяются.'}
+                <b>Кнопки мыши.</b> Средняя — только навигация: тяните ей схему в любом месте, хоть по пустому,
+                хоть поверх узлов; колесо меняет масштаб вокруг курсора. Левая — работа с объектами: клик выделяет,
+                тяга двигает, а растяжка по пустому месту обводит рамкой несколько объектов сразу. Правая открывает
+                меню того, на чём стоит курсор.
+                <br /><br />
+                <b>Меню узла:</b> править, протянуть кабель, копировать, в группу, удалить. «Протянуть кабель»
+                включает режим — следующий щелчок по другому устройству и задаёт второй конец, а порты выбираются
+                в окне; Escape отменяет. <b>Меню рамки:</b> правка, раскладка содержимого, устройство и подгруппа
+                внутрь, удаление. Рамку двигают мышью и растягивают за угол, когда она выделена.
+                <br /><br />
+                «Разложить» расставляет всю схему по кабелям: ядро сети слева, за ним цеховые, за ними железки;
+                рамки групп переезжают вместе со своим содержимым. Оранжевый кружок с «?» — свободный конец кабеля:
+                его тянут на устройство, чтобы воткнуть в порт. Клик по линии открывает правку связи, Delete удаляет
+                выделенное. Узел за рамку своей группы не выходит, а состав группы меняется только явно.
+                {canEdit && ' Рамка выделения берёт и устройства, и группы; захваченная группа выделяется целиком,'
+                  + ' а её содержимое отдельно не отмечается — двигая рамку, вы двигаете и всё внутри. Shift по'
+                  + ' объекту добавляет его к выделенным или убирает. Ctrl+Z возвращает расположение назад,'
+                  + ' Ctrl+Shift+Z — вперёд; заведение и удаление так не отменяются.'}
               </Text>
             </Popover.Dropdown>
           </Popover>
@@ -688,11 +709,25 @@ export function TopologyPage() {
       <Paper withBorder style={{ flex: 1, minHeight: 320, overflow: 'hidden' }}>
         <div ref={holder} style={{ width: '100%', height: '100%' }} />
       </Paper>
-      {paper.markedCount > 1 && (
+      {paper.markedCount > 0 && (
         <Group gap="xs">
-          <Text size="sm">Выделено устройств: {paper.markedCount}</Text>
+          <Text size="sm">Выделено: {paper.markedCount}</Text>
           <Button size="compact-xs" variant="subtle" onClick={paper.clearMarked}>снять выделение</Button>
         </Group>
+      )}
+      {/* Режим протягивания кабеля: пока он включён, человек должен видеть,
+          чего от него ждут, и чем это отменить. */}
+      {paper.connectFrom != null && (
+        <Group gap="xs">
+          <Text size="sm" c="blue">Выберите второе устройство для кабеля</Text>
+          <Button size="compact-xs" variant="subtle" onClick={paper.cancelConnect}>отмена</Button>
+        </Group>
+      )}
+      {paper.menu && (
+        <CanvasMenu
+          request={paper.menu} actions={actions} canEdit={canEdit}
+          onClose={paper.closeMenu} onStartConnect={paper.startConnect}
+        />
       )}
 
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
