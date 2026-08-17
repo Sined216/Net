@@ -182,6 +182,13 @@ def test_free_ports_are_found_by_the_database(client, headers, make_device):
     by_name = client.get("/interfaces/free", params={"q": "Второй"}, headers=headers["viewer"]).json()
     assert all(p["device_name"] == "Второй" for p in by_name)
 
+    # Список, суженный до одной железки: правка связи спрашивает именно его,
+    # чтобы порт не потерялся за общим лимитом на площадке с большим числом
+    # свободных портов.
+    only_two = client.get("/interfaces/free", params={"device_id": two["id"]},
+                          headers=headers["viewer"]).json()
+    assert only_two and all(p["device_id"] == two["id"] for p in only_two)
+
 
 def test_topology_no_longer_hauls_every_port(client, headers, make_device):
     """У схемы свой маршрут, и он тоже стал лёгким: карточке достаточно

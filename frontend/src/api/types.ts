@@ -162,5 +162,6 @@ export interface LinkQuery {
 export interface FreePortQuery {
   q?: string;
   exclude_device_id?: number;
+  device_id?: number;
   limit?: number;
 }

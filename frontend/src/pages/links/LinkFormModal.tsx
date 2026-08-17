@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, Group, Modal, NumberInput, Select, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { IconTrash } from '@tabler/icons-react';
 import { useAttachLinkEnd, useDeleteLink, useFreePorts, useReconnectLinkEnd, useUpdateLink } from '../../api/hooks';
 import { nn, nnFloat, nnInt } from '../../lib/utils';
@@ -31,8 +32,29 @@ export function LinkFormModal({
   const attach = useAttachLinkEnd();
   const deleteLink = useDeleteLink();
 
-  // Свободные порты ищет база; список нужен только тому, кто может править.
-  const { data: freePorts = [] } = useFreePorts({ limit: 200 }, canEdit);
+  // Свободные порты ищет база. Список собирается из двух источников: порты
+  // своего же устройства — их должно быть видно всегда, а не только когда
+  // повезёт попасть в первые limit записей общего списка (ради этого и
+  // затевалось — иначе переставить кабель на соседний порт той же железки
+  // было нечем); и порты, найденные поиском — для случая, когда конец
+  // переносится на другое устройство целиком.
+  const [searchA, setSearchA] = useState('');
+  const [searchB, setSearchB] = useState('');
+  const [debouncedSearchA] = useDebouncedValue(searchA, 300);
+  const [debouncedSearchB] = useDebouncedValue(searchB, 300);
+  const deviceAId = link.end_a?.device_id ?? null;
+  const deviceBId = link.end_b?.device_id ?? null;
+
+  const { data: ownA = [] } = useFreePorts({ device_id: deviceAId ?? undefined, limit: 200 }, canEdit && deviceAId != null);
+  const { data: ownB = [] } = useFreePorts({ device_id: deviceBId ?? undefined, limit: 200 }, canEdit && deviceBId != null);
+  const { data: foundA = [] } = useFreePorts(
+    { q: debouncedSearchA, limit: 50 }, canEdit && debouncedSearchA.trim().length >= 2,
+  );
+  const { data: foundB = [] } = useFreePorts(
+    { q: debouncedSearchB, limit: 50 }, canEdit && debouncedSearchB.trim().length >= 2,
+  );
+  const freeA = mergeFree(ownA, foundA);
+  const freeB = mergeFree(ownB, foundB);
   const dangling = link.interface_a_id == null || link.interface_b_id == null;
   const pending = updateLink.isPending || reconnect.isPending || attach.isPending;
 
@@ -101,14 +123,21 @@ export function LinkFormModal({
             <Select
               label="Порт A" placeholder="— выбрать свободный —" searchable clearable={false}
               disabled={!canEdit}
-              data={portOptions(freePorts, link.end_a)}
+              data={portOptions(freeA, link.end_a)}
               value={portA} onChange={setPortA}
+              searchValue={searchA} onSearchChange={setSearchA}
+              // Свои порты видны всегда, а не только когда их подпись
+              // совпала с введённым текстом: без этого набранный код
+              // другого устройства прятал бы порты того же устройства.
+              filter={({ options }) => options}
             />
             <Select
               label="Порт B" placeholder="— выбрать свободный —" searchable clearable={false}
               disabled={!canEdit}
-              data={portOptions(freePorts, link.end_b)}
+              data={portOptions(freeB, link.end_b)}
               value={portB} onChange={setPortB}
+              searchValue={searchB} onSearchChange={setSearchB}
+              filter={({ options }) => options}
             />
           </Group>
           <Select
@@ -142,6 +171,22 @@ export function LinkFormModal({
       </form>
     </Modal>
   );
+}
+
+/** Объединить несколько списков свободных портов в один без повторов:
+ * порт своего устройства и порт, найденный тем же запросом поиска,
+ * приезжают отдельными ответами и могут пересекаться. */
+function mergeFree(...lists: FreePortOut[][]): FreePortOut[] {
+  const seen = new Set<number>();
+  const out: FreePortOut[] = [];
+  for (const list of lists) {
+    for (const port of list) {
+      if (seen.has(port.interface_id)) continue;
+      seen.add(port.interface_id);
+      out.push(port);
+    }
+  }
+  return out;
 }
 
 /** Свободные порты, сгруппированные по устройствам, плюс тот, в котором

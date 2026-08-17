@@ -136,6 +136,7 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db),
 
 @router.get("/interfaces/free", response_model=list[schemas.FreePortOut])
 def free_interfaces(q: str | None = None, exclude_device_id: int | None = None,
+                     device_id: int | None = None,
                      limit: int = Query(default=50, ge=1, le=200),
                      db: Session = Depends(get_db),
                      site_id: int = Depends(sites.current_site_id)):
@@ -148,6 +149,12 @@ def free_interfaces(q: str | None = None, exclude_device_id: int | None = None,
 
     Занятым считается и порт с подвешенным кабелем: кабель в него воткнут,
     второй его конец просто некуда включить.
+
+    `device_id` сужает список до одной железки — без него на площадке с
+    большим числом свободных портов общий (по коду устройства) список из
+    `limit` записей мог не дотянуться до нужного устройства вовсе: правка
+    связи на схеме просила «переткнуть» кабель в другой порт той же
+    железки, а порт в выпадающем списке не появлялся.
     """
     busy = db.query(models.Link.interface_a_id).filter(models.Link.interface_a_id.isnot(None)).union(
         db.query(models.Link.interface_b_id).filter(models.Link.interface_b_id.isnot(None))
@@ -161,6 +168,8 @@ def free_interfaces(q: str | None = None, exclude_device_id: int | None = None,
     )
     if exclude_device_id is not None:
         query = query.filter(models.Interface.device_id != exclude_device_id)
+    if device_id is not None:
+        query = query.filter(models.Interface.device_id == device_id)
     if q:
         escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         like = f"%{escaped}%"
