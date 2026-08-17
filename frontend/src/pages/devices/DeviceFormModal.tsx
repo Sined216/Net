@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Badge, Button, Checkbox, Group, Modal, ScrollArea, Select, Stack, Table, Text, TextInput, Textarea,
 } from '@mantine/core';
@@ -8,6 +8,7 @@ import {
   useMoveImportRow, useSetDeviceTags, useTags, useTopologyGroups, useUpdateDevice,
 } from '../../api/hooks';
 import { TemplateFormModal } from '../TemplatesPage';
+import { TemplatePicker } from './TemplatePicker';
 import { flattenTagsOrdered, nn } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { useCan } from '../../auth/permissions';
@@ -107,24 +108,6 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
       busy: false,
     }));
 
-  // Список моделей группируется по категории техники (коммутатор, сервер,
-  // ЧПУ...) и ищется по названию — плоский список без поиска на полусотне
-  // моделей заставлял читать его целиком, чтобы найти нужную.
-  const templateOptions = useMemo(() => {
-    const byType = new Map<number, { group: string; items: { value: string; label: string }[] }>();
-    const noType: { value: string; label: string }[] = [];
-    for (const t of [...templates].sort((a, b) => a.name.localeCompare(b.name))) {
-      const item = { value: String(t.id), label: `${t.name} (${t.interfaces.length} порт.)` };
-      const type = deviceTypes.find((dt) => dt.id === t.device_type_id);
-      if (!type) { noType.push(item); continue; }
-      if (!byType.has(type.id)) byType.set(type.id, { group: type.name, items: [] });
-      byType.get(type.id)!.items.push(item);
-    }
-    const groups = [...byType.values()].sort((a, b) => a.group.localeCompare(b.group));
-    if (noType.length) groups.push({ group: 'Без категории', items: noType });
-    return groups;
-  }, [templates, deviceTypes]);
-
   function toggleTag(id: number) {
     setTagIds((prev) => {
       const next = new Set(prev);
@@ -182,9 +165,9 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
         <Stack>
           {!isEdit ? (
             <>
-              <Select
-                label="Шаблон устройства" placeholder="— выбрать или найти —" required searchable
-                data={templateOptions}
+              <TemplatePicker
+                label="Шаблон устройства" placeholder="— выбрать или найти —" required
+                templates={templates} deviceTypes={deviceTypes}
                 value={templateId} onChange={setTemplateId}
               />
               <Group gap={6}>
