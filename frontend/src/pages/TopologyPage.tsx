@@ -227,7 +227,7 @@ export function TopologyPage() {
           id: n.id,
           width: sizes.get(n.id)?.width ?? card.width,
           height: sizes.get(n.id)?.height ?? card.height,
-          group: n.topology_group_id === groupId ? null : n.topology_group_id,
+          group: n.topology_group_id === groupId ? null : n.topology_group_id ?? null,
         }));
 
         const laid = await computeAutoLayout(
