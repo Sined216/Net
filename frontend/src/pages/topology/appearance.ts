@@ -1,3 +1,5 @@
+import type { ElkAlgorithm } from '../../lib/elk';
+
 /** Внешний вид схемы связей.
  *
  * Настройка личная и лежит в браузере, а не в базе: это вкус, а не данные.
@@ -42,8 +44,12 @@ export interface TopologyAppearance {
    * пережить перезагрузку, как и всё остальное здесь. */
   edgeRouter: 'orthogonal' | 'straight';
   edgeWidth: number;
-  /** Подписи портов на концах линии. */
-  edgeLabels: boolean;
+  /** Подписи портов на концах линии: всегда видны, появляются при
+   * наведении на кабель, или не показываются вовсе. На плотной схеме
+   * подписи всех кабелей разом читать так же трудно, как не иметь их —
+   * они налезают друг на друга, и «при наведении» даёт то же самое
+   * значение по требованию, не занимая место постоянно. */
+  edgeLabels: 'always' | 'hover' | 'never';
   /** Название порта в подписи рядом с номером. Номер остаётся всегда: это
    * то, чем порт опознают на железке. */
   edgeLabelName: boolean;
@@ -58,6 +64,10 @@ export interface TopologyAppearance {
   layoutRowGap: number;
   /** Расстояние между узлами внутри ряда при той же раскладке. */
   layoutNodeGap: number;
+  /** Каким алгоритмом ELK раскладывать при «Разложить». Ровное дерево
+   * заводской сети и плотная связка коммутаторов в одном шкафу просят
+   * разное — какой лучше подходит именно этой сети, решает не код. */
+  layoutAlgorithm: ElkAlgorithm;
 
   background: 'dots' | 'lines' | 'cross' | 'none';
 }
@@ -83,13 +93,14 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
 
   edgeRouter: 'orthogonal',
   edgeWidth: 2,
-  edgeLabels: true,
+  edgeLabels: 'always',
   edgeLabelName: true,
   edgeLabelSize: 10,
   groupTitleSize: 12,
 
   layoutRowGap: 120,
   layoutNodeGap: 44,
+  layoutAlgorithm: 'layered',
 
   background: 'dots',
 };
@@ -103,8 +114,14 @@ export function loadAppearance(): TopologyAppearance {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_APPEARANCE;
-    const saved = JSON.parse(raw) as Partial<TopologyAppearance>;
-    return { ...DEFAULT_APPEARANCE, ...saved };
+    const saved = JSON.parse(raw) as Partial<TopologyAppearance> & { edgeLabels?: unknown };
+    // edgeLabels было булевым — прошлая настройка «включено» читается как
+    // «всегда», «выключено» как «никогда»; третье, промежуточное значение
+    // раньше было взять неоткуда.
+    if (typeof saved.edgeLabels === 'boolean') {
+      saved.edgeLabels = saved.edgeLabels ? 'always' : 'never';
+    }
+    return { ...DEFAULT_APPEARANCE, ...saved } as TopologyAppearance;
   } catch {
     return DEFAULT_APPEARANCE;
   }

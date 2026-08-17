@@ -260,7 +260,9 @@ async function layout(tables: SchemaTable[]): Promise<Map<string, { x: number; y
       height: tableHeight(table.columns.length, !!table.note),
     })),
     arrows,
-    { direction: 'RIGHT', layerGap: COLUMN_GAP, nodeGap: ROW_GAP },
+    // Структура базы — не сеть устройств, выбора алгоритма для неё нет:
+    // всегда слоями, как таблицы и рисуют от руки.
+    { algorithm: 'layered', direction: 'RIGHT', layerGap: COLUMN_GAP, nodeGap: ROW_GAP },
   );
 
   const result = new Map<string, { x: number; y: number }>();

@@ -83,6 +83,16 @@ export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): 
   return { deviceCells, boxes };
 }
 
+/** Насколько бледнее рамка на своей глубине вложенности: цех — обычным
+ * цветом, каждый следующий уровень внутри — тише, чтобы глаз в первую
+ * очередь читал внешний контур, а не терялся в наложенных друг на друга
+ * линиях одной яркости. Формула вместо таблицы на три записи — раньше
+ * глубже второго уровня цвет переставал меняться вовсе, хотя вложенность
+ * теперь достаёт до шести. Пол в 0.35: тусклее рамку видно уже плохо. */
+function frameFade(depth: number): number {
+  return Math.max(0.35, 1 - depth * 0.16);
+}
+
 /** Рамки групп. Идут первыми: JointJS рисует ячейки в порядке добавления, и
  * рамка, добавленная после узлов, накрыла бы их собой. */
 function addGroups(
@@ -99,7 +109,7 @@ function addGroups(
     const box = boxes.get(group.id);
     if (!box) continue;
     const accent = group.color ?? '#4dabf7';
-    const fade = [1, 0.6, 0.4][Math.min(groupDepth(groups, group.id), 2)];
+    const fade = frameFade(groupDepth(groups, group.id));
     const inside = nodes.filter((n) => n.topology_group_id === group.id).length;
     const title = look.groupCount ? `${group.name} · ${inside}` : group.name;
     const cell = new GroupShape({
@@ -258,6 +268,14 @@ function addLinks(
   // ним. Прямая линия узлы пересекает, и там она остаётся под ними.
   const linkZ = router === 'orthogonal' ? 20 : 5;
 
+  // «Никогда» — подписей в модели вовсе нет, как и раньше. «При наведении»
+  // — они есть, но прозрачные с самого начала; полотно показывает их по
+  // событию мыши (см. `hoverLabels` в useJointPaper.ts), для чего кабелю и
+  // нужна отметка. «Всегда» — обычные видимые подписи, никакой отметки не
+  // требуется.
+  const showLabels = look.edgeLabels !== 'never';
+  const hoverOnly = look.edgeLabels === 'hover';
+
   for (const edge of edges) {
     // Оба конца на месте — обычный кабель.
     if (edge.device_a_id != null && edge.device_b_id != null) {
@@ -268,6 +286,7 @@ function addLinks(
         source: { id: source.id, anchor: { name: 'center' } },
         target: { id: target.id, anchor: { name: 'center' } },
         linkId: edge.link_id,
+        hoverLabels: hoverOnly,
         router: routerFor(edge.link_id),
         connector: connectorFor(),
         z: linkZ,
@@ -281,11 +300,11 @@ function addLinks(
             targetMarker: null,
           },
         },
-        labels: look.edgeLabels ? [
+        labels: showLabels ? [
           portLabelCell(portText(edge.port_a_number, edge.interface_a_label, look), paint, true,
-                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id)),
+                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id), hoverOnly),
           portLabelCell(portText(edge.port_b_number, edge.interface_b_label, look), paint, false,
-                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id)),
+                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id), hoverOnly),
         ] : [],
       }));
       continue;
@@ -310,6 +329,7 @@ function addLinks(
     graph.addCell(new shapes.standard.Link({
       source: { id: deviceCell.id }, target: { id: stub.id },
       linkId: edge.link_id,
+      hoverLabels: hoverOnly,
       z: linkZ,
       attrs: {
         line: {
@@ -317,13 +337,13 @@ function addLinks(
           opacity: 0.9, targetMarker: null,
         },
       },
-      labels: look.edgeLabels ? [
+      labels: showLabels ? [
         // У повисшего кабеля живой конец всегда со стороны устройства:
         // заглушка — это второй конец, и подписывать там нечего.
         portLabelCell(
           liveIsA ? portText(edge.port_a_number, edge.interface_a_label, look)
                   : portText(edge.port_b_number, edge.interface_b_label, look),
-          paint, true, look.edgeLabelSize,
+          paint, true, look.edgeLabelSize, 0, hoverOnly,
         ),
       ] : [],
     }));
@@ -400,7 +420,15 @@ const LABEL_DISTANCE = 26;
  * Размер ей задаётся по тексту (`ref` и `calc`) — без этого прямоугольник
  * остаётся нулевым и подложки не видно вовсе; ровно так она и не рисовалась,
  * хотя цвета ей были заданы. */
-function portLabelCell(text: string, paint: CanvasPaint, atSource: boolean, size: number, offset = 0) {
+function portLabelCell(
+  text: string, paint: CanvasPaint, atSource: boolean, size: number, offset = 0,
+  /** Подпись есть в модели с самого начала и в режиме «при наведении» —
+   * иначе показывать её было бы нечем на первом же входе мыши. Прячется она
+   * прозрачностью, а не удалением из разметки: `opacity`, в отличие от
+   * `display`, не роняет размер, посчитанный от текста через `calc()`
+   * у рамки под ним. */
+  hidden = false,
+) {
   return {
     position: { distance: atSource ? LABEL_DISTANCE : -LABEL_DISTANCE, offset },
     attrs: {
@@ -408,10 +436,12 @@ function portLabelCell(text: string, paint: CanvasPaint, atSource: boolean, size
         ref: 'labelText',
         x: 'calc(x-5)', y: 'calc(y-3)', width: 'calc(w+10)', height: 'calc(h+6)',
         fill: paint.plate, stroke: paint.plateBorder, strokeWidth: 1, rx: 4, ry: 4,
+        opacity: hidden ? 0 : 1, pointerEvents: hidden ? 'none' : 'auto',
       },
       labelText: {
         text, fontSize: size, fontWeight: 600, fill: paint.plateText, fontFamily: 'inherit',
         textAnchor: 'middle', textVerticalAnchor: 'middle',
+        opacity: hidden ? 0 : 1, pointerEvents: 'none',
       },
     },
     markup: [

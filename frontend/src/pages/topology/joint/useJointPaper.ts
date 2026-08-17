@@ -385,6 +385,29 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
       if (linkId) handlers.current.onLinkClick(linkId);
     });
 
+    // Подписи портов в режиме «при наведении»: они и так есть в модели
+    // линии (иначе показывать по наведению было бы нечего), просто с
+    // самого начала прозрачные — `hoverLabels` их и отмечает. Кабели, для
+    // которых подписи включены всегда или выключены совсем, эту метку не
+    // несут и здесь не участвуют.
+    const setLinkLabelsVisible = (link: dia.Link, visible: boolean) => {
+      const opacity = visible ? 1 : 0;
+      link.labels().forEach((_, index) => {
+        link.label(index, {
+          attrs: {
+            labelBody: { opacity, pointerEvents: visible ? 'auto' : 'none' },
+            labelText: { opacity },
+          },
+        });
+      });
+    };
+    paper.on('link:mouseenter', (view: dia.LinkView) => {
+      if (view.model.get('hoverLabels')) setLinkLabelsVisible(view.model, true);
+    });
+    paper.on('link:mouseleave', (view: dia.LinkView) => {
+      if (view.model.get('hoverLabels')) setLinkLabelsVisible(view.model, false);
+    });
+
     // Перетаскивание пачкой: тянут за одну из выделенных карточек, едут все.
     // Остальные двигаются вслед за ведущей на тот же сдвиг — своими
     // событиями мыши они не управляются, поэтому их положение меняется прямо.

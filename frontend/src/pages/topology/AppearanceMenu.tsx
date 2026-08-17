@@ -161,19 +161,26 @@ export function AppearanceMenu({ value, onChange }: Props) {
                 marks={[{ value: 1 }, { value: 3 }, { value: 5 }]}
               />
             </Field>
-            <Switch
-              size="xs" label="Подписи портов на концах линии" checked={value.edgeLabels}
-              onChange={(e) => set('edgeLabels', e.currentTarget.checked)}
-            />
+            <Field label="Подписи портов на концах линии">
+              <SegmentedControl
+                size="xs" fullWidth value={value.edgeLabels}
+                onChange={(v) => set('edgeLabels', v as TopologyAppearance['edgeLabels'])}
+                data={[
+                  { value: 'always', label: 'Всегда' },
+                  { value: 'hover', label: 'При наведении' },
+                  { value: 'never', label: 'Скрыть' },
+                ]}
+              />
+            </Field>
             <Switch
               size="xs" label="Название порта рядом с номером" checked={value.edgeLabelName}
-              disabled={!value.edgeLabels}
+              disabled={value.edgeLabels === 'never'}
               onChange={(e) => set('edgeLabelName', e.currentTarget.checked)}
             />
             <Field label={`Размер подписи порта — ${value.edgeLabelSize} px`}>
               <Slider
                 size="sm" min={7} max={16} step={1} value={value.edgeLabelSize}
-                disabled={!value.edgeLabels}
+                disabled={value.edgeLabels === 'never'}
                 onChange={(v) => set('edgeLabelSize', v)}
                 marks={[{ value: 7 }, { value: 10 }, { value: 16 }]}
               />
@@ -183,6 +190,23 @@ export function AppearanceMenu({ value, onChange }: Props) {
             <Section title="Автоматическая раскладка" />
             <Text size="xs" c="dimmed">
               Действуют при нажатии «Разложить»: узлы, расставленные руками, эти настройки не двигают.
+            </Text>
+            <Field label="Алгоритм">
+              <SegmentedControl
+                size="xs" fullWidth value={value.layoutAlgorithm}
+                onChange={(v) => set('layoutAlgorithm', v as TopologyAppearance['layoutAlgorithm'])}
+                data={[
+                  { value: 'layered', label: 'Слоями' },
+                  { value: 'mrtree', label: 'Деревом' },
+                  { value: 'force', label: 'Силой' },
+                  { value: 'stress', label: 'Кластером' },
+                ]}
+              />
+            </Field>
+            <Text size="xs" c="dimmed">
+              «Слоями» — ряды сверху вниз или слева направо, как сеть рисуют от руки. «Деревом» — от корня
+              веером. «Силой» и «Кластером» — органическая раскладка без выраженных рядов, ближе к тому, как
+              узлы расталкивались раньше, но с учётом рамок групп.
             </Text>
             <Field label={`Между рядами — ${value.layoutRowGap} px`}>
               <Slider

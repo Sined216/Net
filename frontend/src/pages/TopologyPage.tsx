@@ -245,6 +245,7 @@ export function TopologyPage() {
           subGroupsForElk,
           internalLinks,
           { row: look.layoutRowGap, node: look.layoutNodeGap },
+          look.layoutAlgorithm,
         );
 
         // Находим размах результата в координатах ELK, чтобы сдвинуть
@@ -404,6 +405,7 @@ export function TopologyPage() {
           .filter((e) => e.device_a_id != null && e.device_b_id != null)
           .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! })),
         { row: look.layoutRowGap, node: look.layoutNodeGap },
+        look.layoutAlgorithm,
       );
 
       history.push({

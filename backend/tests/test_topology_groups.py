@@ -1,4 +1,5 @@
-"""Вложенные группы на топологии: цех — участок — линия."""
+"""Вложенные группы на топологии: цех — участок — линия — шкаф и глубже,
+до шести уровней."""
 
 
 def create(client, headers, name, parent_id=None):
@@ -35,10 +36,14 @@ def test_group_cannot_be_nested_into_own_child(client, headers):
 
 
 def test_nesting_is_limited_in_depth(client, headers):
-    shop = create(client, headers, "Цех 4").json()
-    area = create(client, headers, "Участок 1", shop["id"]).json()
-    line = create(client, headers, "Линия C", area["id"]).json()
-    assert create(client, headers, "Станок", line["id"]).status_code == 400
+    """Шесть уровней — цех, участок, линия, шкаф и глубже — умещаются, а
+    седьмой уже нет: рамка внутри рамки внутри рамки на этой глубине
+    нечитаема на глаз."""
+    parent_id = None
+    for depth in range(1, 7):
+        group = create(client, headers, f"Уровень {depth}", parent_id).json()
+        parent_id = group["id"]
+    assert create(client, headers, "Уровень 7", parent_id).status_code == 400
 
 
 def test_deleted_group_releases_children_and_devices(client, headers, make_device):
