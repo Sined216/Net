@@ -27,8 +27,8 @@ import { loadAppearance, saveAppearance, type TopologyAppearance } from './topol
 import {
   buildGraph, cardText, computePositions, storedBox, type Box, type Point,
 } from './topology/joint/buildGraph';
-import { nodeMetrics, nodeSizes } from './topology/joint/shapes';
-import { computeAutoLayout, computeGroupLayout } from './topology/layout';
+import { GROUP_MIN, nodeMetrics, nodeSizes } from './topology/joint/shapes';
+import { computeAutoLayout, type AutoCard } from './topology/layout';
 import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
@@ -175,48 +175,43 @@ export function TopologyPage() {
     layoutGroup: async (groupId: number) => {
       const box = boxesRef.current.get(groupId);
       if (!box || layingGroups.current.has(groupId)) return;
-      const inside = nodes.filter((n) => n.topology_group_id === groupId).map((n) => n.id);
-      const directSubgroups = groups
-        .filter((g) => g.parent_id === groupId)
-        .map((g) => ({ id: g.id, box: boxesRef.current.get(g.id) }))
-        .filter((entry): entry is { id: number; box: Box } => entry.box != null);
-      if (inside.length === 0 && directSubgroups.length === 0) return;
-      const directSubgroupIds = new Set(directSubgroups.map((g) => g.id));
 
-      // Все подгруппы, вложенные в данную (на любую глубину) — их вместе с
-      // содержимым нужно будет сдвинуть, если сдвинулась сама данная
-      // подгруппа: раскладка переставляет только прямые подгруппы целиком,
-      // не трогая то, что внутри, а «внутри» бывает вложено ещё раз.
-      const nestedGroupIds = (rootId: number): number[] => {
-        const out: number[] = [];
-        const stack = [rootId];
-        while (stack.length) {
-          const at = stack.pop()!;
-          for (const g of groups) if (g.parent_id === at) { out.push(g.id); stack.push(g.id); }
-        }
-        return out;
+      // Все группы в поддереве данной группы (включая её саму): ELK увидит
+      // полную иерархию и сможет расставить узлы, учитывая кабели через
+      // границы подгрупп — без этого пересечения неизбежны.
+      const subtreeGroupIds = new Set<number>();
+      const collectSubtree = (id: number) => {
+        subtreeGroupIds.add(id);
+        for (const g of groups) if (g.parent_id === id) collectSubtree(g.id);
       };
-      // Кабель к устройству внутри подгруппы — для этой раскладки кабель к
-      // самой подгруппе: она встаёт по связям целиком, а не россыпью узлов.
-      // Кабель, ушедший за пределы данной группы и всех её подгрупп, здесь
-      // никого не держит.
-      const localNodeOf = (deviceId: number): string | null => {
-        const at = nodes.find((n) => n.id === deviceId)?.topology_group_id ?? null;
-        if (at === groupId) return `d${deviceId}`;
-        let group = at;
-        while (group != null) {
-          if (directSubgroupIds.has(group)) return `g${group}`;
-          group = groups.find((g) => g.id === group)?.parent_id ?? null;
-        }
-        return null;
-      };
+      collectSubtree(groupId);
+
+      // Устройства поддерева
+      const subtreeNodes = nodes.filter(
+        (n) => n.topology_group_id != null && subtreeGroupIds.has(n.topology_group_id),
+      );
+      if (subtreeNodes.length === 0) return;
+
+      // Подгруппы для ELK: groupId становится корнем раскладки (не рамкой),
+      // его прямые дочерние группы получают parent_id: null.
+      const subGroupsForElk = groups
+        .filter((g) => subtreeGroupIds.has(g.id) && g.id !== groupId)
+        .map((g) => ({ id: g.id, parent_id: g.parent_id === groupId ? null : g.parent_id }));
+
+      // Только внутренние кабели (оба конца — внутри поддерева)
+      const subtreeNodeIdSet = new Set(subtreeNodes.map((n) => n.id));
       const seenLinks = new Set<string>();
-      const localLinks = edges
-        .filter((e) => e.device_a_id != null && e.device_b_id != null)
-        .map((e) => ({ from: localNodeOf(e.device_a_id!), to: localNodeOf(e.device_b_id!) }))
-        .filter((l): l is { from: string; to: string } => l.from != null && l.to != null && l.from !== l.to)
+      const internalLinks = edges
+        .filter(
+          (e) =>
+            e.device_a_id != null &&
+            e.device_b_id != null &&
+            subtreeNodeIdSet.has(e.device_a_id!) &&
+            subtreeNodeIdSet.has(e.device_b_id!),
+        )
+        .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! }))
         .filter((l) => {
-          const key = [l.from, l.to].sort().join('~');
+          const key = [l.a, l.b].sort().join('~');
           if (seenLinks.has(key)) return false;
           seenLinks.add(key);
           return true;
@@ -226,42 +221,63 @@ export function TopologyPage() {
       try {
         const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
         const card = nodeMetrics(look);
-        const laid = await computeGroupLayout(
-          box,
-          inside.map((id) => ({
-            id, width: sizes.get(id)?.width ?? card.width, height: sizes.get(id)?.height ?? card.height,
-          })),
-          directSubgroups.map((g) => ({ id: g.id, width: g.box.width, height: g.box.height })),
-          localLinks,
+        // Устройства прямо в данной группе — без родителя в этой раскладке
+        // (groupId не участвует рамкой, он задаёт только размер результата).
+        const subtreeCards: AutoCard[] = subtreeNodes.map((n) => ({
+          id: n.id,
+          width: sizes.get(n.id)?.width ?? card.width,
+          height: sizes.get(n.id)?.height ?? card.height,
+          group: n.topology_group_id === groupId ? null : n.topology_group_id,
+        }));
+
+        const laid = await computeAutoLayout(
+          subtreeCards,
+          subGroupsForElk,
+          internalLinks,
           { row: look.layoutRowGap, node: look.layoutNodeGap },
         );
 
-        // Устройства группы — прямым результатом раскладки. Подгруппы —
-        // тоже, но переставляется только их рамка: содержимое (и вложенные
-        // в них рамки) едет следом той же передвижкой, какой оно едет за
-        // рамкой при перетаскивании рукой.
-        const deviceMoves = new Map(inside.map((id) => [id, laid.positions.get(id)!]));
-        const groupMoves = new Map<number, Box>();
-        for (const sub of directSubgroups) {
-          const to = laid.subgroupBoxes.get(sub.id);
-          if (!to) continue;
-          groupMoves.set(sub.id, to);
-          const dx = to.x - sub.box.x, dy = to.y - sub.box.y;
-          if (dx === 0 && dy === 0) continue;
-          const carried = new Set([sub.id, ...nestedGroupIds(sub.id)]);
-          for (const node of nodes) {
-            if (node.topology_group_id == null || !carried.has(node.topology_group_id)) continue;
-            const at = placed.current.get(node.id)
-              ?? (node.topology_x != null && node.topology_y != null
-                ? { x: node.topology_x, y: node.topology_y } : null);
-            if (at) deviceMoves.set(node.id, { x: at.x + dx, y: at.y + dy });
-          }
-          for (const nestedId of nestedGroupIds(sub.id)) {
-            const nestedBox = boxesRef.current.get(nestedId);
-            if (nestedBox) groupMoves.set(nestedId, { ...nestedBox, x: nestedBox.x + dx, y: nestedBox.y + dy });
-          }
+        // Находим размах результата в координатах ELK, чтобы сдвинуть
+        // содержимое в координаты рамки groupId.
+        const SIDE = 26, TOP = 46; // совпадают с FRAME_PADDING из layout.ts
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const c of subtreeCards) {
+          const pos = laid.positions.get(c.id);
+          if (!pos) continue;
+          minX = Math.min(minX, pos.x - c.width / 2);
+          minY = Math.min(minY, pos.y - c.height / 2);
+          maxX = Math.max(maxX, pos.x + c.width / 2);
+          maxY = Math.max(maxY, pos.y + c.height / 2);
         }
-        if (laid.box !== box) groupMoves.set(groupId, laid.box);
+        for (const [, subBox] of laid.boxes) {
+          minX = Math.min(minX, subBox.x);
+          minY = Math.min(minY, subBox.y);
+          maxX = Math.max(maxX, subBox.x + subBox.width);
+          maxY = Math.max(maxY, subBox.y + subBox.height);
+        }
+        if (!isFinite(minX)) return; // ELK ничего не разложил
+
+        const ox = box.x + SIDE - minX;
+        const oy = box.y + TOP - minY;
+
+        const deviceMoves = new Map<number, Point>();
+        for (const c of subtreeCards) {
+          const pos = laid.positions.get(c.id);
+          if (pos) deviceMoves.set(c.id, { x: pos.x + ox, y: pos.y + oy });
+        }
+        const groupMoves = new Map<number, Box>();
+        for (const [gid, subBox] of laid.boxes) {
+          groupMoves.set(gid, {
+            x: subBox.x + ox, y: subBox.y + oy,
+            width: subBox.width, height: subBox.height,
+          });
+        }
+        // Обновляем рамку самой группы по размаху её содержимого
+        groupMoves.set(groupId, {
+          ...box,
+          width: Math.max(box.width, SIDE * 2 + (maxX - minX), GROUP_MIN.width),
+          height: Math.max(box.height, TOP + (maxY - minY) + SIDE, GROUP_MIN.height),
+        });
 
         history.push({
           title: 'раскладка группы',
