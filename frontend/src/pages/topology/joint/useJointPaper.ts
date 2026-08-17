@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { dia, g, highlighters, shapes } from '@joint/core';
 import { canvasColors, loadAppearance, type TopologyAppearance } from '../appearance';
-import { groupResizeTool } from './tools';
+import { deviceTools, groupTools } from './tools';
 import type { Box } from './buildGraph';
 
 /** Полотно JointJS и всё, что на нём происходит мышью: панорама, масштаб,
@@ -21,12 +21,16 @@ import type { Box } from './buildGraph';
  * Кнопки мыши разведены по смыслу, а не по привычке:
  *
  * - средняя — только навигация, панорама. И по пустому месту, и по объектам:
- *   схему таскают, когда смотрят, а смотрят и поверх узлов тоже.
+ *   схему таскают, когда смотрят, а смотрят и поверх узлов тоже. Средней
+ *   кнопкой объект не двигается — для JointJS всякое нажатие на ячейку
+ *   начинает перетаскивание, поэтому средняя кнопка от него закрыта
+ *   отдельно (см. `guard` при создании полотна).
  * - левая — только работа с объектами: выделить, потянуть, обвести рамкой
  *   пачку. За пустое место левой сразу начинается рамка выделения — раньше
  *   для неё требовался Shift, потому что жест был занят панорамой.
- * - правая — меню объекта. Действия, которые раньше жили кнопками поверх
- *   схемы, теперь только здесь.
+ * - правая — панель действий у узла и у рамки. Раньше она появлялась по
+ *   левому щелчку и тем самым мешалась: выделить объект, чтобы потянуть
+ *   его, было нельзя, не получив панель поверх соседей.
  */
 
 export type Selection = { kind: 'device' | 'group'; id: number } | null;
@@ -41,14 +45,6 @@ export interface Marked {
 
 const emptyMarked = (): Marked => ({ devices: new Set(), groups: new Set() });
 const markedSize = (marked: Marked) => marked.devices.size + marked.groups.size;
-
-/** Что человек вызвал правой кнопкой и в какой точке экрана. `target` пуст —
- * щёлкнули по пустому месту. */
-export interface MenuRequest {
-  target: Selection;
-  x: number;
-  y: number;
-}
 
 /** Что панель действий умеет делать с узлом и с рамкой. */
 export interface JointActions {
@@ -100,17 +96,6 @@ export interface JointPaper {
    * наполнения графа: ячейки создаются заново, а выделенным остаётся тот же
    * объект. */
   refreshTools: () => void;
-  /** Меню объекта, вызванное правой кнопкой. Рисует его страница: меню — это
-   * обычная разметка, а не часть схемы, и жить оно должно там же, где окна,
-   * которые открывают его пункты. */
-  menu: MenuRequest | null;
-  closeMenu: () => void;
-  /** Устройство, от которого сейчас тянут кабель. Протягивание — жест, и
-   * пунктом меню быть не может; поэтому пункт включает режим: следующий
-   * щелчок по другому устройству и создаёт связь. Пусто — режим выключен. */
-  connectFrom: number | null;
-  startConnect: (deviceId: number) => void;
-  cancelConnect: () => void;
 }
 
 /** Загнать узел внутрь рамки его группы. Отступы те же, что при сборке
@@ -145,10 +130,11 @@ function gridFor(background: TopologyAppearance['background'], scheme: 'light' |
   return grid[background];
 }
 
-export function useJointPaper({ canEdit, scheme, background, handlers }: {
+export function useJointPaper({ canEdit, scheme, background, actions, handlers }: {
   canEdit: boolean;
   scheme: 'light' | 'dark';
   background: TopologyAppearance['background'];
+  actions: React.RefObject<JointActions>;
   handlers: React.RefObject<PaperHandlers>;
 }): JointPaper {
   const holder = useRef<HTMLDivElement>(null);
@@ -160,16 +146,41 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
    * страница могла показать, сколько выделено. */
   const marked = useRef<Marked>(emptyMarked());
   const [markedCount, setMarkedCount] = useState(0);
-  const [menu, setMenu] = useState<MenuRequest | null>(null);
-  const [connectFrom, setConnectFrom] = useState<number | null>(null);
-  /** Режим протягивания читается из обработчиков полотна, поставленных один
-   * раз, — им нужно свежее значение, а не то, что было на рендере. */
-  const connectFromRef = useRef<number | null>(null);
-  connectFromRef.current = connectFrom;
+  /** Показана ли сейчас панель действий. Нужно помнить: после каждого ответа
+   * сервера граф собирается заново, ячейки — новые, и панель приходится
+   * ставить снова тому же объекту. */
+  const panelShown = useRef(false);
 
-  /** Показать подсветку выделенного и ручку размера у выделенной рамки. */
-  const showTools = useCallback((paper: dia.Paper, target: Selection) => {
-    const paint = canvasColors(scheme);
+  /** Панели действий берут обработчики в момент нажатия — так в них не
+   * застывает состояние того рендера, на котором рисовали узел. */
+  const toolActions = useCallback((): JointActions => ({
+    edit: (id) => actions.current.edit(id),
+    copy: (id) => actions.current.copy(id),
+    regroup: (id) => actions.current.regroup(id),
+    remove: (id) => actions.current.remove(id),
+    editGroup: (id) => actions.current.editGroup(id),
+    addSubgroup: (id) => actions.current.addSubgroup(id),
+    addDeviceToGroup: (id) => actions.current.addDeviceToGroup(id),
+    removeGroup: (id) => actions.current.removeGroup(id),
+    layoutGroup: (id) => actions.current.layoutGroup(id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+
+  /** Показать подсветку выделенного и — если панель вызвали правой кнопкой —
+   * саму панель действий.
+   *
+   * `withPanel` разводит два состояния, которые раньше были одним: левый
+   * щелчок теперь только выделяет (чтобы объект можно было потянуть или
+   * удалить, не получая панель поверх соседей), а панель показывается по
+   * правой кнопке. */
+  const showTools = useCallback((paper: dia.Paper, target: Selection, withPanel = false) => {
+    // Кнопки живут в координатах схемы: отдалили её — и попасть в них нечем.
+    // Поправка возвращает им экранный размер, но только при отдалении: при
+    // приближении кнопки растут вместе с узлом, и это никому не мешает.
+    const look = {
+      paint: canvasColors(scheme),
+      zoom: Math.min(Math.max(1 / paper.scale().sx, 1), 4),
+    };
     paper.removeTools();
     highlighters.stroke.removeAll(paper);
 
@@ -207,13 +218,14 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
     );
     const view = cell?.findView(paper) as dia.ElementView | undefined;
     if (!cell || !view) return;
+    if (target.kind === 'device') outline(view, 'selected', false);
+    if (!withPanel || !canEdit) return;
     if (target.kind === 'device') {
-      outline(view, 'selected', false);
-    } else if (canEdit) {
-      // Рамке — ручка размера: тянуть угол пунктом меню не сделаешь.
-      view.addTools(groupResizeTool(cell.get('accent') ?? '#4dabf7', paint));
+      view.addTools(deviceTools(target.id, toolActions(), look));
+    } else {
+      view.addTools(groupTools(target.id, toolActions(), cell.get('accent') ?? '#4dabf7', look));
     }
-  }, [canEdit, scheme]);
+  }, [canEdit, scheme, toolActions]);
 
   /** Обработчики полотна ставятся один раз, а показ панели зависит от темы
    * и масштаба — поэтому он берётся через ссылку, а не замыкается. */
@@ -222,22 +234,16 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
 
   const refreshTools = useCallback(() => {
     const paper = paperRef.current;
-    if (paper) showToolsRef.current(paper, selection.current);
+    if (paper) showToolsRef.current(paper, selection.current, panelShown.current);
   }, []);
 
   const clearMarked = useCallback(() => {
     marked.current = emptyMarked();
     setMarkedCount(0);
     const paper = paperRef.current;
-    if (paper) showToolsRef.current(paper, selection.current);
+    if (paper) showToolsRef.current(paper, selection.current, panelShown.current);
   }, []);
 
-  const closeMenu = useCallback(() => setMenu(null), []);
-  const startConnect = useCallback((deviceId: number) => {
-    setMenu(null);
-    setConnectFrom(deviceId);
-  }, []);
-  const cancelConnect = useCallback(() => setConnectFrom(null), []);
 
   // ---------- полотно ----------
   useEffect(() => {
@@ -297,6 +303,13 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
       // кабеля уходит внутрь карточки, и подписи портов, отмеряемые от его
       // начала, оказываются под ней.
       defaultConnectionPoint: { name: 'boundary', args: { offset: 2 } },
+      // Средняя кнопка — только панорама, объект под курсором ею не двигают.
+      // JointJS начинает перетаскивание с любого нажатия на ячейку, не
+      // разбирая кнопку; `guard` — единственное место, где нажатие можно
+      // отклонить до того, как перетаскивание началось. Панорама поэтому
+      // сделана своими обработчиками на элементе полотна: после `guard`
+      // событий `cell:pointerdown` уже не будет.
+      guard: (event) => event.type === 'mousedown' && event.button === 1,
       interactive: (cellView) => {
         if (!canEdit) return false;
         // Заглушку свободного конца не двигают: за неё тянут кабель, и жест
@@ -339,22 +352,39 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
     // объектам: схему таскают, когда её рассматривают, а рассматривают и
     // поверх узлов тоже. Левая за пустое место теперь сразу даёт рамку
     // выделения — Shift для неё больше не нужен.
+    //
+    // Обработчики свои, а не полотна: нажатие средней кнопкой на ячейку
+    // отклоняется в `guard`, и события полотна о нём уже не приходят. Слежение
+    // за движением вешается на документ — иначе панорама обрывалась бы, стоило
+    // курсору выйти за край схемы.
     const MIDDLE = 1;
     let panning: { x: number; y: number } | null = null;
-    const startPan = (event: dia.Event) => {
-      panning = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
+    const onPanMove = (event: MouseEvent) => {
+      if (!panning) return;
+      const t = paper.translate();
+      paper.translate(t.tx + event.clientX - panning.x, t.ty + event.clientY - panning.y);
+      panning = { x: event.clientX, y: event.clientY };
     };
+    const onPanEnd = () => {
+      panning = null;
+      document.removeEventListener('mousemove', onPanMove);
+      document.removeEventListener('mouseup', onPanEnd);
+    };
+    const onPanStart = (event: MouseEvent) => {
+      if (event.button !== MIDDLE) return;
+      // Без этого браузер включает на средней кнопке свою автопрокрутку —
+      // схема начинает ехать сама по себе вслед за курсором.
+      event.preventDefault();
+      panning = { x: event.clientX, y: event.clientY };
+      document.addEventListener('mousemove', onPanMove);
+      document.addEventListener('mouseup', onPanEnd);
+    };
+    paper.el.addEventListener('mousedown', onPanStart);
 
     paper.on('blank:pointerdown', (event: dia.Event, x: number, y: number) => {
-      if (event.button === MIDDLE) { startPan(event); return; }
-      if (!canEdit) return;
+      if (event.button === MIDDLE || !canEdit) return;
       bandFrom = { x, y };
       drawBand({ x, y });
-    });
-    // Средней кнопкой тянут и за объект: для навигации безразлично, что
-    // оказалось под курсором.
-    paper.on('cell:pointerdown', (_view: dia.CellView, event: dia.Event) => {
-      if (event.button === MIDDLE) startPan(event);
     });
     paper.on('blank:pointermove', (_event: dia.Event, x: number, y: number) => {
       if (bandFrom) drawBand({ x, y });
@@ -399,37 +429,32 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
       selection.current = null;
       showToolsRef.current(paper, null);
     });
-    paper.on('blank:pointermove cell:pointermove', (event: dia.Event) => {
-      if (!panning) return;
-      const t = paper.translate();
-      paper.translate(t.tx + ((event.clientX ?? 0) - panning.x), t.ty + ((event.clientY ?? 0) - panning.y));
-      panning = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
-    });
-    paper.on('blank:pointerup cell:pointerup', () => { panning = null; });
-
-    // Правая кнопка — меню объекта. Само меню рисует страница: это обычная
-    // разметка, и жить ей полагается рядом с окнами, которые открывают её
-    // пункты, а не внутри полотна.
-    const openMenu = (target: Selection, event: dia.Event) => {
-      setMenu({ target, x: event.clientX ?? 0, y: event.clientY ?? 0 });
-    };
-    paper.on('element:contextmenu', (view: dia.ElementView, event: dia.Event) => {
+    // Правая кнопка — панель действий у того, на чём стоит курсор. Раньше
+    // она появлялась по левому щелчку, и левый щелчок тем самым делал два
+    // дела сразу: выделял объект и вешал над ним панель, которая на плотной
+    // схеме перекрывала соседей.
+    paper.on('element:contextmenu', (view: dia.ElementView) => {
       const kind = view.model.get('kind');
       const target: Selection = kind === 'device' ? { kind: 'device', id: view.model.get('deviceId') }
         : kind === 'group' ? { kind: 'group', id: view.model.get('groupId') }
           : null;
       if (!target) return;
-      // Меню открывается по тому, на чём стоит курсор, — и это же становится
-      // выделенным: иначе пункты меню относились бы к одному объекту, а
-      // подсветка показывала другой.
+      // Панель показывается по тому, на чём стоит курсор, — и это же
+      // становится выделенным: иначе кнопки панели относились бы к одному
+      // объекту, а подсветка показывала другой.
       selection.current = target;
       marked.current = emptyMarked();
       setMarkedCount(0);
-      showToolsRef.current(paper, target);
-      openMenu(target, event);
+      panelShown.current = true;
+      showToolsRef.current(paper, target, true);
     });
-    paper.on('blank:contextmenu', (event: dia.Event) => openMenu(null, event));
-    // Своё меню браузера поверх нашего не нужно.
+    // Правой по пустому месту — снять панель и выделение: это отказ.
+    paper.on('blank:contextmenu', () => {
+      panelShown.current = false;
+      selection.current = null;
+      showToolsRef.current(paper, null, false);
+    });
+    // Меню браузера на полотне не нужно: правая кнопка занята панелью.
     paper.el.addEventListener('contextmenu', (event: MouseEvent) => event.preventDefault());
     // Масштаб колесом — вокруг курсора, а не вокруг угла полотна. Иначе
     // при отдалении схема уезжает в левый верхний угол, и то место, куда
@@ -461,22 +486,6 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
       const model = view.model;
       const kind = model.get('kind');
 
-      // Режим протягивания кабеля: пункт меню его включил, и этот щелчок —
-      // выбор второго конца. Тянуть мышью от кнопки, как раньше, больше
-      // неоткуда: кнопок на полотне не осталось, а жест мышью пунктом меню
-      // не сделаешь — поэтому связь набирается двумя щелчками.
-      const from = connectFromRef.current;
-      if (from != null) {
-        setConnectFrom(null);
-        if (kind !== 'device') return;
-        const source = graph.getElements().find(
-          (el) => el.get('kind') === 'device' && el.get('deviceId') === from,
-        );
-        const target = model as dia.Element;
-        if (source && source !== target) handlers.current.onConnect(source, target);
-        return;
-      }
-
       // Shift по узлу или рамке добавляет их к выделенным рамкой или
       // убирает — дособрать пачку из разных углов схемы иначе нечем.
       if (canEdit && event.shiftKey && (kind === 'device' || kind === 'group')) {
@@ -486,11 +495,14 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
         else set.add(id);
         setMarkedCount(markedSize(marked.current));
         selection.current = null;
-        showToolsRef.current(paper, null);
+        panelShown.current = false;
+        showToolsRef.current(paper, null, false);
         return;
       }
       // Обычный щелчок — работа с одним объектом, и пачка при этом
       // снимается: иначе Delete удалил бы заодно то, о чём человек уже забыл.
+      // Панель левым щелчком не показывается: она вызывается правой кнопкой,
+      // а выделение нужно и само по себе — потянуть объект или удалить его.
       if (markedSize(marked.current)) {
         marked.current = emptyMarked();
         setMarkedCount(0);
@@ -498,18 +510,17 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
       selection.current = kind === 'device' ? { kind: 'device', id: model.get('deviceId') }
         : kind === 'group' ? { kind: 'group', id: model.get('groupId') }
           : null;
-      showToolsRef.current(paper, selection.current);
+      panelShown.current = false;
+      showToolsRef.current(paper, selection.current, false);
     });
     paper.on('blank:pointerclick', () => {
-      // Щелчок по пустому месту выключает режим протягивания: человек
-      // передумал.
-      if (connectFromRef.current != null) setConnectFrom(null);
       if (markedSize(marked.current)) {
         marked.current = emptyMarked();
         setMarkedCount(0);
       }
       selection.current = null;
-      showToolsRef.current(paper, null);
+      panelShown.current = false;
+      showToolsRef.current(paper, null, false);
     });
     paper.on('link:pointerclick', (view: dia.LinkView) => {
       const linkId = view.model.get('linkId');
@@ -550,9 +561,9 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
       if (kind === 'group') return marked.current.groups.has(element.get('groupId'));
       return false;
     };
-    paper.on('element:pointerdown', (view: dia.ElementView, event: dia.Event) => {
+    paper.on('element:pointerdown', (view: dia.ElementView) => {
       lead = null;
-      if (!canEdit || event.button === MIDDLE) return;
+      if (!canEdit) return;
       if (!isMarked(view.model)) return;
       const others = new Map<string, g.Point>();
       for (const element of graph.getElements()) {
@@ -680,6 +691,8 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
     return () => {
       window.clearTimeout(resizeTimer);
       observer.disconnect();
+      onPanEnd();
+      paper.el.removeEventListener('mousedown', onPanStart);
       paper.remove();
       paperRef.current = null;
       graphRef.current = null;
@@ -693,15 +706,18 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
     paperRef.current?.setGrid(gridFor(background, scheme));
   }, [background, scheme]);
 
-  // Delete удаляет выделенное, Escape выключает режим протягивания кабеля и
-  // закрывает меню — то и другое иначе снимается только мышью.
+  // Delete удаляет выделенное, Escape убирает панель действий — мышью её
+  // снимают щелчком мимо, но с клавиатуры это быстрее.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const active = document.activeElement;
       const typing = active != null && ['INPUT', 'TEXTAREA'].includes(active.tagName);
       if (event.key === 'Escape') {
-        setConnectFrom(null);
-        setMenu(null);
+        const paper = paperRef.current;
+        if (paper && panelShown.current) {
+          panelShown.current = false;
+          showToolsRef.current(paper, selection.current, false);
+        }
         return;
       }
       if (!canEdit || typing) return;
@@ -713,8 +729,5 @@ export function useJointPaper({ canEdit, scheme, background, handlers }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit]);
 
-  return {
-    holder, paperRef, graphRef, selection, marked, markedCount, clearMarked, refreshTools,
-    menu, closeMenu, connectFrom, startConnect, cancelConnect,
-  };
+  return { holder, paperRef, graphRef, selection, marked, markedCount, clearMarked, refreshTools };
 }

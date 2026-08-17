@@ -23,7 +23,6 @@ import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 import { DeviceModalById, LinkModalById } from './topology/OpenById';
 import { DeviceFormModal, type DeviceDraft } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
-import { CanvasMenu } from './topology/CanvasMenu';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
   buildGraph, cardText, computePositions, storedBox, type Box, type Point,
@@ -128,8 +127,9 @@ export function TopologyPage() {
    * вызов, и второй клик по той же панели до ответа первого не должен
    * запускать вторую раскладку поверх первой. */
   const layingGroups = useRef(new Set<number>());
-  /** Свежие обработчики для полотна: оно ставит их один раз, а данные под
-   * ними меняются. */
+  /** Свежие действия и обработчики для полотна: оно ставит их один раз, а
+   * данные под ними меняются. */
+  const actionsRef = useRef<JointActions>(null!);
   const handlers = useRef<PaperHandlers>(null!);
 
   function changeLook(next: TopologyAppearance) {
@@ -323,6 +323,7 @@ export function TopologyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [nodes, groups]);
 
+  actionsRef.current = actions;
 
   const saveGroupBox = useCallback((groupId: number, box: Box) => {
     setGroupBox.mutate({ id: groupId, body: box }, { onError: notifyError });
@@ -436,7 +437,7 @@ export function TopologyPage() {
   }, [nodes, edges, groups, look, laying, history]);
 
   const paper = useJointPaper({
-    canEdit, scheme, background: look.background, handlers,
+    canEdit, scheme, background: look.background, actions: actionsRef, handlers,
   });
 
   handlers.current = {
@@ -654,13 +655,13 @@ export function TopologyPage() {
               <Text size="sm">
                 <b>Кнопки мыши.</b> Средняя — только навигация: тяните ей схему в любом месте, хоть по пустому,
                 хоть поверх узлов; колесо меняет масштаб вокруг курсора. Левая — работа с объектами: клик выделяет,
-                тяга двигает, а растяжка по пустому месту обводит рамкой несколько объектов сразу. Правая открывает
-                меню того, на чём стоит курсор.
+                тяга двигает, а растяжка по пустому месту обводит рамкой несколько объектов сразу. Правая
+                показывает панель действий у того, на чём стоит курсор; Escape или щелчок правой по пустому месту
+                её убирают.
                 <br /><br />
-                <b>Меню узла:</b> править, протянуть кабель, копировать, в группу, удалить. «Протянуть кабель»
-                включает режим — следующий щелчок по другому устройству и задаёт второй конец, а порты выбираются
-                в окне; Escape отменяет. <b>Меню рамки:</b> правка, раскладка содержимого, устройство и подгруппа
-                внутрь, удаление. Рамку двигают мышью и растягивают за угол, когда она выделена.
+                <b>Панель узла:</b> править, копировать, в группу, удалить и разъём — от него тянут кабель на другое
+                устройство, порты выбираются в окне. <b>Панель рамки:</b> правка, раскладка содержимого, устройство
+                и подгруппа внутрь, удаление; рамку растягивают за угол.
                 <br /><br />
                 «Разложить» расставляет всю схему по кабелям: ядро сети слева, за ним цеховые, за ними железки;
                 рамки групп переезжают вместе со своим содержимым. Оранжевый кружок с «?» — свободный конец кабеля:
@@ -714,20 +715,6 @@ export function TopologyPage() {
           <Text size="sm">Выделено: {paper.markedCount}</Text>
           <Button size="compact-xs" variant="subtle" onClick={paper.clearMarked}>снять выделение</Button>
         </Group>
-      )}
-      {/* Режим протягивания кабеля: пока он включён, человек должен видеть,
-          чего от него ждут, и чем это отменить. */}
-      {paper.connectFrom != null && (
-        <Group gap="xs">
-          <Text size="sm" c="blue">Выберите второе устройство для кабеля</Text>
-          <Button size="compact-xs" variant="subtle" onClick={paper.cancelConnect}>отмена</Button>
-        </Group>
-      )}
-      {paper.menu && (
-        <CanvasMenu
-          request={paper.menu} actions={actions} canEdit={canEdit}
-          onClose={paper.closeMenu} onStartConnect={paper.startConnect}
-        />
       )}
 
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
