@@ -14,7 +14,7 @@ import { useCan } from '../auth/permissions';
 import { EquipmentTabs } from './equipment/EquipmentTabs';
 
 const PAGE = 50;
-const COLUMNS = 11;
+const COLUMNS = 10;
 
 /** Текстовые условия отбора — по одному на колонку. */
 const EMPTY_TEXT = { code: '', name: '', management_ip: '', mac: '' };

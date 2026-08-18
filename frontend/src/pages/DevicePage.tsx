@@ -149,7 +149,7 @@ export function DevicePage() {
               <InterfaceRow key={i.id} iface={i} vlans={vlans} portsEditable={portsEditable} />
             ))}
             {interfaces.length === 0 && (
-              <Table.Tr><Table.Td colSpan={9}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>
+              <Table.Tr><Table.Td colSpan={10}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>
             )}
           </Table.Tbody>
         </Table>

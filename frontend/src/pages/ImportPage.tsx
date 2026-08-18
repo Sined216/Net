@@ -214,7 +214,11 @@ export function ImportPage() {
                       <Tooltip label="Убрать строку из импорта">
                         <ActionIcon
                           variant="subtle" size="sm" color="red"
-                          onClick={() => deleteRow.mutate(row.id, { onError: notifyError })}
+                          onClick={() => {
+                            if (!confirm('Убрать строку из импорта? Устройство это не тронет, но саму строку'
+                              + ' придётся заново читать из файла.')) return;
+                            deleteRow.mutate(row.id, { onError: notifyError });
+                          }}
                         >
                           <IconTrash size={16} />
                         </ActionIcon>
