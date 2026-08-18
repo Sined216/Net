@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/endpoints';
 import { getBaseUrl, getToken, setBaseUrl, setToken } from '../api/client';
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  async function signIn(baseUrl: string, username: string, password: string) {
+  const signIn = useCallback(async (baseUrl: string, username: string, password: string) => {
     setLoginError(null);
     setBaseUrl(baseUrl);
     try {
@@ -55,20 +55,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoginError((e as Error).message);
       throw e;
     }
-  }
+  }, []);
 
-  async function refreshUser() {
+  const refreshUser = useCallback(async () => {
     setUser(await api.me());
-  }
+  }, []);
 
-  function signOut() {
+  const signOut = useCallback(() => {
     setToken(null);
     setUser(null);
     queryClient.clear();
-  }
+  }, [queryClient]);
+
+  // Мемоизировано, а не собирается заново на каждый рендер: без этого
+  // любой компонент, подписанный на useAuth(), перерисовывался бы вместе с
+  // провайдером — даже когда сам auth-статус не менялся ни на йоту.
+  const value = useMemo(
+    () => ({ user, loading, loginError, signIn, signOut, refreshUser }),
+    [user, loading, loginError, signIn, signOut, refreshUser],
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginError, signIn, signOut, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

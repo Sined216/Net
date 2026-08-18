@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Center, Loader } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -70,7 +70,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     // менять в поведении эффекта, даже если их дописать.
   }, [sites, fromUrl]);
 
-  function selectSite(next: number) {
+  const selectSite = useCallback((next: number) => {
     if (next === siteId) return;
     setSiteId(next);
     setCurrent(next);
@@ -78,9 +78,18 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     const params = new URLSearchParams(searchParams);
     params.set('site', String(next));
     setSearchParams(params);
-  }
+  }, [siteId, searchParams, queryClient, setSearchParams]);
 
   const site = sites.find((s) => s.id === siteId) ?? null;
+
+  // Мемоизировано по той же причине, что и в AuthContext: без этого каждый
+  // потребитель useSite() перерисовывался бы вслед за провайдером, даже
+  // когда ни площадка, ни их список не менялись. До, а не после раннего
+  // return ниже — хуки не могут вызываться условно.
+  const value = useMemo(
+    () => ({ sites, siteId, site, loading: isLoading, selectSite }),
+    [sites, siteId, site, isLoading, selectSite],
+  );
 
   // Пока площадка не выбрана, страницы не показываются вовсе. Иначе первый
   // же рендер отправляет десяток запросов без заголовка площадки, и человек
@@ -100,7 +109,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SiteContext.Provider value={{ sites, siteId, site, loading: isLoading, selectSite }}>
+    <SiteContext.Provider value={value}>
       {children}
     </SiteContext.Provider>
   );
