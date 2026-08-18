@@ -1,0 +1,862 @@
+<title>Проверка WireMap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+:root {
+  --ground:      #F5F6F8;
+  --surface:     #FFFFFF;
+  --surface-alt: #EDEFF3;
+  --ink:         #141A21;
+  --ink-soft:    #3A444F;
+  --muted:       #5C6773;
+  --line:        #D9DDE4;
+  --line-soft:   #E7EAEF;
+
+  --accent:      #C2740A;
+  --accent-soft: #FBF1E0;
+
+  --crit:        #C0392B;
+  --crit-soft:   #FBEBE9;
+  --sig:         #C2740A;
+  --sig-soft:    #FBF1E0;
+  --minor:       #5C6773;
+  --minor-soft:  #ECEEF2;
+  --good:        #1D7A5F;
+  --good-soft:   #E4F2ED;
+
+  --shadow: 0 1px 2px rgba(20,26,33,.06), 0 8px 24px -16px rgba(20,26,33,.20);
+
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --measure: 68ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #101519;
+    --surface:     #171E24;
+    --surface-alt: #1E262D;
+    --ink:         #E4E9ED;
+    --ink-soft:    #C2CBD3;
+    --muted:       #8B97A3;
+    --line:        #2B343C;
+    --line-soft:   #232B33;
+
+    --accent:      #E8A33D;
+    --accent-soft: #2A2115;
+
+    --crit:        #E8695C;
+    --crit-soft:   #2C1A18;
+    --sig:         #E8A33D;
+    --sig-soft:    #2A2115;
+    --minor:       #8B97A3;
+    --minor-soft:  #1E262D;
+    --good:        #4FBE97;
+    --good-soft:   #14241F;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #101519;
+  --surface:     #171E24;
+  --surface-alt: #1E262D;
+  --ink:         #E4E9ED;
+  --ink-soft:    #C2CBD3;
+  --muted:       #8B97A3;
+  --line:        #2B343C;
+  --line-soft:   #232B33;
+
+  --accent:      #E8A33D;
+  --accent-soft: #2A2115;
+
+  --crit:        #E8695C;
+  --crit-soft:   #2C1A18;
+  --sig:         #E8A33D;
+  --sig-soft:    #2A2115;
+  --minor:       #8B97A3;
+  --minor-soft:  #1E262D;
+  --good:        #4FBE97;
+  --good-soft:   #14241F;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+
+/* ---------- header ---------- */
+
+.masthead {
+  border-bottom: 1px solid var(--line);
+  padding: 56px 0 32px;
+  margin-bottom: 44px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 18px;
+}
+
+h1 {
+  font-size: clamp(2.1rem, 5.2vw, 3.1rem);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -.022em;
+  text-wrap: balance;
+  margin: 0 0 20px;
+}
+
+.standfirst {
+  font-size: 1.075rem;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+  margin: 0 0 28px;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.meta b { color: var(--ink-soft); font-weight: 500; }
+
+/* ---------- scoreboard ---------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin-bottom: 52px;
+}
+
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  border-top: 3px solid var(--tile-c, var(--muted));
+  padding: 18px 18px 16px;
+  box-shadow: var(--shadow);
+}
+.tile .n {
+  font-family: var(--mono);
+  font-size: 2.1rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--tile-c, var(--ink));
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin-bottom: 8px;
+}
+.tile .lbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 6px;
+}
+.tile .sub { font-size: 13.5px; color: var(--ink-soft); line-height: 1.45; }
+
+.t-crit  { --tile-c: var(--crit); }
+.t-sig   { --tile-c: var(--sig); }
+.t-minor { --tile-c: var(--minor); }
+.t-good  { --tile-c: var(--good); }
+
+/* ---------- sections ---------- */
+
+section { margin-bottom: 60px; }
+
+h2 {
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: -.014em;
+  margin: 0 0 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+h2 .count {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.lede {
+  color: var(--ink-soft);
+  max-width: var(--measure);
+  margin: 16px 0 28px;
+}
+
+/* ---------- findings: patch-panel label strips ---------- */
+
+.finding {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.rail {
+  background: var(--rail-soft, var(--minor-soft));
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 20px;
+  gap: 10px;
+}
+.rail .num {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--rail-c, var(--minor));
+  font-variant-numeric: tabular-nums;
+}
+.rail .bar {
+  width: 4px;
+  flex: 1;
+  min-height: 20px;
+  background: var(--rail-c, var(--minor));
+  border-radius: 2px;
+  margin-bottom: 18px;
+  opacity: .5;
+}
+
+.f-crit  { --rail-c: var(--crit);  --rail-soft: var(--crit-soft); }
+.f-sig   { --rail-c: var(--sig);   --rail-soft: var(--sig-soft); }
+
+.body { padding: 20px 24px 22px; min-width: 0; }
+
+.finding h3 {
+  font-size: 1.08rem;
+  font-weight: 600;
+  letter-spacing: -.008em;
+  margin: 0 0 4px;
+  text-wrap: balance;
+}
+.finding p { margin: 12px 0 0; max-width: var(--measure); color: var(--ink-soft); }
+.finding p:first-of-type { margin-top: 10px; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+  background: var(--minor-soft);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.tag.verified { background: var(--good-soft); color: var(--good); border-color: transparent; font-weight: 500; }
+
+code, .path {
+  font-family: var(--mono);
+  font-size: .875em;
+  background: var(--surface-alt);
+  padding: 1px 5px;
+  border-radius: 2px;
+  color: var(--ink);
+}
+
+pre {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.62;
+  background: var(--surface-alt);
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--rail-c, var(--muted));
+  border-radius: 2px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 16px 0 0;
+  color: var(--ink-soft);
+}
+pre b { color: var(--crit); font-weight: 600; }
+pre .ok { color: var(--good); }
+
+.fix {
+  margin-top: 16px;
+  padding: 11px 14px;
+  background: var(--good-soft);
+  border-radius: 2px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.fix b {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--good);
+  display: block;
+  margin-bottom: 3px;
+}
+
+/* ---------- tables ---------- */
+
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); box-shadow: var(--shadow); }
+
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+thead th {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: none; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); width: 1%; white-space: nowrap; }
+td.res { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+td.where { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.pass { color: var(--good); font-weight: 500; }
+.fail { color: var(--crit); font-weight: 600; }
+
+/* ---------- gaps ---------- */
+
+.gaps { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.gap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 3px;
+  padding: 16px 18px;
+}
+.gap h4 { margin: 0 0 6px; font-size: .97rem; font-weight: 600; }
+.gap p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+/* ---------- fix ladder ---------- */
+
+.ladder { display: flex; flex-direction: column; gap: 14px; }
+.rung {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 18px 22px;
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.rung .when {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 500;
+  padding-top: 3px;
+}
+.rung ol { margin: 0; padding-left: 20px; }
+.rung li { margin-bottom: 5px; color: var(--ink-soft); }
+.rung li:last-child { margin-bottom: 0; }
+.rung li b { color: var(--ink); font-weight: 600; }
+
+/* ---------- note ---------- */
+
+.note {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 2px;
+  padding: 16px 20px;
+  margin: 0 0 44px;
+  font-size: 14.5px;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+}
+.note b { color: var(--ink); }
+
+footer {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+@media (max-width: 640px) {
+  .finding { grid-template-columns: 44px 1fr; }
+  .body { padding: 16px 16px 18px; }
+  .rung { grid-template-columns: 1fr; gap: 10px; }
+  .wrap { padding: 0 16px 64px; }
+  .masthead { padding-top: 36px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Сплошная проверка · 18 августа 2026</p>
+  <h1>Проверка WireMap</h1>
+  <p class="standfirst">
+    Проверены сборка и линтеры, все 84 маршрута API, все 13 страниц и меню в живом
+    браузере под тремя ролями, схема на настоящем PostgreSQL. Пять находок
+    критичны, семь существенны. Всё, помеченное как <span class="tag verified">проверено</span>,
+    воспроизведено вживую, а не выведено из чтения кода.
+  </p>
+  <div class="meta">
+    <span><b>Ветка</b> claude/repo-review-and-spec-t2k8mf</span>
+    <span><b>Ревизия</b> e47d0a7</span>
+    <span><b>Объём</b> backend ~5.9k · frontend ~10.5k строк</span>
+  </div>
+</header>
+
+<div class="board">
+  <div class="tile t-crit">
+    <span class="n">5</span>
+    <span class="lbl">Критичное</span>
+    <span class="sub">Красный CI, сломанный поиск, непригодный мобильный вид</span>
+  </div>
+  <div class="tile t-sig">
+    <span class="n">7</span>
+    <span class="lbl">Существенное</span>
+    <span class="sub">Обход блокировки правок, сломанный скрипт, пробелы в VLAN</span>
+  </div>
+  <div class="tile t-minor">
+    <span class="n">13</span>
+    <span class="lbl">Мелкое</span>
+    <span class="sub">Косметика, непоследовательность, гигиена зависимостей</span>
+  </div>
+  <div class="tile t-good">
+    <span class="n">363</span>
+    <span class="lbl">Тестов проходит</span>
+    <span class="sub">Ни одной ошибки в консоли на всех 13 страницах</span>
+  </div>
+</div>
+
+<p class="note">
+  <b>Файл <code>docs/AUDIT.md</code> устарел.</b> Он от 7 августа (ревизия <code>b8b54cb</code>)
+  и описывает состояние, которого больше нет: React Flow вместо JointJS, «тестов нет
+  вообще», «нет CI», «нет миграций». Всё это давно сделано. Новому человеку этот файл
+  сегодня врёт.
+</p>
+
+<section>
+  <h2>Что в хорошем состоянии <span class="count">проверено, а не осмотрено</span></h2>
+  <p class="lede">
+    Перечисленное ниже я пытался сломать и не смог. Это результат проверки, а не
+    вежливость перед списком проблем.
+  </p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Проверка</th><th>Результат</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Тесты бэкенда</td><td class="res"><span class="pass">363 из 363</span> · ~65 с на настоящем PostgreSQL</td></tr>
+        <tr><td>Типы фронтенда (<code>tsc -b</code>)</td><td class="res"><span class="pass">без ошибок</span></td></tr>
+        <tr><td><code>openapi.json</code> против кода</td><td class="res"><span class="pass">совпадает</span></td></tr>
+        <tr><td>Пути фронтенда против OpenAPI</td><td class="res"><span class="pass">все 84 совпадают</span> · методы тоже</td></tr>
+        <tr><td>Загрузка всех 13 страниц</td><td class="res"><span class="pass">0 ошибок консоли, 0 ответов 4xx/5xx</span></td></tr>
+        <tr><td>Права в интерфейсе: <code>viewer</code></td><td class="res"><span class="pass">0 кнопок правки</span> на всех страницах</td></tr>
+        <tr><td>Права в интерфейсе: <code>editor</code></td><td class="res"><span class="pass">кнопки есть</span>, админские маршруты уводят прочь</td></tr>
+        <tr><td>Роли на пишущих маршрутах</td><td class="res"><span class="pass">60 из 60</span> закрыты, пропусков нет</td></tr>
+        <tr><td>Изоляция площадок</td><td class="res"><span class="pass">составные ключи (id, site_id)</span></td></tr>
+        <tr><td>Экранирование <code>%</code> и <code>_</code> в поиске</td><td class="res"><span class="pass">на месте</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Критичное <span class="count">5 находок</span></h2>
+
+  <article class="finding f-crit">
+    <div class="rail"><span class="num">1</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>CI сейчас красный — линтер валит сборку</h3>
+      <div class="tags"><span class="tag verified">проверено</span><span class="tag">.github/workflows/backend.yml</span></div>
+      <p>
+        Шаг <code>ruff</code> падает, а с ним и весь job <code>backend</code>. Импорт был
+        нужен старому коду и осиротел при переносе генерации кодов в <code>provisioning</code>.
+      </p>
+      <pre>app/routers/devices.py:8:25: <b>F401</b> `app.codegen.next_device_code` imported but unused
+Found 1 error.   <b>(exit code 1)</b></pre>
+      <div class="fix"><b>Лечится</b>Удалением одной строки — <code>ruff check --fix .</code></div>
+    </div>
+  </article>
+
+  <article class="finding f-crit">
+    <div class="rail"><span class="num">2</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>Поиск не находит того, что ищут чаще всего</h3>
+      <div class="tags"><span class="tag verified">проверено</span><span class="tag">routers/interfaces.py:209</span></div>
+      <p>
+        Страница называется «Поиск по IP / MAC / имени». Запрос строится INNER JOIN'ом от
+        <code>interfaces</code> к <code>devices</code> и смотрит только на поля порта —
+        <code>Device.management_ip</code> и <code>Device.mac</code> в поиске не участвуют
+        вовсе, хотя в списке устройств по ним есть и колонки, и фильтры.
+      </p>
+      <pre>поиск «10.10.10.20» — IP управления SW-0001 → <b>0 результатов</b>
+   (а список устройств по этому же адресу находит SW-0001)
+поиск «a4:bb:6d:00:00:00» — MAC устройства  → <b>0 результатов</b>
+поиск «CAM-0001» — устройство без портов    → <b>0 результатов</b>
+поиск «SW-0001» — один коммутатор           → <b>24 строки</b>, по одной на порт</pre>
+      <p>
+        Устройство с нулём портов (медиаконвертер, ИБП) невидимо целиком — ни по коду, ни
+        по имени. Коммутатор, наоборот, забивает выдачу: при жёстком лимите в 50 две
+        железки съедают весь ответ.
+      </p>
+      <div class="fix"><b>Лечится</b>LEFT OUTER вместо INNER, добавлением полей устройства в условие и схлопыванием результата до устройства</div>
+    </div>
+  </article>
+
+  <article class="finding f-crit">
+    <div class="rail"><span class="num">3</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>Ниже 768 px меню закрывает собой всю страницу</h3>
+      <div class="tags"><span class="tag verified">проверено</span><span class="tag">layout/AppLayout.tsx:76</span></div>
+      <p>
+        <code>AppShell</code> объявлен с <code>breakpoint: 'sm'</code>, но без
+        <code>collapsed</code>. По правилам Mantine это значит: на узком экране навбар
+        получает <code>width: 100%</code> и <b>не</b> уезжает трансформацией. Бургера в
+        проекте нет — на его месте пустая заглушка <code>&lt;Group hiddenFrom="sm" /&gt;</code>.
+      </p>
+      <pre>ширина окна   навбар   под курсором в центре   бургеров
+ 1440 px      220 px   текст страницы          0
+  820 px      220 px   текст страницы          0
+  <b>767 px      767 px   пункт меню              0</b>
+  <b>390 px      390 px   пункт меню              0</b></pre>
+      <p>
+        На телефоне и в узком окне ноутбука видно только меню: страницы под ним не достать,
+        а закрыть его нечем.
+      </p>
+      <div class="fix"><b>Лечится</b><code>collapsed: { mobile: !opened }</code> плюс <code>Burger</code> в то самое пустое место</div>
+    </div>
+  </article>
+
+  <article class="finding f-crit">
+    <div class="rail"><span class="num">4</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>База не может гарантировать «один кабель на порт»</h3>
+      <div class="tags"><span class="tag verified">проверено</span><span class="tag">models.py · routers/links.py:12</span></div>
+      <p>
+        У <code>links</code> есть <code>UNIQUE(interface_a_id)</code> и
+        <code>UNIQUE(interface_b_id)</code> <b>по отдельности</b> плюс
+        <code>CHECK (a &lt; b)</code>. Этого не хватает: порт может быть стороной A в одной
+        связи и стороной B в другой. Прямой INSERT в базу, поднятую миграциями:
+      </p>
+      <pre>link (20,30) inserted
+<b>&gt;&gt;&gt; DB ACCEPTED (10,20): port 20 is now in two links</b>
+links now: [(1, 20, 30), (2, 10, 20)]
+links touching port 20 = <b>2</b></pre>
+      <p>
+        Комментарий в <code>models.py</code> утверждает, что «база теперь это гарантирует», —
+        она гарантирует лишь отсутствие зеркального дубля той же пары. Единственная
+        настоящая проверка — <code>_busy()</code>, а это check-then-act без замка: два
+        одновременных запроса пройдут оба.
+      </p>
+      <p>
+        Последствие тихое: <code>build_link_map</code> кладёт связи в словарь по
+        <code>interface_id</code>, поэтому у порта с двумя кабелями останется видимым только
+        последний — второй пропадает из интерфейса, продолжая существовать в базе.
+      </p>
+      <div class="fix"><b>Лечится</b>Отдельной таблицей концов с одним <code>UNIQUE(interface_id)</code> либо <code>SELECT … FOR UPDATE</code> перед вставкой</div>
+    </div>
+  </article>
+
+  <article class="finding f-crit">
+    <div class="rail"><span class="num">5</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>Обязательная смена пароля действует только в браузере</h3>
+      <div class="tags"><span class="tag verified">проверено</span><span class="tag">auth.py · AppLayout.tsx</span></div>
+      <p>
+        <code>must_change_password</code> проверяет исключительно <code>AppLayout</code>,
+        показывая модалку без крестика. <code>get_current_user</code> этот флаг не смотрит
+        вовсе — значит токен, выданный по временному паролю, полноценен:
+      </p>
+      <pre>petrov must_change_password = <b>True</b>
+GET /devices → <b>12 devices</b>; first: [('PC-0001','10.10.10.23'), …]</pre>
+      <p>
+        Человек, которому администратор продиктовал временный пароль, может годами работать
+        через API и Swagger, ни разу его не сменив. Это же касается
+        <code>BOOTSTRAP_ADMIN_PASSWORD</code>: README обещает, что «интерфейс потребует
+        сменить его при первом входе», — API не потребует.
+      </p>
+      <div class="fix"><b>Лечится</b>403 на все маршруты, кроме <code>/auth/me</code> и <code>/auth/me/password</code>, пока флаг стоит</div>
+    </div>
+  </article>
+</section>
+
+<section>
+  <h2>Существенное <span class="count">7 находок</span></h2>
+
+  <article class="finding f-sig">
+    <div class="rail"><span class="num">6</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>Оптимистичная блокировка обходится устаревшей формой</h3>
+      <div class="tags"><span class="tag">devices/InterfaceRow.tsx:27-60</span></div>
+      <p>
+        Поля инициализируются через <code>useState(iface.ip ?? '')</code> — один раз при
+        монтировании. Номер правки при этом читается из живого пропа в момент сохранения:
+        <code>version: iface.version</code>. Пара «значения — версия» разъезжается:
+      </p>
+      <pre>1. A открыл страницу: порт 5, ip 10.0.0.5, version 1
+2. B поменял тот же порт на 10.0.0.99          → version 2
+3. A сохранил ДРУГОЙ порт того же устройства   → рефетч
+   у строки 5 проп стал version 2 и ip 10.0.0.99,
+   но поля ввода по-прежнему показывают 10.0.0.5
+4. A жмёт «сохранить» на строке 5:
+   уходит version: 2 (свежий) + ip: 10.0.0.5 (устаревший)
+   → версии совпали → <b>правка B молча затёрта</b></pre>
+      <p>Ровно тот сценарий, ради которого блокировку и вводили.</p>
+      <div class="fix"><b>Лечится</b>Захватом версии вместе со снимком полей — одним <code>useState({...iface})</code></div>
+    </div>
+  </article>
+
+  <article class="finding f-sig">
+    <div class="rail"><span class="num">7</span><span class="bar"></span></div>
+    <div class="body">
+      <h3><code>scripts/generate_data.py</code> не работает</h3>
+      <div class="tags"><span class="tag verified">проверено</span><span class="tag">scripts/generate_data.py:128</span></div>
+      <p>
+        README предлагает наполнить базу командой
+        <code>python -m scripts.generate_data --devices 1000</code>. Она падает сразу:
+      </p>
+      <pre><b>TypeError: 'location' is an invalid keyword argument for Device</b></pre>
+      <p>Колонку снесла миграция <code>0018_drop_location</code>. Документированный инструмент разработчика сломан.</p>
+      <div class="fix"><b>Лечится</b>Удалением одной строки</div>
+    </div>
+  </article>
+
+  <article class="finding f-sig">
+    <div class="rail"><span class="num">8</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>VLAN нельзя ни отредактировать, ни увидеть половину введённого</h3>
+      <div class="tags"><span class="tag">pages/VlansPage.tsx · routers/catalog.py</span></div>
+      <p>
+        <code>PATCH /vlans/{id}</code> не существует вовсе — только создание и удаление.
+        Опечатка в номере или подсети лечится удалением и заведением заново.
+      </p>
+      <p>
+        Хуже: форма создания собирает <b>DHCP-диапазон</b> и <b>заметки</b>, а таблица
+        показывает только №, название, подсеть и шлюз. Эти два поля не показываются нигде и
+        править их нечем — данные уходят в базу навсегда невидимыми. Для сравнения, у тегов
+        полный CRUD с защитой от циклов.
+      </p>
+    </div>
+  </article>
+
+  <article class="finding f-sig">
+    <div class="rail"><span class="num">9</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>Поиск — тупик: результат некликабелен</h3>
+      <div class="tags"><span class="tag">pages/SearchPage.tsx</span></div>
+      <p>
+        <code>SearchResult</code> честно отдаёт <code>device_id</code>, но страница рисует
+        все четыре колонки простым текстом. Нашёл железку — и переходи к ней вручную через
+        список. Строка должна вести на <code>/devices/{device_id}</code>, страница для этого
+        уже есть.
+      </p>
+    </div>
+  </article>
+
+  <article class="finding f-sig">
+    <div class="rail"><span class="num">10</span><span class="bar"></span></div>
+    <div class="body">
+      <h3><code>editor</code> одной площадки правит справочники всех площадок</h3>
+      <div class="tags"><span class="tag">routers/catalog.py · templates.py · link_templates.py</span></div>
+      <p>
+        Модели техники, разъёмы, модули и шаблоны связей общие для всей системы — так
+        задумано. Но пишутся они под правом <code>EDIT</code> без привязки к площадке,
+        поэтому редактор подольского завода может удалить модель или пресет кабеля, на
+        которых держится документация другой фабрики. Прежний аудит отмечал это только для
+        <code>device_types</code> — область шире.
+      </p>
+      <div class="fix"><b>Лечится</b>Поднять удаление общих справочников до <code>admin</code>, оставив редактору создание и правку</div>
+    </div>
+  </article>
+
+  <article class="finding f-sig">
+    <div class="rail"><span class="num">11</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>Импорт: файл целиком в память до проверки размера</h3>
+      <div class="tags"><span class="tag">routers/imports.py:33</span></div>
+      <pre>content = await file.read()      # читается ВЕСЬ файл
+if len(content) &gt; MAX_BYTES:     # и только потом проверяется</pre>
+      <p>
+        Лимит в 16 МБ отсекает файл уже после того, как он занял память. Вдобавок
+        <code>importer.parse()</code> — синхронный разбор внутри <code>async def</code>: на
+        время обработки десятитысячной таблицы блокируется весь event loop. Права нужны
+        редакторские, так что это не дыра, а запас прочности.
+      </p>
+      <div class="fix"><b>Лечится</b>Чтением потоком с обрывом на лимите и выносом разбора в <code>run_in_threadpool</code></div>
+    </div>
+  </article>
+
+  <article class="finding f-sig">
+    <div class="rail"><span class="num">12</span><span class="bar"></span></div>
+    <div class="body">
+      <h3>Развёртывание: лишняя мишень и открытый канал</h3>
+      <div class="tags"><span class="tag">docker-compose.yml · nginx.conf · config.py</span></div>
+      <p>
+        <code>docker-compose.yml</code> публикует бэкенд наружу
+        (<code>"${API_PORT:-8000}:8000"</code>) — по умолчанию на всех интерфейсах, вместе со
+        Swagger UI. Интерфейсу этот порт не нужен, он ходит через nginx. Базу авторы закрыли
+        ровно по этой логике.
+      </p>
+      <p>
+        В <code>nginx.conf</code> нет ни одного security-заголовка. HTTPS не предусмотрен
+        нигде, а README прямо зовёт открывать систему по <code>http://&lt;ip&gt;:8080</code> с
+        других машин — токен и пароль идут по сети открытым текстом.
+      </p>
+      <p>
+        <code>bootstrap_admin_password</code> — единственная настройка, которую проверка
+        продовой конфигурации не смотрит: дефолт <code>change-me-please</code> пройдёт молча.
+        В compose переменная обязательна, так что этот путь закрыт, — но проверка рядом с
+        <code>SECRET_KEY</code> всё равно напрашивается.
+      </p>
+    </div>
+  </article>
+</section>
+
+<section>
+  <h2>Мелкое и косметика <span class="count">13 находок</span></h2>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>№</th><th>Что</th><th>Где</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="num">13</td><td><b>25 нативных <code>confirm()</code></b> вместо модалок Mantine. Не стилизуются, выбиваются из оформления. А если человек отметит в браузере «не показывать больше диалоги», <code>confirm()</code> начнёт возвращать <code>false</code> — и кнопки удаления станут молча ничего не делать</td><td class="where">15 файлов</td></tr>
+        <tr><td class="num">14</td><td><b>Английские значения перечислений в русском интерфейсе:</b> <code>copper</code>/<code>fiber</code>, <code>solid</code>/<code>dashed</code>, <code>manual</code>, режимы порта, роль устройства. При этом <code>CatalogPage</code> для той же среды передачи имеет словарь «медь / оптика» — приложение непоследовательно само с собой</td><td class="where">LinksPage:65,68,129<br>InterfaceRow:14</td></tr>
+        <tr><td class="num">15</td><td><code>COLUMNS = 11</code>, а колонок в таблице 10 — <code>colSpan</code> на единицу больше реального числа</td><td class="where">DevicesPage.tsx:17</td></tr>
+        <tr><td class="num">16</td><td><code>colSpan={9}</code> при 10 колонках в таблице портов; в <code>DeviceRow</code> та же таблица использует правильные 10</td><td class="where">DevicePage.tsx:152</td></tr>
+        <tr><td class="num">17</td><td>Удаление строки импорта — единственное разрушительное действие без подтверждения</td><td class="where">ImportPage.tsx:217</td></tr>
+        <tr><td class="num">18</td><td><b>13 комментариев <code>eslint-disable react-hooks/exhaustive-deps</code> не действуют:</b> линтер здесь oxlint, правила у него нет. Зависимости хуков не проверяет никто, а автор в 13 местах знал, что они неполные</td><td class="where">TopologyPage<br>useJointPaper<br>SiteContext</td></tr>
+        <tr><td class="num">19</td><td>Значение контекста собирается новым объектом на каждый рендер — все потребители перерисовываются вместе с провайдером</td><td class="where">AuthContext:71<br>SiteContext:91</td></tr>
+        <tr><td class="num">20</td><td><code>python-jose==3.3.0</code> — не обновляется с 2021 года, есть известные CVE. Используется только HS256 со своим ключом, поэтому практический риск низкий</td><td class="where">requirements.txt:8</td></tr>
+        <tr><td class="num">21</td><td>Переименование разъёма не инвалидирует <code>deviceInterfaces</code> — в раскрытой таблице портов остаётся старое название</td><td class="where">api/hooks.ts</td></tr>
+        <tr><td class="num">22</td><td>Поиск по MAC и IP оборачивает колонку в <code>replace()</code>/<code>cast()</code>, поэтому индекс не используется — полное сканирование</td><td class="where">devices.py:98-113</td></tr>
+        <tr><td class="num">23</td><td><code>ruff format --check</code> переформатировал бы 65 файлов из 83. В CI форматирование не проверяется — это не поломка, но ожидание стоит определить</td><td class="where">backend целиком</td></tr>
+        <tr><td class="num">24</td><td><code>PATCH /links/{id}</code> принимает от клиента <code>confirmed</code> — поле задумано под будущий SNMP-опрос и выставляться должно сервером, как уже сделано для <code>source</code></td><td class="where">schemas.py</td></tr>
+        <tr><td class="num">25</td><td>Подписи портов на схеме налезают друг на друга и на карточки уже при 12 устройствах</td><td class="where">joint/buildGraph.ts</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Чего в продукте нет как класса <span class="count">не ошибки — направления</span></h2>
+  <p class="lede">Незакрытые направления, заметные именно для документирования заводской сети.</p>
+  <div class="gaps">
+    <div class="gap">
+      <h4>Экспорт</h4>
+      <p>Ни спецификации в XLSX, ни кабельного журнала, ни схемы в PNG/SVG/PDF. Для передачи подрядчику или в архив это обычно первое, что спрашивают.</p>
+    </div>
+    <div class="gap">
+      <h4>Пассивная инфраструктура</h4>
+      <p>Связь строго «порт ↔ порт». Патч-панелей, кроссов, розеток нет — линия «коммутатор → патч-панель → розетка → станок» документируется только сквозным упрощением.</p>
+    </div>
+    <div class="gap">
+      <h4>Стойки и юниты</h4>
+      <p>Вид группы «шкаф» на схеме есть, но юнитов и позиции в стойке нет.</p>
+    </div>
+    <div class="gap">
+      <h4>IPAM</h4>
+      <p>VLAN есть, подсетей, пулов и проверки конфликтов IP нет.</p>
+    </div>
+    <div class="gap">
+      <h4>Вложения</h4>
+      <p>Фото шкафа, паспорт устройства, скан схемы приложить некуда.</p>
+    </div>
+    <div class="gap">
+      <h4>Опрос SNMP / LLDP</h4>
+      <p>Поля <code>source</code>, <code>confirmed</code>, <code>last_seen_at</code>, <code>speed_mbps</code> заведены под него и пока лежат мёртвым весом.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>В каком порядке я бы чинил</h2>
+  <div class="ladder">
+    <div class="rung">
+      <div class="when">Сразу · ~час</div>
+      <ol>
+        <li><b>Убрать неиспользуемый импорт</b> — вернуть зелёный CI <span class="path">(1)</span></li>
+        <li><b>Починить <code>generate_data.py</code></b> <span class="path">(7)</span></li>
+        <li><code>colSpan</code>-расхождения и подтверждение при удалении строки импорта <span class="path">(15, 16, 17)</span></li>
+      </ol>
+    </div>
+    <div class="rung">
+      <div class="when">Ближайшим заходом</div>
+      <ol start="4">
+        <li><b>Поиск:</b> management_ip и MAC, устройства без портов, схлопывание по устройству, кликабельные строки <span class="path">(2, 9)</span></li>
+        <li><b>Бургер и <code>collapsed</code></b> для узких экранов <span class="path">(3)</span></li>
+        <li>Проверка <code>must_change_password</code> на сервере <span class="path">(5)</span></li>
+      </ol>
+    </div>
+    <div class="rung">
+      <div class="when">До роста объёма</div>
+      <ol start="7">
+        <li><b>Ограничение «один кабель на порт»</b> на уровне базы <span class="path">(4)</span></li>
+        <li>Захват версии вместе со снимком формы <span class="path">(6)</span></li>
+        <li>Правка VLAN и показ DHCP-диапазона с заметками <span class="path">(8)</span></li>
+        <li>Удаление общих справочников — под <code>admin</code> <span class="path">(10)</span></li>
+      </ol>
+    </div>
+    <div class="rung">
+      <div class="when">До выноса за периметр</div>
+      <ol start="11">
+        <li>HTTPS, security-заголовки, закрыть проброс порта API <span class="path">(12)</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Проверка от 18.08.2026 · ветка claude/repo-review-and-spec-t2k8mf · ревизия e47d0a7<br>
+  Правки кода не вносились. Полный текст — <code>docs/REVIEW-2026-08-18.md</code>
+</footer>
+
+</div>
