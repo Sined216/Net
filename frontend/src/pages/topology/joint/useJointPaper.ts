@@ -163,7 +163,9 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     addDeviceToGroup: (id) => actions.current.addDeviceToGroup(id),
     removeGroup: (id) => actions.current.removeGroup(id),
     layoutGroup: (id) => actions.current.layoutGroup(id),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Пустой список — не недосмотр: `actions` это ref, его идентичность не
+    // меняется никогда, а свежее значение — `actions.current` — берётся в
+    // момент вызова, а не в момент создания этих обёрток.
   }), []);
 
   /** Показать подсветку выделенного и — если панель вызвали правой кнопкой —
@@ -699,7 +701,12 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
       paperRef.current = null;
       graphRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // canEdit — единственная настоящая зависимость: он запечён в
+    // interactive/restrictTranslate при создании paper, и полотно приходится
+    // пересобирать целиком, чтобы её сменить. scheme читается только для
+    // сетки при самом создании — дальше её меняет отдельный эффект ниже
+    // через setGrid, не трогая paper/graph; handlers — ref, читается как
+    // handlers.current в момент события, а не в момент подписки.
   }, [canEdit]);
 
   // Фон полотна меняется настройкой вида и темой интерфейса, а полотно
@@ -728,7 +735,9 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Список полон, а не сокращён: все остальные имена внутри — ссылки
+    // (paperRef, selection, marked, handlers, showToolsRef), их идентичность
+    // не меняется, и обработчику незачем пересоздаваться из-за них.
   }, [canEdit]);
 
   return { holder, paperRef, graphRef, selection, marked, markedCount, clearMarked, refreshTools };

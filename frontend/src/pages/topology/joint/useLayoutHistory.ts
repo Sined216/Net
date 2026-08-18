@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { Box, Point } from './buildGraph';
 
 /** Отмена и возврат раскладки схемы.
@@ -97,7 +97,14 @@ export function useLayoutHistory(apply: (step: LayoutStep, back: boolean) => voi
     refresh();
   }, [refresh]);
 
-  return { push, undo, redo, clear, canUndo: labels.undo, canRedo: labels.redo };
+  // Мемоизирован ради тех, кто держит весь объект `history` в зависимостях
+  // своих хуков (TopologyPage): без этого он был бы новым при каждом
+  // рендере, хотя сами push/undo/redo/clear стабильны, — и любой useCallback
+  // с history в списке перестраивался бы вхолостую на каждый чих.
+  return useMemo(
+    () => ({ push, undo, redo, clear, canUndo: labels.undo, canRedo: labels.redo }),
+    [push, undo, redo, clear, labels.undo, labels.redo],
+  );
 }
 
 function sameBox(a: Box, b: Box): boolean {

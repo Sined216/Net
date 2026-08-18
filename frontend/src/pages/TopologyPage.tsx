@@ -141,7 +141,14 @@ export function TopologyPage() {
   const pendingDevices = useRef(new Map<number, Point>());
   const pendingBoxes = useRef(new Map<number, Box>());
   const [dirtyCount, setDirtyCount] = useState(0);
-  const markDirty = () => setDirtyCount(pendingDevices.current.size + pendingBoxes.current.size);
+  // useCallback с пустым списком зависимостей, а не обычная функция: читает
+  // только ссылки и стабильный setState, поэтому и сама стабильна — это
+  // даёт `saveGroupBox`/`savePositions` ниже честно объявить её в своих
+  // зависимостях, не пересоздаваясь на каждый рендер.
+  const markDirty = useCallback(
+    () => setDirtyCount(pendingDevices.current.size + pendingBoxes.current.size),
+    [],
+  );
   /** Группы, для которых сейчас считается раскладка: ELK — асинхронный
    * вызов, и второй клик по той же панели до ответа первого не должен
    * запускать вторую раскладку поверх первой. */
@@ -339,8 +346,17 @@ export function TopologyPage() {
       if (!(await confirmAction(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`))) return;
       deleteGroup.mutate(groupId, { onSuccess: () => notifySuccess('Группа удалена'), onError: notifyError });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [nodes, groups]);
+    // look и edges — настоящие зависимости: `layoutGroup` считает раскладку
+    // по актуальным связям и настройкам вида, и без них правка вида без
+    // изменения графа оставила бы здесь замыкание на старые значения.
+    // Мутации (deleteDevice/deleteGroup), history, savePositions/saveGroupBox,
+    // notifyError/notifySuccess/confirmAction и сеттеры состояния — не
+    // перечислены намеренно: у первых стабилен сам метод (`mutate` привязан
+    // к экземпляру MutationObserver один раз), у history/savePositions/
+    // saveGroupBox — внутреннее состояние живёт в ref, и даже устаревшая
+    // ссылка на них продолжает работать с текущими данными, у остальных —
+    // это импортированные функции и сеттеры React, стабильные по определению.
+  }), [nodes, groups, look, edges]);
 
   actionsRef.current = actions;
 
@@ -350,16 +366,14 @@ export function TopologyPage() {
   const saveGroupBox = useCallback((groupId: number, box: Box) => {
     pendingBoxes.current.set(groupId, box);
     markDirty();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [markDirty]);
 
   /** Запомнить новое положение узлов — по той же причине, что и у рамок:
    * раскладка сохраняется целиком по кнопке, а не на каждое движение мыши. */
   const savePositions = useCallback((moves: { id: number; x: number; y: number }[]) => {
     for (const move of moves) pendingDevices.current.set(move.id, { x: move.x, y: move.y });
     markDirty();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [markDirty]);
 
   /** Отправить накопленную раскладку на сервер разом. Раскладка схемы
    * двигает все узлы сразу, и отдельный запрос на каждый — это сотня
@@ -388,7 +402,9 @@ export function TopologyPage() {
     } finally {
       setSavingLayout(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Список пуст осознанно, а не по недосмотру: mutateAsync у мутаций и
+    // сеттеры состояния стабильны сами по себе, и добавлять их значило бы
+    // писать зависимости, которые никогда не меняются.
   }, []);
 
   /** Разослать координаты шага — в ту или другую сторону. */
@@ -403,8 +419,7 @@ export function TopologyPage() {
       saveGroupBox(frame.id, back ? frame.from : frame.to);
     }
     setRedraw((n) => n + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [savePositions, saveGroupBox]);
 
   const history = useLayoutHistory(applyStep);
 
@@ -421,7 +436,6 @@ export function TopologyPage() {
     setDirtyCount(0);
     history.clear();
     setRedraw((n) => n + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirtyCount, history]);
 
   /** Записать перемещение и разослать его. «Откуда» берётся из раскладки,
@@ -436,8 +450,7 @@ export function TopologyPage() {
     history.push(step);
     for (const move of moves) placed.current.set(move.id, { x: move.x, y: move.y });
     savePositions(moves);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history]);
+  }, [history, savePositions]);
 
   /** Разложить всю схему по связям.
    *
@@ -495,8 +508,7 @@ export function TopologyPage() {
     } finally {
       setLaying(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, groups, look, laying, history]);
+  }, [nodes, edges, groups, look, laying, history, savePositions, saveGroupBox]);
 
   const paper = useJointPaper({
     canEdit, scheme, background: look.background, actions: actionsRef, handlers,
@@ -626,7 +638,16 @@ export function TopologyPage() {
       rest.delete('device');
       setSearchParams(rest, { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // searchParams исключён намеренно: перерисовка тут — полная (graph.clear()
+    // и buildGraph заново), и держать в зависимостях объект, меняющийся на
+    // любой параметр строки запроса (включая не имеющие отношения к схеме),
+    // значило бы перестраивать весь граф на каждую такую правку. Подсветка
+    // по `?device=` и так отрабатывает — эффект и без того перезапускается
+    // на смену data (nodes/edges/...), а сам параметр читается внутри уже
+    // идущего прогона. setSearchParams — стабильный сеттер react-router;
+    // paperRef/graphRef — ref'ы из useJointPaper; setGroupBox.mutate и
+    // refreshTools — тоже стабильны (первое разобрано у saveLayout выше,
+    // второе — useCallback с пустым списком зависимостей в useJointPaper.ts).
   }, [nodes, edges, groups, look, relayout, redraw, canEdit, scheme]);
 
   // Ctrl+Z и Ctrl+Shift+Z — там же, где они везде. Внутри полей ввода не
