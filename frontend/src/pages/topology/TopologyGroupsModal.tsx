@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActionIcon, Button, Group, Modal, Stack, Table, Text } from '@mantine/core';
-import { IconFolderPlus, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconFolderPlus, IconPencil, IconPlus, IconServer2, IconTrash } from '@tabler/icons-react';
 import { useDeleteTopologyGroup, useTopologyGroups } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { GroupEditModal } from './GroupEditModal';
@@ -46,6 +46,9 @@ export function TopologyGroupsModal({ onClose }: { onClose: () => void }) {
                     <Group gap={6} wrap="nowrap" style={{ paddingLeft: depth * 22 }}>
                       <span className="tag-badge-dot" style={{ background: group.color ?? '#94a3b8' }} />
                       <Text size="sm">{group.name}</Text>
+                      {group.kind === 'cabinet' && (
+                        <IconServer2 size={13} color="var(--mantine-color-dimmed)" title="Шкаф" />
+                      )}
                       <Text size="xs" c="dimmed">{count} уст.</Text>
                     </Group>
                   </Table.Td>
@@ -55,10 +58,12 @@ export function TopologyGroupsModal({ onClose }: { onClose: () => void }) {
                         onClick={() => setEditing({ group, parentId: null })}>
                         <IconPencil size={15} />
                       </ActionIcon>
-                      <ActionIcon variant="subtle" size="sm" title="Добавить подгруппу"
-                        onClick={() => setEditing({ group: null, parentId: group.id })}>
-                        <IconFolderPlus size={15} />
-                      </ActionIcon>
+                      {group.kind !== 'cabinet' && (
+                        <ActionIcon variant="subtle" size="sm" title="Добавить подгруппу"
+                          onClick={() => setEditing({ group: null, parentId: group.id })}>
+                          <IconFolderPlus size={15} />
+                        </ActionIcon>
+                      )}
                       <ActionIcon variant="subtle" size="sm" color="red" title="Удалить"
                         onClick={() => handleDelete(group)}>
                         <IconTrash size={15} />

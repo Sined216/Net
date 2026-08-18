@@ -2225,6 +2225,12 @@ export interface components {
         TopologyGroupCreate: {
             /** Color */
             color?: string | null;
+            /**
+             * Kind
+             * @default area
+             * @enum {string}
+             */
+            kind: "area" | "cabinet";
             /** Name */
             name: string;
             /** Parent Id */
@@ -2243,6 +2249,12 @@ export interface components {
             height?: number | null;
             /** Id */
             id: number;
+            /**
+             * Kind
+             * @default area
+             * @enum {string}
+             */
+            kind: "area" | "cabinet";
             /** Name */
             name: string;
             /** Parent Id */
@@ -2258,6 +2270,8 @@ export interface components {
         TopologyGroupUpdate: {
             /** Color */
             color?: string | null;
+            /** Kind */
+            kind?: ("area" | "cabinet") | null;
             /** Name */
             name?: string | null;
             /** Parent Id */

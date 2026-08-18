@@ -114,15 +114,31 @@ function addGroups(
     const fade = frameFade(groupDepth(groups, group.id));
     const inside = nodes.filter((n) => n.topology_group_id === group.id).length;
     const title = look.groupCount ? `${group.name} · ${inside}` : group.name;
+    const isCabinet = group.kind === 'cabinet';
+    const titleY = look.groupTitle === 'onFrame' ? 0 : look.groupTitleSize;
     const cell = new GroupShape({
       position: { x: box.x, y: box.y },
       size: { width: box.width, height: box.height },
       kind: 'group',
       groupId: group.id,
       accent,
+      // Отдельно от `kind` (тип ячейки JointJS: устройство/группа/заглушка)
+      // — вид самой группы, как в базе.
+      variant: group.kind,
       z: 1,
       attrs: {
-        body: {
+        body: isCabinet ? {
+          // Шкаф виден всегда, что бы ни стояло в настройках вида: это не
+          // оформление на вкус, а то, чем он отличается от обычной группы.
+          // Штрих-пунктир — свой узор, ни на одну из трёх обычных обводок
+          // не похожий.
+          stroke: tint(accent, 100 * fade),
+          strokeWidth: look.groupBorderWidth + 1.5,
+          strokeDasharray: '10 3 2 3',
+          rx: Math.min(look.groupRadius, 4),
+          ry: Math.min(look.groupRadius, 4),
+          fill: look.groupFill > 0 ? tint(accent, look.groupFill * fade) : 'transparent',
+        } : {
           stroke: look.groupBorder === 'none' ? 'transparent' : tint(accent, 100 * fade),
           strokeWidth: look.groupBorderWidth,
           strokeDasharray: look.groupBorder === 'dashed' ? '7 5' : look.groupBorder === 'dotted' ? '2 4' : undefined,
@@ -131,17 +147,25 @@ function addGroups(
         },
         // Врезкой подпись сидит на самом контуре рамки, внутри — чуть ниже
         // него. Подложка едет за подписью сама: её размер и положение
-        // считаются от текста.
+        // считаются от текста. У шкафа название сдвинуто правее — левый
+        // край занят значком.
         label: {
           text: look.groupTitle === 'hidden' ? '' : title,
           fill: accent,
           fontSize: look.groupTitleSize,
-          y: look.groupTitle === 'onFrame' ? 0 : look.groupTitleSize,
+          x: isCabinet ? 30 : 14,
+          y: titleY,
         },
         labelBack: {
           display: look.groupTitle === 'hidden' ? 'none' : 'block',
           fill: look.groupTitle === 'onFrame' ? paint.canvas : 'transparent',
         },
+        cabinetPlate: isCabinet ? {
+          display: 'block', y: titleY - 10, fill: paint.plate, stroke: paint.plateBorder,
+        } : { display: 'none' },
+        cabinetIcon: isCabinet ? {
+          display: 'block', transform: `translate(5.6,${titleY - 8.4}) scale(0.7)`, stroke: accent,
+        } : { display: 'none' },
       },
     });
     graph.addCell(cell);

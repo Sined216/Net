@@ -223,7 +223,9 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     if (target.kind === 'device') {
       view.addTools(deviceTools(target.id, toolActions(), look));
     } else {
-      view.addTools(groupTools(target.id, toolActions(), cell.get('accent') ?? '#4dabf7', look));
+      view.addTools(groupTools(
+        target.id, toolActions(), cell.get('accent') ?? '#4dabf7', look, cell.get('variant') === 'cabinet',
+      ));
     }
   }, [canEdit, scheme, toolActions]);
 

@@ -168,17 +168,24 @@ class TopologyGroupBox(BaseModel):
     height: float = Field(gt=0)
 
 
+GroupKind = Literal["area", "cabinet"]
+
+
 class TopologyGroupCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     color: Optional[str] = None
     # Группа внутри группы: цех — участок — линия.
     parent_id: Optional[int] = None
+    # Обычная рамка или шкаф — реальная железка, а не область на плане.
+    # У шкафа не бывает подгрупп: см. проверку в роутере.
+    kind: GroupKind = "area"
 
 
 class TopologyGroupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     color: Optional[str] = None
     parent_id: Optional[int] = None
+    kind: Optional[GroupKind] = None
 
 
 class TopologyGroupOut(BaseModel):
@@ -187,6 +194,7 @@ class TopologyGroupOut(BaseModel):
     name: str
     color: Optional[str] = None
     parent_id: Optional[int] = None
+    kind: GroupKind = "area"
     # Пусто, пока рамку ни разу не двигали: тогда она считается по
     # содержимому, как было до появления ручной правки.
     x: Optional[float] = None

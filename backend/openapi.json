@@ -3281,6 +3281,15 @@
             ],
             "title": "Color"
           },
+          "kind": {
+            "default": "area",
+            "enum": [
+              "area",
+              "cabinet"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "name": {
             "maxLength": 100,
             "minLength": 1,
@@ -3337,6 +3346,15 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "kind": {
+            "default": "area",
+            "enum": [
+              "area",
+              "cabinet"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "name": {
             "title": "Name",
@@ -3406,6 +3424,21 @@
               }
             ],
             "title": "Color"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "area",
+                  "cabinet"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
           },
           "name": {
             "anyOf": [

@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Button, ColorInput, Group, Modal, MultiSelect, Select, Stack, Text, TextInput } from '@mantine/core';
+import {
+  Button, ColorInput, Group, Modal, MultiSelect, SegmentedControl, Select, Stack, Text, TextInput,
+} from '@mantine/core';
 import {
   useCreateTopologyGroup, useDevices, useTopologyGroups, useUpdateDevice, useUpdateTopologyGroup,
 } from '../../api/hooks';
@@ -46,6 +48,7 @@ export function GroupEditModal({
 
   const [name, setName] = useState(group?.name ?? draftName ?? '');
   const [color, setColor] = useState(group?.color ?? '#94a3b8');
+  const [kind, setKind] = useState<'area' | 'cabinet'>(group?.kind ?? 'area');
   const [parent, setParent] = useState<string | null>(
     group ? (group.parent_id != null ? String(group.parent_id) : null) : (parentId != null ? String(parentId) : null),
   );
@@ -64,9 +67,15 @@ export function GroupEditModal({
   };
   if (group) collect(group.id);
 
+  // Внутрь шкафа группу не кладут — он конец дерева, сервер такое всё равно
+  // отклонит, но лучше не предлагать выбор, который заведомо будет отвергнут.
   const parentOptions = orderedGroups(groups)
-    .filter(({ group: g }) => !descendants.has(g.id))
+    .filter(({ group: g }) => !descendants.has(g.id) && g.kind !== 'cabinet')
     .map(({ group: g, depth }) => ({ value: String(g.id), label: `${'— '.repeat(depth)}${g.name}` }));
+
+  // Стать шкафом можно, только если внутри нет подгрупп — иначе они
+  // окажутся вложены в конец дерева. Устройства этому не мешают.
+  const hasSubgroups = group ? groups.some((g) => g.parent_id === group.id) : false;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,6 +84,7 @@ export function GroupEditModal({
       name: name.trim(),
       color,
       parent_id: parent ? parseInt(parent, 10) : null,
+      kind,
     };
 
     if (!isEdit) {
@@ -120,6 +130,25 @@ export function GroupEditModal({
               data={parentOptions} value={parent} onChange={setParent}
             />
           </Group>
+          <div>
+            <Text size="sm" fw={500} mb={4}>Вид</Text>
+            <SegmentedControl
+              fullWidth value={kind} onChange={(v) => setKind(v as 'area' | 'cabinet')}
+              data={[
+                { label: 'Группа', value: 'area' },
+                // Пока внутри есть подгруппы, шкафом стать нельзя — вложенность
+                // в конец дерева не имеет смысла.
+                { label: 'Шкаф', value: 'cabinet', disabled: hasSubgroups },
+              ]}
+            />
+            <Text size="xs" c="dimmed" mt={4}>
+              {kind === 'cabinet'
+                ? 'Шкаф — реальная железка, а не область на плане: внутрь него кладут только устройства, подгруппа не заводится.'
+                : hasSubgroups
+                  ? 'В группе уже есть подгруппы — шкафом она стать не может, пока их не перенести или не удалить.'
+                  : 'Цех, участок, линия — область на плане, внутрь которой кладут и устройства, и подгруппы.'}
+            </Text>
+          </div>
           {isEdit && trimmed && (
             <Text size="xs" c="orange">
               Показаны первые {MEMBER_LIMIT} устройств по коду — на этой площадке их больше. Остальные

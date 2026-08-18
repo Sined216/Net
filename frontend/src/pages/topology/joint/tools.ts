@@ -142,23 +142,27 @@ export function deviceTools(deviceId: number, actions: {
 
 export function groupTools(groupId: number, actions: {
   editGroup: Action; addSubgroup: Action; addDeviceToGroup: Action; removeGroup: Action; layoutGroup: Action;
-}, color: string, look: ToolsLook): dia.ToolsView {
+}, color: string, look: ToolsLook, isCabinet = false): dia.ToolsView {
   const icon = look.paint.icon;
-  return new dia.ToolsView({
-    name: 'group',
-    tools: [
-      button(ICONS.pencil, 'Название, цвет и состав группы', icon, 0, look, () => actions.editGroup(groupId)),
-      // Общая раскладка про группы не знает, и содержимое рамки сбивается
-      // в кучу — особенно после того, как рамку двигали руками.
-      button(ICONS.grid, 'Разложить содержимое рядами', icon, 1, look, () => actions.layoutGroup(groupId)),
-      button(ICONS.devicePlus, 'Добавить устройство в эту группу', icon, 2, look,
-             () => actions.addDeviceToGroup(groupId)),
-      button(ICONS.folderPlus, 'Добавить подгруппу', icon, 3, look, () => actions.addSubgroup(groupId)),
-      button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', 4, look,
-             () => actions.removeGroup(groupId)),
-      new ResizeControl({ handleAttributes: { fill: look.paint.plate, stroke: color } }),
-    ],
-  });
+  // Шкаф — конец дерева: подгруппу в него не кладут, и кнопка ей на панели
+  // делать нечего — сервер такое всё равно отклонит.
+  const tools = [
+    button(ICONS.pencil, 'Название, цвет и состав группы', icon, 0, look, () => actions.editGroup(groupId)),
+    // Общая раскладка про группы не знает, и содержимое рамки сбивается
+    // в кучу — особенно после того, как рамку двигали руками.
+    button(ICONS.grid, 'Разложить содержимое рядами', icon, 1, look, () => actions.layoutGroup(groupId)),
+    button(ICONS.devicePlus, 'Добавить устройство в эту группу', icon, 2, look,
+           () => actions.addDeviceToGroup(groupId)),
+  ];
+  if (!isCabinet) {
+    tools.push(button(ICONS.folderPlus, 'Добавить подгруппу', icon, 3, look, () => actions.addSubgroup(groupId)));
+  }
+  tools.push(
+    button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', isCabinet ? 3 : 4, look,
+           () => actions.removeGroup(groupId)),
+    new ResizeControl({ handleAttributes: { fill: look.paint.plate, stroke: color } }),
+  );
+  return new dia.ToolsView({ name: 'group', tools });
 }
 
 /** У кабеля свой набор: клик открывает правку, а на самой линии — только

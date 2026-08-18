@@ -54,10 +54,15 @@ def _check_parent(db: Session, site_id: int, parent_id: int | None, group_id: in
         return
     # Родитель — только своей площадки: рамка цеха одной фабрики не может
     # оказаться внутри рамки другой.
-    if not db.query(models.TopologyGroup).filter(
+    parent = db.query(models.TopologyGroup).filter(
         models.TopologyGroup.id == parent_id, models.TopologyGroup.site_id == site_id
-    ).first():
+    ).first()
+    if not parent:
         raise HTTPException(status_code=404, detail="Родительская группа не найдена")
+    # Шкаф — конец дерева: внутрь него кладут только устройства, подгруппа
+    # там — ошибка ввода, а не законная вложенность.
+    if parent.kind == "cabinet":
+        raise HTTPException(status_code=400, detail="В шкаф нельзя вложить группу — это конец дерева")
     if group_id is not None:
         if parent_id == group_id:
             raise HTTPException(status_code=400, detail="Группа не может быть вложена сама в себя")
@@ -130,6 +135,13 @@ def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, d
     data = payload.model_dump(exclude_unset=True)
     if "parent_id" in data:
         _check_parent(db, site_id, data["parent_id"], group_id)
+    if data.get("kind") == "cabinet" and db.query(models.TopologyGroup).filter(
+        models.TopologyGroup.parent_id == group_id
+    ).first():
+        raise HTTPException(
+            status_code=400,
+            detail="У шкафа не может быть подгрупп — сначала перенесите их или удалите",
+        )
     if "name" in data and db.query(models.TopologyGroup).filter(
         models.TopologyGroup.name == data["name"], models.TopologyGroup.id != group_id,
         models.TopologyGroup.site_id == site_id,

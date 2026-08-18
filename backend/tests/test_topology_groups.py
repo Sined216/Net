@@ -87,3 +87,36 @@ def test_group_box_rejects_zero_size(client, headers):
         headers=headers["editor"],
     )
     assert response.status_code == 422
+
+
+def test_group_defaults_to_area(client, headers):
+    group = create(client, headers, "Цех 8").json()
+    assert group["kind"] == "area"
+
+
+def test_cabinet_cannot_get_a_subgroup(client, headers):
+    """Шкаф — конец дерева: внутрь него кладут только устройства."""
+    cabinet = client.post(
+        "/topology-groups", json={"name": "Шкаф 1", "kind": "cabinet"}, headers=headers["editor"],
+    ).json()
+    response = create(client, headers, "Подгруппа шкафа", cabinet["id"])
+    assert response.status_code == 400
+
+
+def test_group_with_children_cannot_become_cabinet(client, headers):
+    shop = create(client, headers, "Цех 9").json()
+    create(client, headers, "Линия C", shop["id"])
+    response = client.patch(
+        f"/topology-groups/{shop['id']}", json={"kind": "cabinet"}, headers=headers["editor"],
+    )
+    assert response.status_code == 400
+
+
+def test_leaf_group_can_become_cabinet(client, headers):
+    """Без подгрупп смена вида ничем не мешает."""
+    leaf = create(client, headers, "Линия D").json()
+    response = client.patch(
+        f"/topology-groups/{leaf['id']}", json={"kind": "cabinet"}, headers=headers["editor"],
+    )
+    assert response.status_code == 200
+    assert response.json()["kind"] == "cabinet"

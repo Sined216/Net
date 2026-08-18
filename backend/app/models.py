@@ -248,6 +248,11 @@ class TopologyGroup(Base):
     site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(Text, nullable=False)
     color = Column(Text)
+    # Вид группы: обычная рамка (цех, участок, линия) или шкаф — реальная
+    # физическая железка, а не область на плане. У шкафа не бывает подгрупп:
+    # это конец дерева, что и держит проверка на роутере при смене вида и при
+    # вложении.
+    kind = Column(Text, nullable=False, server_default="area")
     # Удаление родителя не должно уносить с собой устройства вложенных
     # групп — подгруппы просто всплывают на уровень выше.
     parent_id = Column(Integer, ForeignKey("topology_groups.id", ondelete="SET NULL"), index=True)
@@ -265,6 +270,7 @@ class TopologyGroup(Base):
         UniqueConstraint("site_id", "name"),
         # Мишень для составного ключа с устройств — см. комментарий у vlans.
         UniqueConstraint("id", "site_id", name="uq_topology_groups_site"),
+        CheckConstraint("kind IN ('area','cabinet')"),
     )
 
     parent = relationship("TopologyGroup", remote_side=[id], backref="children")
