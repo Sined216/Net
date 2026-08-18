@@ -90,6 +90,36 @@ def test_created_user_must_change_password(client, headers):
     assert changed.json()["must_change_password"] is False
 
 
+def test_temp_password_token_is_useless_anywhere_but_password_change(client, headers, users, db):
+    """Раньше требование сменить пароль проверял только браузер — модалкой
+    без крестика. Сам токен, выданный по временному паролю, был при этом
+    полноценным: им можно было год работать через API или Swagger, ни разу
+    пароль не сменив.
+
+    Отбивается всё, кроме своей учётной записи и её смены; удаётся именно
+    смена пароля."""
+    users["viewer"].must_change_password = True
+    db.commit()
+
+    denied = client.get("/devices", headers=headers["viewer"])
+    assert denied.status_code == 403
+    assert "смените пароль" in denied.json()["detail"].lower()
+
+    allowed_me = client.get("/auth/me", headers=headers["viewer"])
+    assert allowed_me.status_code == 200
+
+    changed = client.post(
+        "/auth/me/password",
+        json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+        headers=headers["viewer"],
+    )
+    assert changed.status_code == 200
+    assert changed.json()["must_change_password"] is False
+
+    # Флаг снят — тот же токен теперь пускает и на обычные маршруты.
+    assert client.get("/devices", headers=headers["viewer"]).status_code == 200
+
+
 def test_admin_reset_sets_the_flag_again(client, headers, users):
     response = client.post(
         f"/auth/users/{users['viewer'].id}/password",

@@ -112,8 +112,34 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
+def require_password_changed(user: models.User = Depends(get_current_user)) -> models.User:
+    """Тот же пользователь, что и `get_current_user`, — плюс ещё одна
+    проверка: пароль, назначенный не самим человеком (первый вход, сброс
+    администратором), не должен пускать никуда, кроме смены пароля.
+
+    Раньше это проверял только браузер — модалкой без крестика, — а сам
+    токен, выданный по временному паролю, оставался при этом полноценным:
+    им можно было год работать через API или Swagger, ни разу пароль не
+    сменив. Роутеры, кроме `auth_router`, подключаются с этой проверкой
+    вместо голого `get_current_user` (см. `main.py`) — `/auth/me` и
+    `/auth/me/password` её не несут специально, иначе сменить временный
+    пароль стало бы нечем.
+    """
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Сначала смените пароль — POST /auth/me/password",
+        )
+    return user
+
+
 def require_role(allowed_roles: List[str]):
-    def checker(user: models.User = Depends(get_current_user)) -> models.User:
+    # `require_password_changed`, а не голый `get_current_user`: без этого
+    # админ с временным паролем мог бы через `/auth/users/*` управлять
+    # чужими учётными записями, ни разу не сменив собственный пароль —
+    # эти маршруты живут в `auth_router`, который не проходит через общую
+    # проверку роутеров в `main.py`.
+    def checker(user: models.User = Depends(require_password_changed)) -> models.User:
         if user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

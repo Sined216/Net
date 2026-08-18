@@ -43,10 +43,24 @@ app.add_middleware(
 # именно так и получилось, что вся карта сети с IP и MAC отдавалась без
 # токена. Исключения ровно два и они осознанные: вход (/auth/login, внутри
 # auth_router) и /health для проб контейнера.
-authenticated = [Depends(auth.get_current_user)]
+#
+# `require_password_changed`, а не голый `get_current_user`: пароль,
+# назначенный не самим человеком, до смены не должен пускать никуда, кроме
+# неё самой. Раньше это проверял только браузер, и токен, выданный по
+# временному паролю, был полноценным — auth_router подключается отдельно и
+# без этой проверки, иначе сменить временный пароль стало бы нечем.
+authenticated = [Depends(auth.require_password_changed)]
 
 app.include_router(auth_router.router)
-for module in (sites, tags, catalog, templates, devices, interfaces, links, link_templates,
+# У sites та же оговорка, что у auth_router: список площадок собирает
+# переключатель в шапке и загружается раньше самого интерфейса, ещё до
+# формы смены пароля — запереть его вместе с остальными значило бы, что
+# человеку с временным паролем нечем даже открыть эту форму (сайт решает,
+# что площадок нет, и застревает на «нет доступа», а не на смене пароля).
+# Пишущие маршруты внутри `sites` защищены отдельно, через `can_admin`,
+# которая эту же проверку несёт сама.
+app.include_router(sites.router, dependencies=[Depends(auth.get_current_user)])
+for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
                topology, topology_groups, schema, imports, audit):
     app.include_router(module.router, dependencies=authenticated)
 
