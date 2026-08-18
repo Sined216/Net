@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Button, Group, Paper, Popover, SegmentedControl, Select, Stack, Text, Title,
+  Button, Group, Paper, Popover, Select, Stack, Text, Title,
   useComputedColorScheme,
 } from '@mantine/core';
 import {
-  IconArrowBackUp, IconArrowForwardUp, IconFocusCentered, IconHelp,
-  IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup,
+  IconArrowBackUp, IconArrowForwardUp, IconDeviceFloppy, IconFocusCentered, IconHelp,
+  IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup, IconX,
 } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -46,9 +46,16 @@ import type { TopologyGroupOut } from '../api/types';
  *
  * Сделана на JointJS. Был и второй вариант, на React Flow, — они какое-то
  * время жили рядом, чтобы выбрать; выбор сделан в пользу JointJS ради
- * ортогональной разводки: он сам обводит кабели вокруг узлов, а не рисует
- * их напрямик через чужие карточки. Второй вариант удалён, чтобы схему не
- * приходилось чинить дважды.
+ * ортогональной разводки, которая сама обводила кабели вокруг узлов, не
+ * рисуя их напрямик через чужие карточки. Второй вариант удалён, чтобы схему
+ * не приходилось чинить дважды.
+ *
+ * Саму ортогональную разводку впоследствии убрали: прямая линия читается
+ * короче и однозначнее ломаной, а держать оба способа разводки значило
+ * чинить схему дважды на каждую правку кабелей — см. `joint/buildGraph.ts`.
+ * На выбор JointJS это не повлияло: панели действий, вложенные рамки групп
+ * и перетаскивание остаются на нём, а свою разводку он умеет заменить любой
+ * другой без переписывания вокруг.
  *
  * Саму схему собирает сервер: `GET /topology` отдаёт узлы и линии в том
  * виде, в каком они рисуются. Раньше браузер получал всю площадку со всеми
@@ -123,6 +130,17 @@ export function TopologyPage() {
   /** Рамки групп с прошлой отрисовки — нужны, чтобы знать, откуда рамка
    * уехала, и чтобы разложить содержимое внутри неё. */
   const boxesRef = useRef(new Map<number, Box>());
+  /** Положения и рамки, подвинутые в этой сессии, но ещё не сохранённые:
+   * перетаскивание, растяжка рамки и «Разложить» больше не пишут на сервер
+   * сами — только копят изменения здесь, а уходят они разом по кнопке
+   * «Сохранить». `pendingBoxes` вдобавок подмешивается в расчёт рамок при
+   * каждой перерисовке (см. вызов `buildGraph` ниже) — иначе несохранённая
+   * рамка возвращалась бы на прежнее место при первом же чужом обновлении
+   * данных, а не только по своей воле, как позиции узлов через `placed`. */
+  const pendingDevices = useRef(new Map<number, Point>());
+  const pendingBoxes = useRef(new Map<number, Box>());
+  const [dirtyCount, setDirtyCount] = useState(0);
+  const markDirty = () => setDirtyCount(pendingDevices.current.size + pendingBoxes.current.size);
   /** Группы, для которых сейчас считается раскладка: ELK — асинхронный
    * вызов, и второй клик по той же панели до ответа первого не должен
    * запускать вторую раскладку поверх первой. */
@@ -325,23 +343,50 @@ export function TopologyPage() {
 
   actionsRef.current = actions;
 
+  /** Запомнить новую рамку группы — не отправляя её на сервер. Раскладка
+   * копится на клиенте и уходит вся разом по кнопке «Сохранить»; см.
+   * комментарий у `pendingBoxes`. */
   const saveGroupBox = useCallback((groupId: number, box: Box) => {
-    setGroupBox.mutate({ id: groupId, body: box }, { onError: notifyError });
+    pendingBoxes.current.set(groupId, box);
+    markDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Записать расположение узлов: по одному или всё сразу.
-   *
-   * Раскладка схемы двигает все узлы разом, и отдельный запрос на каждый —
-   * это сотня запросов на одно нажатие кнопки. Одиночное перетаскивание так
-   * и остаётся одиночным запросом: он короче и не тащит за собой список. */
+  /** Запомнить новое положение узлов — по той же причине, что и у рамок:
+   * раскладка сохраняется целиком по кнопке, а не на каждое движение мыши. */
   const savePositions = useCallback((moves: { id: number; x: number; y: number }[]) => {
-    if (moves.length === 0) return;
-    if (moves.length === 1) {
-      updatePosition.mutate({ id: moves[0].id, body: { x: moves[0].x, y: moves[0].y } }, { onError: notifyError });
-      return;
+    for (const move of moves) pendingDevices.current.set(move.id, { x: move.x, y: move.y });
+    markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Отправить накопленную раскладку на сервер разом. Раскладка схемы
+   * двигает все узлы сразу, и отдельный запрос на каждый — это сотня
+   * запросов на одно нажатие кнопки; поэтому позиции узлов уходят одним
+   * массовым запросом, а рамки групп — по одной (для них массового
+   * эндпоинта нет, но двигают одновременно обычно одну-две). */
+  const [savingLayout, setSavingLayout] = useState(false);
+  const saveLayout = useCallback(async () => {
+    const deviceMoves = [...pendingDevices.current].map(([id, at]) => ({ id, x: at.x, y: at.y }));
+    const boxMoves = [...pendingBoxes.current];
+    if (deviceMoves.length === 0 && boxMoves.length === 0) return;
+    setSavingLayout(true);
+    try {
+      if (deviceMoves.length === 1) {
+        await updatePosition.mutateAsync({ id: deviceMoves[0].id, body: { x: deviceMoves[0].x, y: deviceMoves[0].y } });
+      } else if (deviceMoves.length > 1) {
+        await updatePositions.mutateAsync(deviceMoves);
+      }
+      await Promise.all(boxMoves.map(([id, box]) => setGroupBox.mutateAsync({ id, body: box })));
+      pendingDevices.current.clear();
+      pendingBoxes.current.clear();
+      setDirtyCount(0);
+      notifySuccess('Расположение сохранено');
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setSavingLayout(false);
     }
-    updatePositions.mutate(moves, { onError: notifyError });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -361,6 +406,22 @@ export function TopologyPage() {
   }, []);
 
   const history = useLayoutHistory(applyStep);
+
+  /** Откатить несохранённую раскладку: убрать накопленные правки и вернуть
+   * узлы и рамки туда, где их застала база. Расположение неспасённых узлов
+   * не хранится нигде, кроме `placed`/`pendingBoxes`, — поэтому откат
+   * стирает их оттуда и просит перерисовку заново с сервера. */
+  const discardLayout = useCallback(() => {
+    if (dirtyCount === 0) return;
+    if (!confirm('Отменить несохранённые изменения расположения?')) return;
+    for (const id of pendingDevices.current.keys()) placed.current.delete(id);
+    pendingDevices.current.clear();
+    pendingBoxes.current.clear();
+    setDirtyCount(0);
+    history.clear();
+    setRedraw((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirtyCount, history]);
 
   /** Записать перемещение и разослать его. «Откуда» берётся из раскладки,
    * сложившейся к этому моменту. */
@@ -519,7 +580,7 @@ export function TopologyPage() {
 
     const positions = computePositions(nodes, edges, placed);
     const { deviceCells, boxes } = buildGraph(
-      graph, { nodes, edges, groups }, { look, scheme, router: look.edgeRouter, positions },
+      graph, { nodes, edges, groups }, { look, scheme, positions, pendingBoxes: pendingBoxes.current },
     );
     boxesRef.current = boxes;
 
@@ -583,6 +644,16 @@ export function TopologyPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [canEdit, history]);
 
+  // Несохранённая раскладка живёт только в браузере — закрыли вкладку, и её
+  // нет. Браузер сам не даёт написать в это окно текст, поэтому конкретики
+  // тут не будет, но сам факт «есть что терять» он спрашивает честно.
+  useEffect(() => {
+    if (dirtyCount === 0) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirtyCount]);
+
   /** Новое устройство появляется в середине видимой области — если только
    * это не копия: та встаёт рядом с оригиналом, чтобы не искать её потом по
    * всей схеме. */
@@ -613,19 +684,31 @@ export function TopologyPage() {
             }))}
             value={tagFilter} onChange={setTagFilter}
           />
-          {/* Способ разводки — такая же настройка вида, как заливка групп:
-              хранится в браузере и переживает перезагрузку. Раньше он жил
-              только в состоянии страницы и сбрасывался на «ортогонально»
-              при каждом заходе. */}
-          <SegmentedControl
-            size="xs" value={look.edgeRouter}
-            onChange={(value) => changeLook({ ...look, edgeRouter: value as 'orthogonal' | 'straight' })}
-            data={[{ value: 'orthogonal', label: 'Ортогонально' }, { value: 'straight', label: 'Прямыми' }]}
-          />
           {canEdit && (
             <Button variant="light" leftSection={<IconUsersGroup size={16} />} onClick={() => setGroupsModalOpen(true)}>
               Группы
             </Button>
+          )}
+          {/* Расположение узлов и рамок больше не уходит на сервер само —
+              перетаскивание, растяжка рамки и «Разложить» копят изменения на
+              клиенте, пока их не сохранят явно. Кнопка появляется, только
+              когда есть что сохранять: пустая до неё — лишний вопрос там,
+              где отвечать нечем. */}
+          {canEdit && dirtyCount > 0 && (
+            <Button.Group>
+              <Button
+                leftSection={<IconDeviceFloppy size={16} />} onClick={saveLayout} loading={savingLayout}
+                title="Отправить новое расположение узлов и рамок на сервер"
+              >
+                Сохранить{dirtyCount > 1 ? ` (${dirtyCount})` : ''}
+              </Button>
+              <Button
+                variant="default" px={10} onClick={discardLayout}
+                title="Отменить несохранённые изменения расположения"
+              >
+                <IconX size={16} />
+              </Button>
+            </Button.Group>
           )}
           {canEdit && (
             <Button.Group>
@@ -669,8 +752,13 @@ export function TopologyPage() {
                 выделенное. Узел за рамку своей группы не выходит, а состав группы меняется только явно.
                 {canEdit && ' Рамка выделения берёт и устройства, и группы; захваченная группа выделяется целиком,'
                   + ' а её содержимое отдельно не отмечается — двигая рамку, вы двигаете и всё внутри. Shift по'
-                  + ' объекту добавляет его к выделенным или убирает. Ctrl+Z возвращает расположение назад,'
-                  + ' Ctrl+Shift+Z — вперёд; заведение и удаление так не отменяются.'}
+                  + ' объекту добавляет его к выделенным или убирает.'}
+                <br /><br />
+                {canEdit && ('Расположение узлов и рамок — перетаскивание, растяжка, «Разложить» — сохраняется '
+                  + 'не сразу: правки копятся на экране, кнопка «Сохранить» появляется, когда есть что отправить, '
+                  + 'и отправляет всё разом. Рядом — крестик, отменяющий несохранённое целиком; уйти со страницы '
+                  + 'или закрыть вкладку с несохранённым браузер переспросит отдельно. Ctrl+Z и Ctrl+Shift+Z ходят '
+                  + 'по шагам расположения независимо от сохранения. Заведение и удаление так не отменяются.')}
               </Text>
             </Popover.Dropdown>
           </Popover>

@@ -28,13 +28,14 @@ export interface GraphData {
   groups: TopologyGroupOut[];
 }
 
-/** Как рисуем: настройки вида, тема интерфейса, способ разводки и
- * расположение узлов. */
+/** Как рисуем: настройки вида, тема интерфейса и расположение узлов. */
 export interface GraphView {
   look: TopologyAppearance;
   scheme: 'light' | 'dark';
-  router: 'orthogonal' | 'straight';
   positions: Map<number, Point>;
+  /** Рамки, подвинутые в этой сессии, но ещё не сохранённые — см.
+   * комментарий у `computeBoxes`. */
+  pendingBoxes?: Map<number, Box>;
 }
 
 /** Что из построенного нужно странице дальше: по ячейке устройства она
@@ -70,17 +71,17 @@ type CanvasPaint = ReturnType<typeof canvasColors>;
 
 export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): BuiltGraph {
   const { nodes, edges, groups } = data;
-  const { look, scheme, router, positions } = view;
+  const { look, scheme, positions, pendingBoxes } = view;
 
   const colors = nodeColors(look.deviceDark, scheme);
   const paint = canvasColors(scheme);
   const card = nodeMetrics(look);
   const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
-  const boxes = computeBoxes(groups, nodes, positions, look, sizes);
+  const boxes = computeBoxes(groups, nodes, positions, look, sizes, pendingBoxes);
 
   const groupCells = addGroups(graph, groups, nodes, boxes, look, paint);
   const deviceCells = addDevices(graph, nodes, positions, boxes, groupCells, look, colors, card, sizes);
-  addLinks(graph, edges, deviceCells, look, paint, router);
+  addLinks(graph, edges, deviceCells, look, paint);
 
   return { deviceCells, boxes };
 }
@@ -255,14 +256,18 @@ function addDevices(
 }
 
 /** Кабели: целые — между двумя карточками, повисшие концы — заглушкой под
- * своим устройством. */
+ * своим устройством. Линия всегда прямая: связей на схеме немного, и
+ * прямой отрезок между двумя точками читается короче и однозначнее ломаной,
+ * которая вдобавок обходит чужие карточки стороной, петляя через всё
+ * полотно. Раньше был выбор — ортогональная разводка или прямая, — но
+ * ортогональную убрали: прямая читается яснее, а держать оба способа
+ * разводки значило чинить схему дважды на каждую правку. */
 function addLinks(
   graph: dia.Graph,
   edges: TopologyEdge[],
   deviceCells: Map<number, dia.Element>,
   look: TopologyAppearance,
   paint: CanvasPaint,
-  router: 'orthogonal' | 'straight',
 ) {
   // Подписи портов у железки с несколькими кабелями сходятся в одну точку и
   // наезжали бы друг на друга — их разносит labelShift ниже, для чего нужен
@@ -276,23 +281,10 @@ function addLinks(
       endsOfDevice.get(deviceId)!.push(edge.link_id);
     }
   }
-  // Коридоры разводки тоже разные: одинаковый отступ сводит соседние кабели
-  // в одну линию ровно так же, как одинаковая точка входа. Шаг подобран так,
-  // чтобы соседние коридоры было видно как отдельные, а не как утолщённую
-  // линию.
-  const linkOrder = new Map(edges.map((e, index) => [e.link_id, index]));
-  const routerFor = (linkId: number) => (router === 'orthogonal'
-    ? { name: 'manhattan', args: { step: 16, padding: 22 + ((linkOrder.get(linkId) ?? 0) % 4) * 18 } }
-    : undefined);
-  // Пересечения показываем «мостиком»: без него две пересекающиеся линии
-  // читаются как одна с ответвлением.
-  const connectorFor = () => (router === 'orthogonal'
-    ? { name: 'jumpover', args: { size: 5, jump: 'arc' } }
-    : { name: 'rounded', args: { radius: 8 } });
-  // При ортогональной разводке линия обходит узлы стороной, поэтому её можно
-  // класть поверх карточек — иначе подписи портов у самого узла прячутся под
-  // ним. Прямая линия узлы пересекает, и там она остаётся под ними.
-  const linkZ = router === 'orthogonal' ? 20 : 5;
+  // Прямая линия узлы пересекает, поэтому идёт под карточками — иначе она
+  // легла бы поверх соседних узлов и их подписей портов.
+  const linkConnector = { name: 'rounded', args: { radius: 8 } };
+  const linkZ = 5;
 
   // «Никогда» — подписей в модели вовсе нет, как и раньше. «При наведении»
   // — они есть, но прозрачные с самого начала; полотно показывает их по
@@ -313,8 +305,7 @@ function addLinks(
         target: { id: target.id, anchor: { name: 'center' } },
         linkId: edge.link_id,
         hoverLabels: hoverOnly,
-        router: routerFor(edge.link_id),
-        connector: connectorFor(),
+        connector: linkConnector,
         z: linkZ,
         attrs: {
           line: {
@@ -538,7 +529,8 @@ export function computePositions(
   return result;
 }
 
-/** Рамки групп: заданная руками, иначе — по содержимому.
+/** Рамки групп: сложившаяся в этой сессии, иначе сохранённая руками, иначе —
+ * по содержимому.
  *
  * Подгруппы считаются всегда, даже когда у родителя рамка уже задана.
  * Раньше расчёт на такой рамке останавливался и внутрь не заглядывал —
@@ -546,6 +538,12 @@ export function computePositions(
  * родителя ни разу не двигали, её тоже считали по содержимому, и всё
  * работало; но посчитанная рамка один раз сохраняется в базу, и со
  * следующего открытия схемы подгруппы исчезали.
+ *
+ * `pendingBoxes` — рамки, подвинутые в этой сессии, но ещё не отправленные
+ * на сервер (раскладка сохраняется по кнопке, см. `TopologyPage`). Без этой
+ * подмешки несохранённая рамка возвращалась бы на прежнее место при любой
+ * перерисовке схемы, вызванной вообще чем угодно — правкой другого
+ * устройства, сменой настройки вида, — а не только своей собственной волей.
  */
 export function computeBoxes(
   groups: TopologyGroupOut[],
@@ -553,6 +551,7 @@ export function computeBoxes(
   positions: Map<number, Point>,
   look: TopologyAppearance,
   sizes?: Map<number, NodeSize>,
+  pendingBoxes?: Map<number, Box>,
 ): Map<number, Box> {
   const card = nodeMetrics(look);
   const boxes = new Map<number, Box>();
@@ -569,7 +568,7 @@ export function computeBoxes(
       if (box) inner.push(box);
     }
 
-    const stored = storedBox(group);
+    const stored = pendingBoxes?.get(group.id) ?? storedBox(group);
     if (stored) {
       boxes.set(group.id, stored);
       // Подгруппа не должна торчать из родителя: рамку родителя могли

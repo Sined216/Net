@@ -14,8 +14,10 @@ import type { Box, Point } from './buildGraph';
  * по-прежнему спрашивает подтверждение, а Ctrl+Z его не трогает.
  *
  * Шаг хранит «было» и «стало» целиком, а не разницу: применить его в любую
- * сторону — значит просто разослать координаты. Схема при этом остаётся
- * источником правды на сервере, отменённое положение туда и записывается.
+ * сторону — значит просто выставить координаты. Отменённое положение на
+ * сервер само по себе не уходит — оно, как и любое другое перетаскивание,
+ * ждёт кнопки «Сохранить» (см. `pendingDevices`/`pendingBoxes` в
+ * `TopologyPage`).
  */
 
 export interface LayoutStep {
@@ -32,6 +34,10 @@ export interface LayoutHistory {
   push: (step: LayoutStep) => void;
   undo: () => void;
   redo: () => void;
+  /** Стереть историю без применения — после отмены несохранённой раскладки
+   * целиком: шаги ссылаются на состояние, которого уже нет, и Ctrl+Z по ним
+   * вернул бы что-то среднее между старым и новым. */
+  clear: () => void;
   canUndo: string | null;
   canRedo: string | null;
 }
@@ -85,7 +91,13 @@ export function useLayoutHistory(apply: (step: LayoutStep, back: boolean) => voi
     refresh();
   }, [apply, refresh]);
 
-  return { push, undo, redo, canUndo: labels.undo, canRedo: labels.redo };
+  const clear = useCallback(() => {
+    done.current = [];
+    undone.current = [];
+    refresh();
+  }, [refresh]);
+
+  return { push, undo, redo, clear, canUndo: labels.undo, canRedo: labels.redo };
 }
 
 function sameBox(a: Box, b: Box): boolean {
