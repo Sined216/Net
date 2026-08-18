@@ -123,7 +123,6 @@ def _station_row(node: ET.Element) -> dict[str, Any]:
     """Станция → поля строки импорта."""
     extra: dict[str, Any] = {}
     for title, attribute in (
-        ("MAC", "MACAddress"),
         ("Артикул", "ArticleNumber"),
         ("Серийный номер", "SerialNumber"),
         ("Прошивка", "FirmwareVersion"),
@@ -155,6 +154,7 @@ def _station_row(node: ET.Element) -> dict[str, Any]:
             # модели, чем пустота.
             "template_name": (node.get("DeviceType") or "").strip() or label,
             "management_ip": (node.get("IPAddress") or "").strip(),
+            "mac": (node.get("MACAddress") or "").strip(),
         },
         "extra": extra,
     }

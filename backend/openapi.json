@@ -1418,6 +1418,17 @@
             ],
             "title": "Imported At"
           },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
           "management_ip": {
             "anyOf": [
               {
@@ -5709,6 +5720,22 @@
                 }
               ],
               "title": "Management Ip"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mac",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mac"
             }
           },
           {

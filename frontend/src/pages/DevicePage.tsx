@@ -2,13 +2,14 @@ import { useState } from 'react';
 import {
   ActionIcon, Anchor, Badge, Button, Card, Group, NumberInput, Paper, Stack, Table, Text, Title,
 } from '@mantine/core';
-import { IconArrowLeft, IconPlus, IconTopologyStar, IconTrash } from '@tabler/icons-react';
+import { IconArrowLeft, IconEdit, IconPlus, IconTopologyStar, IconTrash } from '@tabler/icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDevice, useDeviceTemplates, useDeviceTypes, useVlans,
 } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { InterfaceRow } from './devices/InterfaceRow';
+import { DeviceFormModal } from './devices/DeviceFormModal';
 import { useCan } from '../auth/permissions';
 import { DeviceHistory } from '../history/DeviceHistory';
 
@@ -32,6 +33,7 @@ export function DevicePage() {
   const addPortsBulk = useAddInterfacesBulk();
   const deleteDevice = useDeleteDevice();
   const [bulkCount, setBulkCount] = useState<number | ''>(24);
+  const [editing, setEditing] = useState(false);
 
   const template = templates.find((t) => t.id === device?.template_id);
   const typeName = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '—' : '—';
@@ -94,6 +96,11 @@ export function DevicePage() {
           >
             Показать на схеме
           </Button>
+          {canEdit && (
+            <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => setEditing(true)}>
+              Редактировать
+            </Button>
+          )}
           {canEdit && (
             <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={handleDelete}>
               Удалить
@@ -166,6 +173,8 @@ export function DevicePage() {
       )}
 
       <DeviceHistory deviceId={device.id} />
+
+      {editing && <DeviceFormModal device={device} onClose={() => setEditing(false)} />}
     </Stack>
   );
 }

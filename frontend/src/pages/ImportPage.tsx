@@ -122,7 +122,7 @@ export function ImportPage() {
         <Text c="dimmed">
           {isLoading
             ? 'Загрузка…'
-            : 'Пусто. Загрузите .xlsx или .csv — колонки распознаются по названиям: имя, шаблон (модель), IP, '
+            : 'Пусто. Загрузите .xlsx или .csv — колонки распознаются по названиям: имя, шаблон (модель), IP, MAC, '
               + 'группа, теги. Остальные попадут в «Ещё из файла» — они не пропадут, но полем устройства не станут. '
               + 'Либо .xml — выгрузку Siemens Automation Tool, её структура известна заранее.'}
         </Text>
@@ -234,6 +234,7 @@ export function ImportPage() {
             template_id: adding.suggested_template_id,
             name: adding.name,
             management_ip: adding.management_ip,
+            mac: adding.mac,
             notes: [adding.notes, extraAsNote(adding)].filter(Boolean).join('\n') || null,
             topology_group_id: adding.suggested_group_id,
             tag_ids: adding.suggested_tag_ids,

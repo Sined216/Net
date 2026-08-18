@@ -46,6 +46,19 @@ def test_csv_is_parsed_with_unknown_columns_kept(client, headers):
     assert first["status"] == "new"
 
 
+def test_mac_column_is_recognized(client, headers):
+    """MAC — такое же известное поле, как IP: попадает в свою колонку, а не
+    в «ещё из файла»."""
+    content = (
+        "Имя;Модель;MAC-адрес\nСтанок;Тестовый коммутатор;A4-BB-6D-11-22-33\n"
+    ).encode("utf-8")
+    upload(client, headers, "устройства.csv", content)
+    rows = client.get("/import/rows", headers=headers["viewer"]).json()
+    row = [r for r in rows if r["name"] == "Станок"][0]
+    assert row["mac"] == "A4-BB-6D-11-22-33"
+    assert not row["extra"]
+
+
 def test_incomplete_rows_are_accepted(client, headers):
     """«Данные могут быть неполными» — строка с одним названием проходит."""
     upload(client, headers, "устройства.csv", CSV_FILE)

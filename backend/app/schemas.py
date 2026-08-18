@@ -222,6 +222,7 @@ class ImportRowOut(BaseModel):
     template_name: Optional[str] = None
     type_name: Optional[str] = None
     management_ip: Optional[str] = None
+    mac: Optional[str] = None
     notes: Optional[str] = None
     group_name: Optional[str] = None
     tags_text: Optional[str] = None

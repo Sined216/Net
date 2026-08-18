@@ -14,10 +14,10 @@ import { useCan } from '../auth/permissions';
 import { EquipmentTabs } from './equipment/EquipmentTabs';
 
 const PAGE = 50;
-const COLUMNS = 10;
+const COLUMNS = 11;
 
 /** Текстовые условия отбора — по одному на колонку. */
-const EMPTY_TEXT = { code: '', name: '', management_ip: '' };
+const EMPTY_TEXT = { code: '', name: '', management_ip: '', mac: '' };
 /** Выбор из справочника — тоже по колонке. */
 const EMPTY_PICKED: Record<'template' | 'type' | 'group' | 'tag', string | null> = {
   template: null, type: null, group: null, tag: null,
@@ -52,6 +52,7 @@ export function DevicesPage() {
     code: debouncedText.code.trim() || undefined,
     name: debouncedText.name.trim() || undefined,
     management_ip: debouncedText.management_ip.trim() || undefined,
+    mac: debouncedText.mac.trim() || undefined,
     template_id: picked.template ? parseInt(picked.template, 10) : undefined,
     device_type_id: picked.type ? parseInt(picked.type, 10) : undefined,
     topology_group_id: picked.group ? parseInt(picked.group, 10) : undefined,
@@ -115,6 +116,7 @@ export function DevicesPage() {
               <Table.Th>Шаблон</Table.Th>
               <Table.Th w={130}>Тип</Table.Th>
               <Table.Th w={130}>IP</Table.Th>
+              <Table.Th w={150}>MAC</Table.Th>
               <Table.Th w={140}>Группа</Table.Th>
               <Table.Th>Теги</Table.Th>
               <Table.Th w={80}>Порты</Table.Th>
@@ -152,6 +154,12 @@ export function DevicesPage() {
                 <TextInput
                   size="xs" placeholder="10.10." value={text.management_ip}
                   onChange={(e) => setField('management_ip', e.currentTarget.value)}
+                />
+              </Table.Th>
+              <Table.Th>
+                <TextInput
+                  size="xs" placeholder="a4:bb…" value={text.mac}
+                  onChange={(e) => setField('mac', e.currentTarget.value)}
                 />
               </Table.Th>
               <Table.Th>

@@ -543,6 +543,7 @@ class ImportRow(Base):
     template_name = Column(Text)
     type_name = Column(Text)
     management_ip = Column(Text)
+    mac = Column(Text)
     notes = Column(Text)
     group_name = Column(Text)
     tags_text = Column(Text)

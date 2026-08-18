@@ -198,3 +198,16 @@ def test_device_mac_is_searchable_in_any_notation(client, headers, make_device, 
 
     page = client.get("/devices", params={"q": query}, headers=headers["viewer"]).json()
     assert [item["id"] for item in page["items"]] == [device["id"]]
+
+
+def test_device_mac_has_its_own_filter_column(client, headers, make_device):
+    """Отдельная колонка отбора — та же нормализация, что и у общего поиска,
+    но без него: набрали код в одной колонке и MAC в другой, оба условия
+    должны сложиться."""
+    device = make_device()
+    other = make_device()
+    client.patch(f"/devices/{device['id']}", json={"mac": "A4-BB-6D-11-22-33"}, headers=headers["editor"])
+    client.patch(f"/devices/{other['id']}", json={"mac": "00-11-22-33-44-55"}, headers=headers["editor"])
+
+    page = client.get("/devices", params={"mac": "a4bb"}, headers=headers["viewer"]).json()
+    assert [item["id"] for item in page["items"]] == [device["id"]]

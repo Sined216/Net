@@ -1658,6 +1658,8 @@ export interface components {
             id: number;
             /** Imported At */
             imported_at?: string | null;
+            /** Mac */
+            mac?: string | null;
             /** Management Ip */
             management_ip?: string | null;
             /** Name */
@@ -3358,6 +3360,7 @@ export interface operations {
                 code?: string | null;
                 name?: string | null;
                 management_ip?: string | null;
+                mac?: string | null;
                 sort?: string;
                 desc?: boolean;
                 limit?: number;
