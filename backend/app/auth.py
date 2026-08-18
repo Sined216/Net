@@ -5,7 +5,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, InvalidHash
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -93,7 +93,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
-    except JWTError:
+    except jwt.PyJWTError:
         # from None: подробности разбора токена наружу не отдаём и в трассу
         # не тянем — клиенту достаточно 401.
         raise credentials_exception from None

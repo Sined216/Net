@@ -18,7 +18,7 @@ os.environ.setdefault(
     "DATABASE_URL",
     os.getenv("TEST_DATABASE_URL", "postgresql://netdoc:netdoc@localhost:5432/netdoc_test"),
 )
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production-use-only")
 # Жёстко, а не setdefault: запуск pytest из корня репозитория подхватывает
 # .env развёртывания с ENVIRONMENT=production, и проверка продовой
 # конфигурации валит весь прогон на тестовом ключе. Тесты всегда идут в
