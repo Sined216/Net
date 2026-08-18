@@ -4124,6 +4124,83 @@
         ],
         "title": "VlanOut",
         "type": "object"
+      },
+      "VlanUpdate": {
+        "description": "Опечатка в номере или подсети раньше лечилась только удалением VLAN\nи заведением заново — с потерей DHCP-диапазона и заметок, если их\nзабыли переписать вручную. Здесь то же самое можно поправить на месте.",
+        "properties": {
+          "dhcp_range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dhcp Range"
+          },
+          "gateway": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "subnet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subnet"
+          },
+          "vlan_number": {
+            "anyOf": [
+              {
+                "maximum": 4094.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vlan Number"
+          }
+        },
+        "title": "VlanUpdate",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -9156,6 +9233,77 @@
           }
         ],
         "summary": "Delete Vlan",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "patch": {
+        "operationId": "update_vlan_vlans__vlan_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vlan_id",
+            "required": true,
+            "schema": {
+              "title": "Vlan Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VlanUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Vlan",
         "tags": [
           "catalog"
         ]

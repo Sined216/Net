@@ -6,7 +6,7 @@ import type {
   ConnectorTypeCreate, ConnectorTypeUpdate,
   TransceiverModuleCreate, TransceiverModuleUpdate,
   InterfaceTemplateUpdate, PortsBulkCreate,
-  VlanCreate,
+  VlanCreate, VlanUpdate,
   DeviceTemplateCreate, DeviceTemplateUpdate, InterfaceTemplateCreate,
   DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
   InterfaceCreate, InterfaceUpdate,
@@ -222,6 +222,13 @@ export function useCreateVlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: VlanCreate) => api.createVlan(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vlans'] }),
+  });
+}
+export function useUpdateVlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: VlanUpdate }) => api.updateVlan(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vlans'] }),
   });
 }

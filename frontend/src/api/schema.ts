@@ -1175,7 +1175,8 @@ export interface paths {
         delete: operations["delete_vlan_vlans__vlan_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Vlan */
+        patch: operations["update_vlan_vlans__vlan_id__patch"];
         trace?: never;
     };
 }
@@ -2472,6 +2473,26 @@ export interface components {
             subnet?: string | null;
             /** Vlan Number */
             vlan_number: number;
+        };
+        /**
+         * VlanUpdate
+         * @description Опечатка в номере или подсети раньше лечилась только удалением VLAN
+         *     и заведением заново — с потерей DHCP-диапазона и заметок, если их
+         *     забыли переписать вручную. Здесь то же самое можно поправить на месте.
+         */
+        VlanUpdate: {
+            /** Dhcp Range */
+            dhcp_range?: string | null;
+            /** Gateway */
+            gateway?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Subnet */
+            subnet?: string | null;
+            /** Vlan Number */
+            vlan_number?: number | null;
         };
     };
     responses: never;
@@ -5183,6 +5204,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_vlan_vlans__vlan_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                vlan_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VlanOut"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -72,6 +72,7 @@ export type DeviceTypeOut = S['DeviceTypeOut'];
 
 // ---------- VLAN ----------
 export type VlanCreate = S['VlanCreate'];
+export type VlanUpdate = S['VlanUpdate'];
 export type VlanOut = S['VlanOut'];
 
 // ---------- Шаблоны устройств и их порты ----------

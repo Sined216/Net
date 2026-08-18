@@ -333,6 +333,18 @@ class VlanCreate(VlanBase):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 
+class VlanUpdate(BaseModel):
+    """Опечатка в номере или подсети раньше лечилась только удалением VLAN
+    и заведением заново — с потерей DHCP-диапазона и заметок, если их
+    забыли переписать вручную. Здесь то же самое можно поправить на месте."""
+    vlan_number: Optional[int] = Field(default=None, ge=1, le=4094)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    subnet: Optional[IPNetworkStr] = None
+    gateway: Optional[IPAddressStr] = None
+    dhcp_range: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class VlanOut(VlanBase):
     model_config = ConfigDict(from_attributes=True)
     id: int

@@ -5,7 +5,7 @@ import type {
   DeviceTypeOut, DeviceTypeCreate, DeviceTypeUpdate,
   ConnectorTypeOut, ConnectorTypeCreate, ConnectorTypeUpdate,
   TransceiverModuleOut, TransceiverModuleCreate, TransceiverModuleUpdate,
-  VlanOut, VlanCreate,
+  VlanOut, VlanCreate, VlanUpdate,
   DeviceTemplateOut, DeviceTemplateCreate, DeviceTemplateUpdate,
   InterfaceTemplateOut, InterfaceTemplateCreate, InterfaceTemplateUpdate, PortsBulkCreate,
   DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate, DevicePositionsUpdate,
@@ -84,6 +84,7 @@ export const clearImportRows = (status?: 'new' | 'moved') =>
 
 export const listVlans = () => apiFetch<VlanOut[]>('/vlans');
 export const createVlan = (body: VlanCreate) => apiFetch<VlanOut>('/vlans', { method: 'POST', body });
+export const updateVlan = (id: number, body: VlanUpdate) => apiFetch<VlanOut>(`/vlans/${id}`, { method: 'PATCH', body });
 export const deleteVlan = (id: number) => apiFetch<void>(`/vlans/${id}`, { method: 'DELETE' });
 
 // ---------- Device templates ----------

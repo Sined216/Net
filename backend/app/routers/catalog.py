@@ -256,6 +256,32 @@ def create_vlan(payload: schemas.VlanCreate, db: Session = Depends(get_db),
     return vlan
 
 
+@router.patch("/vlans/{vlan_id}", response_model=schemas.VlanOut)
+def update_vlan(vlan_id: int, payload: schemas.VlanUpdate, db: Session = Depends(get_db),
+                 user: models.User = Depends(auth.can_edit),
+                 site_id: int = Depends(sites.current_site_id)):
+    vlan = db.query(models.Vlan).filter(
+        models.Vlan.id == vlan_id, models.Vlan.site_id == site_id
+    ).first()
+    if not vlan:
+        raise HTTPException(status_code=404, detail="VLAN не найден")
+
+    data = payload.model_dump(exclude_unset=True)
+    new_number = data.get("vlan_number", vlan.vlan_number)
+    if new_number != vlan.vlan_number and db.query(models.Vlan).filter(
+        models.Vlan.vlan_number == new_number, models.Vlan.site_id == site_id
+    ).first():
+        raise HTTPException(status_code=409, detail="VLAN с таким номером уже существует")
+
+    old = {c.name: getattr(vlan, c.name) for c in vlan.__table__.columns}
+    for field, value in data.items():
+        setattr(vlan, field, value)
+    log_change(db, user.id, "update", "vlan", vlan.id, old=old, new=vlan)
+    db.commit()
+    db.refresh(vlan)
+    return vlan
+
+
 @router.delete("/vlans/{vlan_id}", status_code=204)
 def delete_vlan(vlan_id: int, db: Session = Depends(get_db),
                  user: models.User = Depends(auth.can_edit),
