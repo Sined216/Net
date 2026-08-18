@@ -2569,17 +2569,6 @@
       },
       "LinkUpdate": {
         "properties": {
-          "confirmed": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmed"
-          },
           "connector_type": {
             "anyOf": [
               {

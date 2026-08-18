@@ -701,7 +701,9 @@ class LinkUpdate(BaseModel):
     # возвращалось пятисоткой.
     length_m: Optional[float] = Field(default=None, ge=0, le=99999.9)
     speed_mbps: Optional[int] = Field(default=None, ge=0, le=1_000_000)
-    confirmed: Optional[bool] = None
+    # confirmed клиент не задаёт — та же оговорка, что у LinkCreate.source
+    # и .confirmed выше: это поле под будущий SNMP/LLDP-опрос, который
+    # будет сам решать, подтверждена ли связь, а не человек через форму.
     notes: Optional[str] = None
 
 

@@ -2007,8 +2007,6 @@ export interface components {
         };
         /** LinkUpdate */
         LinkUpdate: {
-            /** Confirmed */
-            confirmed?: boolean | null;
             /** Connector Type */
             connector_type?: string | null;
             /** Length M */

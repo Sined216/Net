@@ -162,6 +162,26 @@ def test_client_cannot_forge_link_source(client, headers, make_device):
     assert response.json()["confirmed"] is True
 
 
+def test_client_cannot_unforge_link_confirmed_via_patch(client, headers, make_device):
+    """Тот же довод, что и выше, но для правки: PATCH /links/{id} не
+    принимает confirmed от клиента вовсе — поле убрано из LinkUpdate, а не
+    просто проигнорировано на сервере."""
+    a, b = make_device(), make_device()
+    link = client.post(
+        "/links",
+        json={"interface_a_id": a["interfaces"][0]["id"], "interface_b_id": b["interfaces"][0]["id"]},
+        headers=headers["editor"],
+    ).json()
+    assert link["confirmed"] is True
+
+    response = client.patch(
+        f"/links/{link['id']}", json={"confirmed": False, "notes": "правка заодно"}, headers=headers["editor"]
+    )
+    assert response.status_code == 200
+    assert response.json()["confirmed"] is True
+    assert response.json()["notes"] == "правка заодно"
+
+
 @pytest.mark.parametrize(
     "written,stored",
     [
