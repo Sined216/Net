@@ -82,17 +82,20 @@ def list_rows(status: str | None = None, db: Session = Depends(get_db),
         for t in db.query(models.Tag).filter(models.Tag.site_id == site_id)
     }
 
-    # Уже заведённые названия и адреса — чтобы в таблице было видно, что
+    # Уже заведённые названия, адреса и MAC — чтобы в таблице было видно, что
     # строка в спецификации уже есть. Тем же одним запросом на весь список.
     by_name: dict[str, int] = {}
     by_ip: dict[str, int] = {}
-    for device_id, name, ip in db.query(
-        models.Device.id, models.Device.name, models.Device.management_ip
+    by_mac: dict[str, int] = {}
+    for device_id, name, ip, mac in db.query(
+        models.Device.id, models.Device.name, models.Device.management_ip, models.Device.mac
     ).filter(models.Device.site_id == site_id):
         if name:
             by_name.setdefault(_key(name), device_id)
         if ip:
             by_ip.setdefault(_key(ip), device_id)
+        if mac:
+            by_mac.setdefault(_mac_key(mac), device_id)
 
     result = []
     for row in rows:
@@ -104,6 +107,7 @@ def list_rows(status: str | None = None, db: Session = Depends(get_db),
         ]
         out.same_name_device_id = by_name.get(_key(row.name)) if row.name else None
         out.same_ip_device_id = by_ip.get(_key(row.management_ip)) if row.management_ip else None
+        out.same_mac_device_id = by_mac.get(_mac_key(row.mac)) if row.mac else None
         result.append(out)
     return result
 
@@ -192,6 +196,20 @@ def _key(value: str | None) -> str:
     """Сравниваем названия без регистра и лишних пробелов: в файле пишут
     «cisco 2960», в справочнике — «Cisco 2960»."""
     return " ".join((value or "").split()).lower()
+
+
+# Разделители, которыми MAC пишут в разных выгрузках — та же оговорка, что
+# и у поиска по MAC в /devices (см. routers/devices.py:_mac_like).
+_MAC_SEPARATORS = ":-."
+
+
+def _mac_key(value: str | None) -> str:
+    """Сравниваем MAC без учёта разделителей и регистра: «A4-BB-6D» из файла
+    и «a4:bb:6d…» в базе — один и тот же адрес."""
+    cleaned = value or ""
+    for sep in _MAC_SEPARATORS:
+        cleaned = cleaned.replace(sep, "")
+    return cleaned.lower()
 
 
 def _split_tags(value: str | None) -> list[str]:

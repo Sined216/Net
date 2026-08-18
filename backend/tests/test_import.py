@@ -109,6 +109,26 @@ def test_existing_name_and_ip_are_marked(client, headers, template):
     assert rows["Станок 43"]["same_ip_device_id"] is None
 
 
+def test_existing_mac_is_marked_regardless_of_notation(client, headers, template):
+    """MAC в файле пишут через любые разделители — совпадение находится
+    независимо от того, как его записали."""
+    device = client.post(
+        "/devices", json={"template_id": template.id, "name": "Станок 1"}, headers=headers["editor"],
+    ).json()
+    client.patch(f"/devices/{device['id']}", json={"mac": "A4-BB-6D-11-22-33"}, headers=headers["editor"])
+
+    content = (
+        "Имя;MAC-адрес\n"
+        "Станок А;a4:bb:6d:11:22:33\n"   # тот же адрес, другой разделитель и регистр
+        "Станок Б;00-11-22-33-44-55\n"   # чужой адрес
+    ).encode("utf-8")
+    upload(client, headers, "устройства.csv", content)
+
+    rows = {r["name"]: r for r in client.get("/import/rows", headers=headers["viewer"]).json()}
+    assert rows["Станок А"]["same_mac_device_id"] == device["id"]
+    assert rows["Станок Б"]["same_mac_device_id"] is None
+
+
 def test_row_moves_into_the_specification(client, headers, template):
     """Перенос заводит устройство и помечает строку — с ссылкой на него."""
     upload(client, headers, "устройства.csv", CSV_FILE)

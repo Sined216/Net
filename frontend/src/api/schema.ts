@@ -1670,6 +1670,8 @@ export interface components {
             row_number: number;
             /** Same Ip Device Id */
             same_ip_device_id?: number | null;
+            /** Same Mac Device Id */
+            same_mac_device_id?: number | null;
             /** Same Name Device Id */
             same_name_device_id?: number | null;
             /** Source File */

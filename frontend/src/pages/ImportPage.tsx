@@ -139,6 +139,7 @@ export function ImportPage() {
                 <SortTh field="name" sort={sort} onSort={toggleSort}>Название</SortTh>
                 <SortTh field="template_name" sort={sort} onSort={toggleSort}>Шаблон устройства</SortTh>
                 <SortTh w={130} field="management_ip" sort={sort} onSort={toggleSort}>IP</SortTh>
+                <SortTh w={150} field="mac" sort={sort} onSort={toggleSort}>MAC</SortTh>
                 <SortTh field="group_name" sort={sort} onSort={toggleSort}>Группа и теги</SortTh>
                 <Table.Th>Ещё из файла</Table.Th>
                 <SortTh w={160} field="status" sort={sort} onSort={toggleSort}>Состояние</SortTh>
@@ -167,6 +168,7 @@ export function ImportPage() {
                     ) : <Text c="dimmed" size="sm">—</Text>}
                   </Table.Td>
                   <SameAsExisting value={row.management_ip} deviceId={row.same_ip_device_id} what="адресом" />
+                  <SameAsExisting value={row.mac} deviceId={row.same_mac_device_id} what="MAC" />
                   <Table.Td>
                     {row.group_name && (
                       <Group gap={6} wrap="nowrap">
@@ -248,7 +250,7 @@ export function ImportPage() {
 
 /** По каким колонкам таблица упорядочивается. «Ещё из файла» здесь нет: это
  * мешанина неразобранных колонок, и порядок по ней ничего не значит. */
-type SortKey = 'row_number' | 'name' | 'template_name' | 'management_ip'
+type SortKey = 'row_number' | 'name' | 'template_name' | 'management_ip' | 'mac'
   | 'group_name' | 'status';
 
 /** Заголовок, по которому упорядочивают.

@@ -235,11 +235,12 @@ class ImportRowOut(BaseModel):
     suggested_group_id: Optional[int] = None
     suggested_tag_ids: List[int] = []
 
-    # Уже заведённое устройство с тем же названием или тем же адресом. Не
+    # Уже заведённое устройство с тем же названием, адресом или MAC. Не
     # запрет: в файле встречается и то, что в базе уже есть, — но человек
     # должен видеть это до переноса, а не заводить второе такое же.
     same_name_device_id: Optional[int] = None
     same_ip_device_id: Optional[int] = None
+    same_mac_device_id: Optional[int] = None
 
 
 class ImportSummary(BaseModel):

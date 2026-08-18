@@ -1477,6 +1477,17 @@
             ],
             "title": "Same Ip Device Id"
           },
+          "same_mac_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Same Mac Device Id"
+          },
           "same_name_device_id": {
             "anyOf": [
               {
