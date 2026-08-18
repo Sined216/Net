@@ -2821,12 +2821,26 @@
             "title": "Device Name"
           },
           "interface_id": {
-            "title": "Interface Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface Id"
           },
           "interface_label": {
-            "title": "Interface Label",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface Label"
           },
           "ip": {
             "anyOf": [
@@ -2853,9 +2867,7 @@
         },
         "required": [
           "device_id",
-          "device_code",
-          "interface_id",
-          "interface_label"
+          "device_code"
         ],
         "title": "SearchResult",
         "type": "object"
@@ -7986,7 +7998,7 @@
     },
     "/search": {
       "get": {
-        "description": "Найти по IP, MAC или имени/коду устройства.\n\nip и mac приводятся к тексту: подстрочный поиск нужен, чтобы «10.10.»\nнаходил всю подсеть, а у типов inet и macaddr оператора ILIKE нет.\nMAC при сохранении нормализуется к виду aa:bb:cc:dd:ee:ff, так что\nискать по нему стоит в этой же записи.",
+        "description": "Найти устройство — по имени, коду, своему IP или MAC — либо порт —\nпо IP или MAC конкретного гнезда.\n\nРаньше здесь был один запрос, INNER JOIN от порта к устройству: он не\nвидел устройство без единого порта (медиаконвертер, ИБП), не смотрел на\n`Device.management_ip`/`Device.mac` вовсе, а совпадение по имени или\nкоду устройства фан-аутилось на одну строку на каждый порт — коммутатор\nна 24 порта одним найденным устройством съедал почти весь лимит выдачи.\n\nТеперь два независимых запроса: устройство находится по своим полям —\nодной строкой, порт — по своим, отдельной строкой на каждое совпадение.\nСтрока устройства порта не называет (`interface_id`/`interface_label`\nпусты) — искали не гнездо, показывать какое-то одно было бы обманом.",
         "operationId": "search_search_get",
         "parameters": [
           {

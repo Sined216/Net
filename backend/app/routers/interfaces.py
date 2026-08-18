@@ -5,7 +5,7 @@ from sqlalchemy import Text, cast, or_
 from app.database import get_db
 from app import cables, models, ports, schemas, auth, serialize, sites, versioning
 from app.audit import log_change
-from app.routers.devices import _require_editable_ports
+from app.routers.devices import _mac_like, _require_editable_ports
 
 router = APIRouter(tags=["interfaces"])
 
@@ -194,39 +194,63 @@ def free_interfaces(q: str | None = None, exclude_device_id: int | None = None,
 @router.get("/search", response_model=list[schemas.SearchResult])
 def search(query: str, db: Session = Depends(get_db),
             site_id: int = Depends(sites.current_site_id)):
-    """Найти по IP, MAC или имени/коду устройства.
+    """Найти устройство — по имени, коду, своему IP или MAC — либо порт —
+    по IP или MAC конкретного гнезда.
 
-    ip и mac приводятся к тексту: подстрочный поиск нужен, чтобы «10.10.»
-    находил всю подсеть, а у типов inet и macaddr оператора ILIKE нет.
-    MAC при сохранении нормализуется к виду aa:bb:cc:dd:ee:ff, так что
-    искать по нему стоит в этой же записи.
+    Раньше здесь был один запрос, INNER JOIN от порта к устройству: он не
+    видел устройство без единого порта (медиаконвертер, ИБП), не смотрел на
+    `Device.management_ip`/`Device.mac` вовсе, а совпадение по имени или
+    коду устройства фан-аутилось на одну строку на каждый порт — коммутатор
+    на 24 порта одним найденным устройством съедал почти весь лимит выдачи.
+
+    Теперь два независимых запроса: устройство находится по своим полям —
+    одной строкой, порт — по своим, отдельной строкой на каждое совпадение.
+    Строка устройства порта не называет (`interface_id`/`interface_label`
+    пусты) — искали не гнездо, показывать какое-то одно было бы обманом.
     """
     # % и _ в ILIKE — шаблоны, а не символы: запрос «%» возвращал вообще всё,
     # а «10_10» находил и «10.10», и «10x10». Человек ищет текст, а не пишет
     # шаблон, поэтому спецсимволы экранируются.
     escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     like = f"%{escaped}%"
-    rows = (
-        db.query(models.Interface, models.Device)
-        .join(models.Device, models.Device.id == models.Interface.device_id)
+
+    devices = (
+        db.query(models.Device)
         .filter(
-            # Поиск не должен обходить изоляцию: чужая железка не находится
-            # ни по IP, ни по коду.
             models.Device.site_id == site_id,
             or_(
-                cast(models.Interface.ip, Text).ilike(like),
-                cast(models.Interface.mac, Text).ilike(like),
                 models.Device.name.ilike(like),
                 models.Device.code.ilike(like),
-            )
+                cast(models.Device.management_ip, Text).ilike(like),
+                _mac_like(models.Device.mac, query),
+            ),
         )
         .limit(50)
         .all()
     )
-    return [
+    interfaces = (
+        db.query(models.Interface, models.Device)
+        .join(models.Device, models.Device.id == models.Interface.device_id)
+        .filter(
+            # Поиск не должен обходить изоляцию: чужая железка не находится
+            # ни по IP, ни по коду, ни через свой порт.
+            models.Device.site_id == site_id,
+            or_(
+                cast(models.Interface.ip, Text).ilike(like),
+                _mac_like(models.Interface.mac, query),
+            ),
+        )
+        .limit(50)
+        .all()
+    )
+    results = [
+        schemas.SearchResult(device_id=d.id, device_code=d.code, device_name=d.name, ip=d.management_ip, mac=d.mac)
+        for d in devices
+    ] + [
         schemas.SearchResult(
             device_id=d.id, device_code=d.code, device_name=d.name,
             interface_id=i.id, interface_label=i.label, ip=i.ip, mac=i.mac,
         )
-        for i, d in rows
+        for i, d in interfaces
     ]
+    return results[:50]

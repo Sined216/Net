@@ -821,7 +821,10 @@ class SearchResult(BaseModel):
     device_id: int
     device_code: str
     device_name: Optional[str] = None
-    interface_id: int
-    interface_label: str
+    # Пусто у строки, найденной по самому устройству (имя, код, его IP или
+    # MAC) — искали не порт, показывать какой-то один было бы обманом.
+    # Заполнено у строки, найденной по IP или MAC конкретного гнезда.
+    interface_id: Optional[int] = None
+    interface_label: Optional[str] = None
     ip: Optional[str] = None
     mac: Optional[str] = None

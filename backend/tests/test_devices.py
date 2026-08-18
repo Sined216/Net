@@ -215,3 +215,52 @@ def test_search_treats_wildcards_as_text(client, headers, make_device, db):
     assert client.get("/search", params={"query": "10.10"}, headers=headers["viewer"]).json(), "обычный поиск работает"
     assert client.get("/search", params={"query": "%"}, headers=headers["viewer"]).json() == []
     assert client.get("/search", params={"query": "10_10"}, headers=headers["viewer"]).json() == []
+
+
+def test_search_finds_device_by_own_ip_and_mac(client, headers, make_device):
+    """Раньше поиск смотрел только на IP/MAC порта — свои поля устройства
+    (management_ip, mac) не участвовали вовсе."""
+    device = make_device()
+    client.patch(
+        f"/devices/{device['id']}", json={"management_ip": "10.20.30.40", "mac": "A4-BB-6D-00-00-01"},
+        headers=headers["editor"],
+    )
+
+    by_ip = client.get("/search", params={"query": "10.20.30.40"}, headers=headers["viewer"]).json()
+    assert [r["device_id"] for r in by_ip] == [device["id"]]
+    assert by_ip[0]["interface_id"] is None, "нашли устройство, а не какой-то из его портов"
+
+    by_mac = client.get("/search", params={"query": "a4bb6d000001"}, headers=headers["viewer"]).json()
+    assert [r["device_id"] for r in by_mac] == [device["id"]]
+
+
+def test_search_finds_device_without_a_single_port(client, headers, db):
+    """INNER JOIN на порт делал устройство без единого порта невидимым для
+    поиска целиком — даже по собственному имени."""
+    from app import models
+
+    dt = models.DeviceType(name="ИБП", code_prefix="UPS")
+    db.add(dt)
+    db.flush()
+    tpl = models.DeviceTemplate(name="ИБП без портов", device_type_id=dt.id)
+    db.add(tpl)
+    db.commit()
+    db.refresh(tpl)
+
+    response = client.post(
+        "/devices", json={"template_id": tpl.id, "name": "Резервный ИБП"}, headers=headers["editor"]
+    )
+    assert response.status_code == 201
+    device = response.json()
+    assert device["interfaces"] == []
+
+    found = client.get("/search", params={"query": "Резервный ИБП"}, headers=headers["viewer"]).json()
+    assert [r["device_id"] for r in found] == [device["id"]]
+
+
+def test_search_by_device_code_is_one_row_not_one_per_port(client, headers, make_device):
+    """Совпадение по имени или коду устройства раньше фан-аутилось на
+    строку на каждый его порт."""
+    device = make_device()
+    found = client.get("/search", params={"query": device["code"]}, headers=headers["viewer"]).json()
+    assert [r["device_id"] for r in found] == [device["id"]]
