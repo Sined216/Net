@@ -5,6 +5,7 @@ import { IconTrash } from '@tabler/icons-react';
 import { useAttachLinkEnd, useDeleteLink, useFreePorts, useReconnectLinkEnd, useUpdateLink } from '../../api/hooks';
 import { deviceLabel, nn, nnFloat, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { confirmAction } from '../../lib/confirm';
 import { useCan } from '../../auth/permissions';
 import type { FreePortOut, LinkEndOut, LinkOut, LinkTemplateOut } from '../../api/types';
 
@@ -96,8 +97,8 @@ export function LinkFormModal({
     }
   }
 
-  function handleDelete() {
-    if (!confirm('Удалить связь? Оба порта снова станут свободными.')) return;
+  async function handleDelete() {
+    if (!(await confirmAction('Удалить связь? Оба порта снова станут свободными.'))) return;
     deleteLink.mutate(link.id, {
       onSuccess: () => { notifySuccess('Связь удалена'); onClose(); },
       onError: notifyError,

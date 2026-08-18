@@ -13,6 +13,7 @@ import {
 } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import type { ConnectorTypeOut, DeviceTemplateOut, InterfaceTemplateOut } from '../api/types';
 import { useCan } from '../auth/permissions';
 import { EquipmentTabs } from './equipment/EquipmentTabs';
@@ -111,8 +112,8 @@ export function TemplatesPage() {
                         <ActionIcon
                           variant="subtle"
                           color="red"
-                          onClick={() => {
-                            if (!confirm(`Удалить шаблон "${tpl.name}"?`)) return;
+                          onClick={async () => {
+                            if (!(await confirmAction(`Удалить шаблон "${tpl.name}"?`))) return;
                             deleteTemplate.mutate(tpl.id, { onSuccess: () => notifySuccess('Шаблон удалён'), onError: notifyError });
                           }}
                         >
@@ -275,9 +276,9 @@ export function TemplateFormModal({ template, draftName, onClose, onCreated }: {
     }
   }
 
-  function removePortNow(key: number) {
+  async function removePortNow(key: number) {
     if (isEdit) {
-      if (!confirm('Убрать порт из модели? Он исчезнет у всех устройств этой модели; кабели, воткнутые в него, останутся с подвешенным концом.')) return;
+      if (!(await confirmAction('Убрать порт из модели? Он исчезнет у всех устройств этой модели; кабели, воткнутые в него, останутся с подвешенным концом.'))) return;
       removePort.mutate({ templateId: template!.id, ifaceId: key }, { onError: notifyError });
     } else {
       // Ряд гнёзд сплошной — после удаления из середины номера сдвигаются.

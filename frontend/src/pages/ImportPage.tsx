@@ -10,6 +10,7 @@ import {
   useClearImportRows, useDeleteImportRow, useDeviceTemplates, useImportRows, useUploadImportFile,
 } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import { MissingRefs } from './import/MissingRefs';
 import type { ImportRowOut } from '../api/types';
@@ -74,8 +75,8 @@ export function ImportPage() {
                 </Menu.Item>
                 <Menu.Item
                   color="red"
-                  onClick={() => {
-                    if (!confirm('Очистить таблицу импорта целиком? Заведённые устройства останутся.')) return;
+                  onClick={async () => {
+                    if (!(await confirmAction('Очистить таблицу импорта целиком? Заведённые устройства останутся.'))) return;
                     clearRows.mutate(undefined, {
                       onSuccess: () => notifySuccess('Таблица импорта очищена'), onError: notifyError,
                     });
@@ -214,9 +215,9 @@ export function ImportPage() {
                       <Tooltip label="Убрать строку из импорта">
                         <ActionIcon
                           variant="subtle" size="sm" color="red"
-                          onClick={() => {
-                            if (!confirm('Убрать строку из импорта? Устройство это не тронет, но саму строку'
-                              + ' придётся заново читать из файла.')) return;
+                          onClick={async () => {
+                            if (!(await confirmAction('Убрать строку из импорта? Устройство это не тронет, но саму строку'
+                              + ' придётся заново читать из файла.'))) return;
                             deleteRow.mutate(row.id, { onError: notifyError });
                           }}
                         >

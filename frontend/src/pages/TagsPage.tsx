@@ -4,6 +4,7 @@ import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useCreateTag, useDeleteTag, useTags, useUpdateTag } from '../api/hooks';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import type { TagOut } from '../api/types';
 import { useCan } from '../auth/permissions';
 
@@ -15,8 +16,8 @@ export function TagsPage() {
 
   const ordered = flattenTagsOrdered(tags);
 
-  function handleDelete(tag: TagOut) {
-    if (!confirm(`Удалить тег «${tag.name}»? Дочерние теги удалятся вместе с ним, у устройств он просто снимется.`)) return;
+  async function handleDelete(tag: TagOut) {
+    if (!(await confirmAction(`Удалить тег «${tag.name}»? Дочерние теги удалятся вместе с ним, у устройств он просто снимется.`))) return;
     deleteTag.mutate(tag.id, { onSuccess: () => notifySuccess('Тег удалён'), onError: notifyError });
   }
 

@@ -3,6 +3,7 @@ import { ActionIcon, Button, Group, Modal, Stack, Table, Text } from '@mantine/c
 import { IconFolderPlus, IconPencil, IconPlus, IconServer2, IconTrash } from '@tabler/icons-react';
 import { useDeleteTopologyGroup, useTopologyGroups } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { confirmAction } from '../../lib/confirm';
 import { GroupEditModal } from './GroupEditModal';
 import { orderedGroups } from './groups';
 import type { TopologyGroupOut } from '../../api/types';
@@ -18,8 +19,8 @@ export function TopologyGroupsModal({ onClose }: { onClose: () => void }) {
   const deleteGroup = useDeleteTopologyGroup();
   const [editing, setEditing] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
 
-  function handleDelete(group: TopologyGroupOut) {
-    if (!confirm(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`)) return;
+  async function handleDelete(group: TopologyGroupOut) {
+    if (!(await confirmAction(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`))) return;
     deleteGroup.mutate(group.id, { onSuccess: () => notifySuccess('Группа удалена'), onError: notifyError });
   }
 

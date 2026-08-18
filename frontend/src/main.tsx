@@ -10,6 +10,7 @@ import './index.css';
 import { theme } from './theme';
 import { AuthProvider } from './auth/AuthContext';
 import { App } from './App';
+import { ConfirmHost } from './lib/ConfirmHost';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="auto">
       <Notifications />
+      <ConfirmHost />
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AuthProvider>

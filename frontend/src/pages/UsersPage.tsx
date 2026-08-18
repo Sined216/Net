@@ -9,6 +9,7 @@ import {
 } from '../api/hooks';
 import { useAuth } from '../auth/AuthContext';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import type { UserOut, UserRole } from '../api/types';
 
 const ROLE_COLOR: Record<string, string> = { admin: 'red', editor: 'blue', viewer: 'gray' };
@@ -25,9 +26,9 @@ export function UsersPage() {
   const deactivate = useDeactivateUser();
   const update = useUpdateUser();
 
-  function toggleActive(user: UserOut) {
+  async function toggleActive(user: UserOut) {
     if (user.is_active) {
-      if (!confirm(`Заблокировать «${user.full_name}»? Учётная запись останется в журнале изменений, но входить и работать пользователь не сможет.`)) return;
+      if (!(await confirmAction(`Заблокировать «${user.full_name}»? Учётная запись останется в журнале изменений, но входить и работать пользователь не сможет.`))) return;
       deactivate.mutate(user.id, { onSuccess: () => notifySuccess('Пользователь заблокирован'), onError: notifyError });
     } else {
       update.mutate(

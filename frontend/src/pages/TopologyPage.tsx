@@ -35,6 +35,7 @@ import {
 } from './topology/joint/useJointPaper';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import { useCan } from '../auth/permissions';
 import type { TopologyGroupOut } from '../api/types';
 
@@ -190,10 +191,10 @@ export function TopologyPage() {
       }
     },
     regroup: (deviceId: number) => setRegrouping(deviceId),
-    remove: (deviceId: number) => {
+    remove: async (deviceId: number) => {
       const node = nodes.find((n) => n.id === deviceId);
       if (!node) return;
-      if (!confirm(`Удалить устройство «${node.code}» вместе с портами и связями?`)) return;
+      if (!(await confirmAction(`Удалить устройство «${node.code}» вместе с портами и связями?`))) return;
       deleteDevice.mutate(deviceId, { onError: notifyError });
     },
     editGroup: (groupId: number) => {
@@ -332,10 +333,10 @@ export function TopologyPage() {
         layingGroups.current.delete(groupId);
       }
     },
-    removeGroup: (groupId: number) => {
+    removeGroup: async (groupId: number) => {
       const group = groups.find((g) => g.id === groupId);
       if (!group) return;
-      if (!confirm(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`)) return;
+      if (!(await confirmAction(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`))) return;
       deleteGroup.mutate(groupId, { onSuccess: () => notifySuccess('Группа удалена'), onError: notifyError });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -411,9 +412,9 @@ export function TopologyPage() {
    * узлы и рамки туда, где их застала база. Расположение неспасённых узлов
    * не хранится нигде, кроме `placed`/`pendingBoxes`, — поэтому откат
    * стирает их оттуда и просит перерисовку заново с сервера. */
-  const discardLayout = useCallback(() => {
+  const discardLayout = useCallback(async () => {
     if (dirtyCount === 0) return;
-    if (!confirm('Отменить несохранённые изменения расположения?')) return;
+    if (!(await confirmAction('Отменить несохранённые изменения расположения?'))) return;
     for (const id of pendingDevices.current.keys()) placed.current.delete(id);
     pendingDevices.current.clear();
     pendingBoxes.current.clear();
@@ -451,7 +452,7 @@ export function TopologyPage() {
   const [laying, setLaying] = useState(false);
   const relayoutAll = useCallback(async () => {
     if (nodes.length === 0 || laying) return;
-    if (!confirm('Разложить схему по связям? Расположение узлов и рамки групп будут пересчитаны.')) return;
+    if (!(await confirmAction('Разложить схему по связям? Расположение узлов и рамки групп будут пересчитаны.'))) return;
     setLaying(true);
     try {
       const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
@@ -530,7 +531,7 @@ export function TopologyPage() {
         saveGroupBox(frame.id, frame.box);
       }
     },
-    onDelete: (target, marked) => {
+    onDelete: async (target, marked) => {
       const devices = [...marked.devices];
       const groupIds = [...marked.groups];
       // Выделенное рамкой — пачкой и с одним вопросом: спрашивать по разу на
@@ -543,7 +544,7 @@ export function TopologyPage() {
           devices.length ? `устройств: ${devices.length}` : null,
           groupIds.length ? `групп: ${groupIds.length} (устройства в них останутся)` : null,
         ].filter(Boolean).join(', ');
-        if (!confirm(`Удалить ${parts}?`)) return;
+        if (!(await confirmAction(`Удалить ${parts}?`))) return;
         for (const id of devices) deleteDevice.mutate(id, { onError: notifyError });
         for (const id of groupIds) deleteGroup.mutate(id, { onError: notifyError });
         paper.clearMarked();

@@ -10,6 +10,7 @@ import {
 } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import { useCan } from '../auth/permissions';
 import { EquipmentTabs } from './equipment/EquipmentTabs';
 import type { ConnectorMedia, ConnectorTypeOut, DeviceTypeOut, TransceiverModuleOut } from '../api/types';
@@ -84,8 +85,8 @@ function DeviceTypes() {
                   {canAdmin && (
                     <ActionIcon
                       variant="subtle" size="sm" color="red"
-                      onClick={() => {
-                        if (!confirm(`Удалить тип «${t.name}»?`)) return;
+                      onClick={async () => {
+                        if (!(await confirmAction(`Удалить тип «${t.name}»?`))) return;
                         deleteType.mutate(t.id, { onSuccess: () => notifySuccess('Тип удалён'), onError: notifyError });
                       }}
                     >
@@ -114,14 +115,14 @@ function DeviceTypeModal({ deviceType, onClose }: { deviceType: DeviceTypeOut | 
   const [name, setName] = useState(deviceType?.name ?? '');
   const [prefix, setPrefix] = useState(deviceType?.code_prefix ?? '');
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const body = { name: name.trim(), code_prefix: prefix.trim().toUpperCase() };
     if (!body.name || !body.code_prefix) return;
     const onSuccess = () => { notifySuccess(deviceType ? 'Тип сохранён' : 'Тип создан'); onClose(); };
     if (deviceType) {
       if (body.code_prefix !== deviceType.code_prefix
-        && !confirm('Сменить префикс? Коды уже заведённых устройств останутся прежними — новый префикс получат только новые.')) return;
+        && !(await confirmAction('Сменить префикс? Коды уже заведённых устройств останутся прежними — новый префикс получат только новые.'))) return;
       updateType.mutate({ id: deviceType.id, body }, { onSuccess, onError: notifyError });
     } else {
       createType.mutate(body, { onSuccess, onError: notifyError });
@@ -191,8 +192,8 @@ function Connectors() {
                   {canAdmin && (
                     <ActionIcon
                       variant="subtle" size="sm" color="red"
-                      onClick={() => {
-                        if (!confirm(`Удалить разъём «${c.name}»?`)) return;
+                      onClick={async () => {
+                        if (!(await confirmAction(`Удалить разъём «${c.name}»?`))) return;
                         deleteConnector.mutate(c.id, {
                           onSuccess: () => notifySuccess('Разъём удалён'), onError: notifyError,
                         });
@@ -305,8 +306,8 @@ function Modules() {
                   {canAdmin && (
                     <ActionIcon
                       variant="subtle" size="sm" color="red"
-                      onClick={() => {
-                        if (!confirm(`Удалить модуль «${m.name}»?`)) return;
+                      onClick={async () => {
+                        if (!(await confirmAction(`Удалить модуль «${m.name}»?`))) return;
                         deleteModule.mutate(m.id, {
                           onSuccess: () => notifySuccess('Модуль удалён'), onError: notifyError,
                         });

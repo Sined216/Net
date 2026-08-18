@@ -8,6 +8,7 @@ import {
   useCreateSite, useDeleteSite, useSetSiteAccess, useSiteAccess, useSites, useUpdateSite, useUsers,
 } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import type { SiteOut } from '../api/types';
 
 /** Площадки — фабрики, сети которых не пересекаются.
@@ -69,8 +70,8 @@ export function SitesPage() {
                   <Tooltip label="Удалить — только пустую">
                     <ActionIcon
                       variant="subtle" size="sm" color="red"
-                      onClick={() => {
-                        if (!confirm(`Удалить площадку «${site.name}»? Вместе с ней исчезнут её теги, VLAN и группы.`)) return;
+                      onClick={async () => {
+                        if (!(await confirmAction(`Удалить площадку «${site.name}»? Вместе с ней исчезнут её теги, VLAN и группы.`))) return;
                         remove.mutate(site.id, {
                           onSuccess: () => notifySuccess('Площадка удалена'), onError: notifyError,
                         });

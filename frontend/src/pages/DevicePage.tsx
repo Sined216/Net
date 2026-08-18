@@ -8,6 +8,8 @@ import {
   useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDevice, useDeviceTemplates, useDeviceTypes, useVlans,
 } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
+import { deviceRoleLabel } from '../lib/enumLabels';
 import { InterfaceRow } from './devices/InterfaceRow';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import { useCan } from '../auth/permissions';
@@ -62,17 +64,17 @@ export function DevicePage() {
     addInterface.mutate({ deviceId: device!.id, body: { label: `Порт ${n}` } }, { onError: notifyError });
   }
 
-  function generatePorts() {
+  async function generatePorts() {
     const n = typeof bulkCount === 'number' ? bulkCount : 0;
     if (n <= 0) return;
-    if (!confirm(`Создать ${n} портов?`)) return;
+    if (!(await confirmAction(`Создать ${n} портов?`))) return;
     // Одним запросом: параллельные добавления читают один и тот же
     // «следующий номер» и мешают друг другу.
     addPortsBulk.mutate({ deviceId: device!.id, body: { count: n } }, { onError: notifyError });
   }
 
-  function handleDelete() {
-    if (!confirm(`Удалить устройство «${device!.code}» вместе со всеми его портами и связями?`)) return;
+  async function handleDelete() {
+    if (!(await confirmAction(`Удалить устройство «${device!.code}» вместе со всеми его портами и связями?`))) return;
     deleteDevice.mutate(device!.id, {
       onSuccess: () => { notifySuccess('Устройство удалено'); navigate('/devices'); },
       onError: notifyError,
@@ -119,7 +121,7 @@ export function DevicePage() {
           <Field label="Производитель">{template?.manufacturer || '—'}</Field>
           <Field label="IP управления">{device.management_ip || '—'}</Field>
           <Field label="MAC">{device.mac || '—'}</Field>
-          <Field label="Роль">{device.role || '—'}</Field>
+          <Field label="Роль">{device.role ? deviceRoleLabel(device.role) : '—'}</Field>
           <Field label="Установлено">{device.install_date || '—'}</Field>
           <Field label="Порты">{busyCount} из {interfaces.length} занято</Field>
         </Group>

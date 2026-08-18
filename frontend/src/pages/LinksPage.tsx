@@ -10,12 +10,16 @@ import {
 } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
+import { linkSourceLabel, lineStyleLabel, mediaTypeLabel } from '../lib/enumLabels';
 import { LinkFormModal } from './links/LinkFormModal';
 import type { LinkOut, LinkTemplateOut, MediaType, LineStyle } from '../api/types';
 import { useCan } from '../auth/permissions';
 
-const MEDIA_TYPES: MediaType[] = ['copper', 'fiber', 'wireless', 'dac', 'other'];
-const LINE_STYLES: LineStyle[] = ['solid', 'dashed', 'dotted'];
+const MEDIA_TYPES: { value: MediaType; label: string }[] = (['copper', 'fiber', 'wireless', 'dac', 'other'] as const)
+  .map((value) => ({ value, label: mediaTypeLabel(value) }));
+const LINE_STYLES: { value: LineStyle; label: string }[] = (['solid', 'dashed', 'dotted'] as const)
+  .map((value) => ({ value, label: lineStyleLabel(value) }));
 const PAGE = 100;
 
 export function LinksPage() {
@@ -66,10 +70,10 @@ export function LinksPage() {
           {linkTemplates.map((t) => (
             <Table.Tr key={t.id}>
               <Table.Td>{t.name}</Table.Td>
-              <Table.Td>{t.media_type}</Table.Td>
+              <Table.Td>{mediaTypeLabel(t.media_type)}</Table.Td>
               <Table.Td>{t.cable_category || '—'}</Table.Td>
               <Table.Td><span className="tag-badge-dot" style={{ background: t.color }} />{t.color}</Table.Td>
-              <Table.Td>{t.line_style}</Table.Td>
+              <Table.Td>{lineStyleLabel(t.line_style)}</Table.Td>
               <Table.Td>
                 <Group gap={4}>
                   {canEdit && (
@@ -78,8 +82,8 @@ export function LinksPage() {
                   {canAdmin && (
                     <ActionIcon
                       variant="subtle" color="red"
-                      onClick={() => {
-                        if (!confirm('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.')) return;
+                      onClick={async () => {
+                        if (!(await confirmAction('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.'))) return;
                         deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
                       }}
                     >
@@ -130,7 +134,7 @@ export function LinksPage() {
                 </Table.Td>
                 <Table.Td>{l.connector_type || '—'}</Table.Td>
                 <Table.Td>{l.length_m ?? '—'}</Table.Td>
-                <Table.Td>{l.source}</Table.Td>
+                <Table.Td>{linkSourceLabel(l.source)}</Table.Td>
                 <Table.Td>
                   {/* Подвешенный конец — единственное состояние кабеля,
                       которое видно снаружи и требует действия. Признак
@@ -147,8 +151,8 @@ export function LinksPage() {
                         <ActionIcon variant="subtle" onClick={() => setEditingLink(l)}><IconEdit size={16} /></ActionIcon>
                         <ActionIcon
                           variant="subtle" color="red"
-                          onClick={() => {
-                            if (!confirm('Удалить связь? Оба порта снова станут свободными.')) return;
+                          onClick={async () => {
+                            if (!(await confirmAction('Удалить связь? Оба порта снова станут свободными.'))) return;
                             deleteLink.mutate(l.id, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
                           }}
                         >

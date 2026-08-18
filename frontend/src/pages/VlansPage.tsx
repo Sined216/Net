@@ -4,6 +4,7 @@ import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useCreateVlan, useDeleteVlan, useUpdateVlan, useVlans } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import { useCan } from '../auth/permissions';
 import type { VlanOut } from '../api/types';
 
@@ -15,8 +16,8 @@ export function VlansPage() {
   const [editing, setEditing] = useState<VlanOut | null>(null);
   const deleteVlan = useDeleteVlan();
 
-  function handleDelete(id: number) {
-    if (!confirm('Удалить VLAN?')) return;
+  async function handleDelete(id: number) {
+    if (!(await confirmAction('Удалить VLAN?'))) return;
     deleteVlan.mutate(id, { onSuccess: () => notifySuccess('VLAN удалён'), onError: notifyError });
   }
 

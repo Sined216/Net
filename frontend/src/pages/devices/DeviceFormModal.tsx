@@ -11,14 +11,12 @@ import { TemplateFormModal } from '../TemplatesPage';
 import { TemplatePicker } from './TemplatePicker';
 import { flattenTagsOrdered, nn } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { deviceRoleLabel } from '../../lib/enumLabels';
 import { useCan } from '../../auth/permissions';
 import type { DeviceOut, DeviceRole, DeviceListItem } from '../../api/types';
 
-const ROLES: { value: DeviceRole; label: string }[] = [
-  { value: 'core', label: 'core' },
-  { value: 'distribution', label: 'distribution' },
-  { value: 'access', label: 'access' },
-];
+const ROLES: { value: DeviceRole; label: string }[] = (['core', 'distribution', 'access'] as const)
+  .map((value) => ({ value, label: deviceRoleLabel(value) }));
 
 /** Заготовка для нового устройства — например разобранная строка файла.
  * Всё необязательно: чего нет, человек заполнит руками. */

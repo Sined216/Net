@@ -8,6 +8,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDeviceInterfaces } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { confirmAction } from '../../lib/confirm';
 import { InterfaceRow } from './InterfaceRow';
 import type { DeviceListItem, DeviceTemplateOut, DeviceTypeOut, VlanOut } from '../../api/types';
 import { useCan } from '../../auth/permissions';
@@ -42,8 +43,8 @@ export function DeviceRow({
   const portsEditable = template?.ports_editable_on_device ?? false;
   const { data: ifaces = [], isLoading: portsLoading } = useDeviceInterfaces(open ? device.id : null);
 
-  function handleDelete() {
-    if (!confirm(`Удалить устройство "${device.code}" вместе со всеми его портами и связями?`)) return;
+  async function handleDelete() {
+    if (!(await confirmAction(`Удалить устройство "${device.code}" вместе со всеми его портами и связями?`))) return;
     deleteDevice.mutate(device.id, { onSuccess: () => notifySuccess('Устройство удалено'), onError: notifyError });
   }
 
@@ -52,10 +53,10 @@ export function DeviceRow({
     addInterface.mutate({ deviceId: device.id, body: { label: `Порт ${n}` } }, { onError: notifyError });
   }
 
-  function generatePorts() {
+  async function generatePorts() {
     const n = typeof bulkCount === 'number' ? bulkCount : 0;
     if (n <= 0) return;
-    if (!confirm(`Создать ${n} портов ("Порт 1".."Порт ${n}")?`)) return;
+    if (!(await confirmAction(`Создать ${n} портов ("Порт 1".."Порт ${n}")?`))) return;
     addPortsBulk.mutate({ deviceId: device.id, body: { count: n } }, { onError: notifyError });
   }
 

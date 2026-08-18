@@ -7,11 +7,14 @@ import {
 } from '../../api/hooks';
 import { nn, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
+import { confirmAction } from '../../lib/confirm';
+import { portModeLabel } from '../../lib/enumLabels';
 import type { FreePortOut, InterfaceOut, PortMode, VlanOut } from '../../api/types';
 import { useCan } from '../../auth/permissions';
 
 // Режим — настройка конкретной железки; в модели техники его нет.
-const PORT_MODES: PortMode[] = ['access', 'trunk', 'uplink'];
+const PORT_MODES: { value: PortMode; label: string }[] = (['access', 'trunk', 'uplink'] as const)
+  .map((value) => ({ value, label: portModeLabel(value) }));
 
 export function InterfaceRow({
   iface, vlans, portsEditable = false,
@@ -83,11 +86,11 @@ export function InterfaceRow({
     );
   }
 
-  function remove() {
+  async function remove() {
     const warning = iface.link_id
       ? 'Убрать порт? Кабель останется задокументированным, но его конец повиснет — подключить заново можно к другому порту.'
       : 'Убрать порт?';
-    if (!confirm(warning)) return;
+    if (!(await confirmAction(warning))) return;
     deleteInterface.mutate(iface.id, { onError: notifyError });
   }
 
@@ -108,10 +111,10 @@ export function InterfaceRow({
     );
   }
 
-  function disconnect() {
+  async function disconnect() {
     const linkId = iface.connected_to?.link_id ?? iface.link_id;
     if (!linkId) return;
-    if (!confirm('Удалить связь?')) return;
+    if (!(await confirmAction('Удалить связь?'))) return;
     deleteLink.mutate(linkId, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
   }
 
