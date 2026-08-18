@@ -103,7 +103,12 @@ def update_template(template_id: int, payload: schemas.DeviceTemplateUpdate, db:
 
 @router.delete("/{template_id}", status_code=204)
 def delete_template(template_id: int, db: Session = Depends(get_db),
-                     user: models.User = Depends(auth.can_edit)):
+                     # Модель техники — справочник общий для всех площадок,
+                     # см. тот же довод у delete_device_type в
+                     # routers/catalog.py. Создание и правка (в том числе
+                     # состава портов) остаются редактору — только удаление
+                     # самого шаблона поднято до admin.
+                     user: models.User = Depends(auth.can_admin)):
     template = db.query(models.DeviceTemplate).filter(models.DeviceTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")

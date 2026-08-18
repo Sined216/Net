@@ -30,9 +30,31 @@ def test_connector_in_use_cannot_be_deleted(client, headers, connectors, templat
         f"/device-templates/{template.id}/interfaces/{port['id']}",
         json={"connector_id": connectors["RJ45"]["id"]}, headers=headers["editor"],
     )
-    response = client.delete(f"/connector-types/{connectors['RJ45']['id']}", headers=headers["editor"])
+    # Удаление справочника — право admin (пункт 10 отчёта), поэтому запрос
+    # идёт от него: иначе он отбился бы раньше, на проверке роли, и до
+    # самой проверки «используется» дело бы не дошло.
+    response = client.delete(f"/connector-types/{connectors['RJ45']['id']}", headers=headers["admin"])
     assert response.status_code == 409
     assert "использу" in response.json()["detail"]
+
+
+def test_editor_cannot_delete_connector_type(client, headers, connectors):
+    response = client.delete(f"/connector-types/{connectors['LC']['id']}", headers=headers["editor"])
+    assert response.status_code == 403
+
+
+def test_editor_cannot_delete_module(client, headers, connectors):
+    module = client.post(
+        "/modules",
+        json={
+            "name": "SFP-1G-SX",
+            "cage_connector_id": connectors["SFP+"]["id"],
+            "connector_id": connectors["LC"]["id"],
+        },
+        headers=headers["editor"],
+    ).json()
+    response = client.delete(f"/modules/{module['id']}", headers=headers["editor"])
+    assert response.status_code == 403
 
 
 def test_template_port_edit_reaches_devices(client, headers, connectors, template, make_device):
@@ -83,8 +105,9 @@ def test_module_gives_the_port_its_connector(client, headers, connectors, templa
     assert refreshed["connector_effective"]["name"] == "LC"
     assert refreshed["empty_cage"] is False
 
-    # Вынуть вставленный модуль из справочника нельзя.
-    assert client.delete(f"/modules/{module['id']}", headers=headers["editor"]).status_code == 409
+    # Вынуть вставленный модуль из справочника нельзя. Права — admin, по той
+    # же причине, что и у connector-types выше.
+    assert client.delete(f"/modules/{module['id']}", headers=headers["admin"]).status_code == 409
 
 
 def test_mode_lives_on_the_device_only(client, headers, template, make_device):

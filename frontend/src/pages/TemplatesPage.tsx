@@ -19,6 +19,11 @@ import { EquipmentTabs } from './equipment/EquipmentTabs';
 
 export function TemplatesPage() {
   const canEdit = useCan('edit');
+  // Модель техники — справочник общий для всех площадок, удалять её вправе
+  // только admin (см. тот же довод на сервере, routers/templates.py). Состав
+  // портов внутри модели по-прежнему правит редактор — это не удаление
+  // самого справочника.
+  const canAdmin = useCan('admin');
   const { data: types = [] } = useDeviceTypes();
   const { data: templates = [], isLoading } = useDeviceTemplates();
   const [editingTemplate, setEditingTemplate] = useState<DeviceTemplateOut | 'new' | null>(null);
@@ -102,16 +107,18 @@ export function TemplatesPage() {
                       >
                         <IconCopy size={16} />
                       </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={() => {
-                          if (!confirm(`Удалить шаблон "${tpl.name}"?`)) return;
-                          deleteTemplate.mutate(tpl.id, { onSuccess: () => notifySuccess('Шаблон удалён'), onError: notifyError });
-                        }}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                      {canAdmin && (
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={() => {
+                            if (!confirm(`Удалить шаблон "${tpl.name}"?`)) return;
+                            deleteTemplate.mutate(tpl.id, { onSuccess: () => notifySuccess('Шаблон удалён'), onError: notifyError });
+                          }}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      )}
                     </Group>
                   </Group>
                   <Collapse expanded={expanded === tpl.id}>

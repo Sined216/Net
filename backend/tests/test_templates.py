@@ -40,13 +40,20 @@ def test_unknown_device_type_is_rejected(client, headers):
 
 
 def test_template_in_use_cannot_be_deleted(client, headers, template, make_device):
+    """Удаление модели — право admin (пункт 10 отчёта): она общая для всех
+    площадок, и стереть чужую документацию editor одной фабрики не должен."""
     make_device()
-    response = client.delete(f"/device-templates/{template.id}", headers=headers["editor"])
+    response = client.delete(f"/device-templates/{template.id}", headers=headers["admin"])
     assert response.status_code == 409
 
 
 def test_unused_template_can_be_deleted(client, headers, template):
-    assert client.delete(f"/device-templates/{template.id}", headers=headers["editor"]).status_code == 204
+    assert client.delete(f"/device-templates/{template.id}", headers=headers["admin"]).status_code == 204
+
+
+def test_editor_cannot_delete_device_template(client, headers, template):
+    response = client.delete(f"/device-templates/{template.id}", headers=headers["editor"])
+    assert response.status_code == 403
 
 
 def test_template_port_added_and_removed(client, headers, template):
@@ -129,8 +136,14 @@ def test_impact_reports_devices_and_connected_ports(client, headers, template, m
 
 
 def test_device_type_in_use_cannot_be_deleted(client, headers, device_type, template):
-    response = client.delete(f"/device-types/{device_type.id}", headers=headers["editor"])
+    # Удаление справочника — право admin (пункт 10 отчёта).
+    response = client.delete(f"/device-types/{device_type.id}", headers=headers["admin"])
     assert response.status_code == 409
+
+
+def test_editor_cannot_delete_device_type(client, headers, device_type):
+    response = client.delete(f"/device-types/{device_type.id}", headers=headers["editor"])
+    assert response.status_code == 403
 
 
 def test_template_port_lands_before_hand_made_ports(client, headers, template, make_device):

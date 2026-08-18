@@ -148,11 +148,22 @@ def test_link_template_can_be_assigned_and_survives_template_deletion(client, he
     assert updated["length_m"] == 40
 
     # Удаление шаблона не должно удалять сами связи — у них просто пропадёт
-    # оформление на топологии (ON DELETE SET NULL).
-    client.delete(f"/link-templates/{link_template['id']}", headers=headers["editor"])
+    # оформление на топологии (ON DELETE SET NULL). Само удаление — право
+    # admin (пункт 10 отчёта), назначать шаблон связи editor может по-прежнему.
+    client.delete(f"/link-templates/{link_template['id']}", headers=headers["admin"])
     survived = client.get("/links", headers=headers["viewer"]).json()["items"]
     assert len(survived) == 1
     assert survived[0]["template_id"] is None
+
+
+def test_editor_cannot_delete_link_template(client, headers):
+    link_template = client.post(
+        "/link-templates",
+        json={"name": "Медь Cat5e", "media_type": "copper", "color": "#33aa66"},
+        headers=headers["editor"],
+    ).json()
+    response = client.delete(f"/link-templates/{link_template['id']}", headers=headers["editor"])
+    assert response.status_code == 403
 
 
 def test_viewer_cannot_create_link(client, headers, two_devices):

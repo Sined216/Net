@@ -66,7 +66,13 @@ def update_device_type(type_id: int, payload: schemas.DeviceTypeUpdate, db: Sess
 
 @router.delete("/device-types/{type_id}", status_code=204)
 def delete_device_type(type_id: int, db: Session = Depends(get_db),
-                        user: models.User = Depends(auth.can_edit)):
+                        # Справочник общий для всех площадок — редактор
+                        # одной фабрики не должен иметь возможность стереть
+                        # запись, на которой держится документация другой.
+                        # Заводить и править им можно — можно лишь не удалять.
+                        # Та же оговорка у connector-types, modules,
+                        # link-templates и у самого device-template ниже.
+                        user: models.User = Depends(auth.can_admin)):
     device_type = db.get(models.DeviceType, type_id)
     if not device_type:
         raise HTTPException(status_code=404, detail="Тип устройства не найден")
@@ -124,7 +130,8 @@ def update_connector_type(connector_id: int, payload: schemas.ConnectorTypeUpdat
 
 @router.delete("/connector-types/{connector_id}", status_code=204)
 def delete_connector_type(connector_id: int, db: Session = Depends(get_db),
-                           user: models.User = Depends(auth.can_edit)):
+                           # Справочник общий — см. комментарий у delete_device_type.
+                           user: models.User = Depends(auth.can_admin)):
     """Удалить разъём из справочника.
 
     Если он уже проставлен портам, удаление отбивается: молча обнулить
@@ -213,7 +220,8 @@ def update_module(module_id: int, payload: schemas.TransceiverModuleUpdate, db: 
 
 @router.delete("/modules/{module_id}", status_code=204)
 def delete_module(module_id: int, db: Session = Depends(get_db),
-                   user: models.User = Depends(auth.can_edit)):
+                   # Справочник общий — см. комментарий у delete_device_type.
+                   user: models.User = Depends(auth.can_admin)):
     module = db.get(models.TransceiverModule, module_id)
     if not module:
         raise HTTPException(status_code=404, detail="Модуль не найден")

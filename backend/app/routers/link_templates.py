@@ -44,7 +44,11 @@ def update_link_template(template_id: int, payload: schemas.LinkTemplateUpdate, 
 
 @router.delete("/{template_id}", status_code=204)
 def delete_link_template(template_id: int, db: Session = Depends(get_db),
-                          user: models.User = Depends(auth.can_edit)):
+                          # Справочник общий для всех площадок — редактор
+                          # одной фабрики не должен стирать запись, на
+                          # которой держится документация другой. См. тот же
+                          # довод у delete_device_type в routers/catalog.py.
+                          user: models.User = Depends(auth.can_admin)):
     template = db.query(models.LinkTemplate).filter(models.LinkTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон связи не найден")

@@ -32,6 +32,10 @@ export function LinksPage() {
   const deleteLt = useDeleteLinkTemplate();
   const deleteLink = useDeleteLink();
   const canEdit = useCan('edit');
+  // Шаблон связи — справочник общий для всех площадок, удалять его вправе
+  // только admin (см. тот же довод на сервере, routers/link_templates.py).
+  // Сами связи между конкретными портами остаются на canEdit — они не общие.
+  const canAdmin = useCan('admin');
 
   return (
     <Stack>
@@ -69,18 +73,18 @@ export function LinksPage() {
               <Table.Td>
                 <Group gap={4}>
                   {canEdit && (
-                    <>
-                      <ActionIcon variant="subtle" onClick={() => setEditingLt(t)}><IconEdit size={16} /></ActionIcon>
-                      <ActionIcon
-                        variant="subtle" color="red"
-                        onClick={() => {
-                          if (!confirm('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.')) return;
-                          deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
-                        }}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </>
+                    <ActionIcon variant="subtle" onClick={() => setEditingLt(t)}><IconEdit size={16} /></ActionIcon>
+                  )}
+                  {canAdmin && (
+                    <ActionIcon
+                      variant="subtle" color="red"
+                      onClick={() => {
+                        if (!confirm('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.')) return;
+                        deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
+                      }}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
                   )}
                 </Group>
               </Table.Td>

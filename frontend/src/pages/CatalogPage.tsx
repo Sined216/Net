@@ -46,6 +46,10 @@ export function CatalogPage() {
 function DeviceTypes() {
   const { data: types = [] } = useDeviceTypes();
   const canEdit = useCan('edit');
+  // Справочник общий для всех площадок — удалять его вправе только admin,
+  // заводить и править им может любой редактор (см. тот же довод на сервере,
+  // routers/catalog.py:delete_device_type).
+  const canAdmin = useCan('admin');
   const deleteType = useDeleteDeviceType();
   const [editing, setEditing] = useState<DeviceTypeOut | 'new' | null>(null);
 
@@ -77,15 +81,17 @@ function DeviceTypes() {
                   <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(t)}>
                     <IconPencil size={15} />
                   </ActionIcon>
-                  <ActionIcon
-                    variant="subtle" size="sm" color="red"
-                    onClick={() => {
-                      if (!confirm(`Удалить тип «${t.name}»?`)) return;
-                      deleteType.mutate(t.id, { onSuccess: () => notifySuccess('Тип удалён'), onError: notifyError });
-                    }}
-                  >
-                    <IconTrash size={15} />
-                  </ActionIcon>
+                  {canAdmin && (
+                    <ActionIcon
+                      variant="subtle" size="sm" color="red"
+                      onClick={() => {
+                        if (!confirm(`Удалить тип «${t.name}»?`)) return;
+                        deleteType.mutate(t.id, { onSuccess: () => notifySuccess('Тип удалён'), onError: notifyError });
+                      }}
+                    >
+                      <IconTrash size={15} />
+                    </ActionIcon>
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>
@@ -147,6 +153,8 @@ function DeviceTypeModal({ deviceType, onClose }: { deviceType: DeviceTypeOut | 
 function Connectors() {
   const { data: connectors = [] } = useConnectorTypes();
   const canEdit = useCan('edit');
+  // Справочник общий — см. комментарий у canAdmin в DeviceTypes.
+  const canAdmin = useCan('admin');
   const deleteConnector = useDeleteConnectorType();
   const [editing, setEditing] = useState<ConnectorTypeOut | 'new' | null>(null);
 
@@ -180,17 +188,19 @@ function Connectors() {
                   <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(c)}>
                     <IconPencil size={15} />
                   </ActionIcon>
-                  <ActionIcon
-                    variant="subtle" size="sm" color="red"
-                    onClick={() => {
-                      if (!confirm(`Удалить разъём «${c.name}»?`)) return;
-                      deleteConnector.mutate(c.id, {
-                        onSuccess: () => notifySuccess('Разъём удалён'), onError: notifyError,
-                      });
-                    }}
-                  >
-                    <IconTrash size={15} />
-                  </ActionIcon>
+                  {canAdmin && (
+                    <ActionIcon
+                      variant="subtle" size="sm" color="red"
+                      onClick={() => {
+                        if (!confirm(`Удалить разъём «${c.name}»?`)) return;
+                        deleteConnector.mutate(c.id, {
+                          onSuccess: () => notifySuccess('Разъём удалён'), onError: notifyError,
+                        });
+                      }}
+                    >
+                      <IconTrash size={15} />
+                    </ActionIcon>
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>
@@ -252,6 +262,8 @@ function ConnectorModal({ connector, onClose }: { connector: ConnectorTypeOut | 
 function Modules() {
   const { data: modules = [] } = useModules();
   const canEdit = useCan('edit');
+  // Справочник общий — см. комментарий у canAdmin в DeviceTypes.
+  const canAdmin = useCan('admin');
   const { data: connectors = [] } = useConnectorTypes();
   const deleteModule = useDeleteModule();
   const [editing, setEditing] = useState<TransceiverModuleOut | 'new' | null>(null);
@@ -290,17 +302,19 @@ function Modules() {
                   <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(m)}>
                     <IconPencil size={15} />
                   </ActionIcon>
-                  <ActionIcon
-                    variant="subtle" size="sm" color="red"
-                    onClick={() => {
-                      if (!confirm(`Удалить модуль «${m.name}»?`)) return;
-                      deleteModule.mutate(m.id, {
-                        onSuccess: () => notifySuccess('Модуль удалён'), onError: notifyError,
-                      });
-                    }}
-                  >
-                    <IconTrash size={15} />
-                  </ActionIcon>
+                  {canAdmin && (
+                    <ActionIcon
+                      variant="subtle" size="sm" color="red"
+                      onClick={() => {
+                        if (!confirm(`Удалить модуль «${m.name}»?`)) return;
+                        deleteModule.mutate(m.id, {
+                          onSuccess: () => notifySuccess('Модуль удалён'), onError: notifyError,
+                        });
+                      }}
+                    >
+                      <IconTrash size={15} />
+                    </ActionIcon>
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>
