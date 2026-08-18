@@ -323,9 +323,11 @@ function addLinks(
         },
         labels: showLabels ? [
           portLabelCell(portText(edge.port_a_number, edge.interface_a_label, look), paint, true,
-                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id), hoverOnly),
+                        look.edgeLabelSize,
+                        labelShift(endsOfDevice.get(edge.device_a_id), edge.link_id, look.edgeLabelSize), hoverOnly),
           portLabelCell(portText(edge.port_b_number, edge.interface_b_label, look), paint, false,
-                        look.edgeLabelSize, labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id), hoverOnly),
+                        look.edgeLabelSize,
+                        labelShift(endsOfDevice.get(edge.device_b_id), edge.link_id, look.edgeLabelSize), hoverOnly),
         ] : [],
       }));
       continue;
@@ -372,11 +374,20 @@ function addLinks(
 }
 
 /** Сдвиг подписи поперёк линии: у устройства с несколькими кабелями подписи
- * сходятся в одну точку и наезжают друг на друга. */
-function labelShift(ends: number[] | undefined, linkId: number): number {
+ * сходятся в одну точку и наезжают друг на друга.
+ *
+ * Шаг между соседними подписями одной стороны считается от размера самой
+ * подписи (шрифт + отступы подложки, те же `calc(h+6)`, что и у неё), а не
+ * фиксированным числом: было 4px на шаг, и уже на дюжине кабелей одной
+ * железки («№24 · Порт 24» и следующая подпись) сходились внахлёст —
+ * 4px меньше половины высоты даже самой мелкой подписи. */
+function labelShift(ends: number[] | undefined, linkId: number, fontSize: number): number {
   if (!ends || ends.length <= 1) return 0;
   const index = ends.indexOf(linkId);
-  return (index % 2 === 0 ? -1 : 1) * (10 + Math.floor(index / 2) * 4);
+  const side = index % 2 === 0 ? -1 : 1;
+  const lap = Math.floor(index / 2);
+  const labelHeight = fontSize + 6;
+  return side * (fontSize + 10 + lap * (labelHeight + 4));
 }
 
 /** Загнать узел внутрь рамки: рамка — это область, за которую он не выходит. */
