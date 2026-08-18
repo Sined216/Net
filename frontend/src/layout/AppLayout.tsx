@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { AppShell, Group, NavLink as MantineNavLink, ScrollArea, Select, Text, Button, Stack, Box } from '@mantine/core';
+import { useEffect, useState } from 'react';
+import {
+  AppShell, Burger, Group, NavLink as MantineNavLink, ScrollArea, Select, Text, Button, Stack, Box,
+} from '@mantine/core';
 import {
   IconDeviceDesktop, IconPlugConnected, IconTopologyStar,
   IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
@@ -67,13 +69,23 @@ export function AppLayout() {
   const { sites, siteId, selectSite } = useSite();
   const { pathname } = useLocation();
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  // На узком экране навбар — не боковая колонка, а страница поверх
+  // страницы: без `collapsed` он всегда открыт и без бургера его нечем
+  // убрать, чтобы добраться до содержимого. Закрывается сам при переходе —
+  // иначе выбор пункта меню оставлял бы его висеть поверх открывшейся
+  // страницы.
+  const [navOpened, setNavOpened] = useState(false);
+  useEffect(() => setNavOpened(false), [pathname]);
 
   // Пароль назначен не владельцем — до смены работать нельзя. Модалка без
   // крестика, мимо неё не пройти.
   const mustChangePassword = user?.must_change_password ?? false;
 
   return (
-    <AppShell navbar={{ width: 220, breakpoint: 'sm' }} padding="md">
+    <AppShell
+      navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !navOpened } }}
+      padding="md"
+    >
       <AppShell.Navbar p="sm">
         <Text fw={700} size="lg" px="xs" mb={6}>
           WireMap
@@ -134,7 +146,10 @@ export function AppLayout() {
         </Box>
       </AppShell.Navbar>
       <AppShell.Main>
-        <Group justify="space-between" mb="md" hiddenFrom="sm" />
+        <Group justify="space-between" mb="md" hiddenFrom="sm">
+          <Text fw={700} size="lg">WireMap</Text>
+          <Burger opened={navOpened} onClick={() => setNavOpened((o) => !o)} size="sm" aria-label="Меню" />
+        </Group>
         <Outlet />
       </AppShell.Main>
       {(passwordModalOpen || mustChangePassword) && (
