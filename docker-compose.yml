@@ -38,10 +38,14 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:${WEB_PORT:-8080}}
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?не задан BOOTSTRAP_ADMIN_PASSWORD — запустите scripts/start.ps1 или scripts/start.sh}
-    # Прямой доступ к API и Swagger UI (http://localhost:8000/docs).
-    # Для работы интерфейса не требуется — он ходит через nginx.
+    # Прямой доступ к API и Swagger UI (http://localhost:8000/docs) — для
+    # работы интерфейса не требуется, он ходит через nginx. Порт слушает
+    # только на этой же машине (127.0.0.1): без этого он был бы открыт на
+    # всех интерфейсах вместе со Swagger UI — лишняя мишень для перебора
+    # паролей извне. Нужен доступ с другой машины (например, для CI) —
+    # смените на "0.0.0.0:${API_PORT:-8000}:8000" осознанно.
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     healthcheck:
       # В образе нет curl, поэтому пробуем питоном — он там точно есть.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

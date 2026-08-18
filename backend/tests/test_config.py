@@ -7,6 +7,7 @@ from app.config import Settings
 
 GOOD_KEY = "s7Qe1nR4xUv0Pm2Kd9Lb3Wt6Yz8Ac5Jf1Hg4Nq7Ru0Sv"
 GOOD_ORIGINS = "https://netdoc.example.local"
+GOOD_ADMIN_PASSWORD = "не-дефолтный-пароль-администратора"
 
 
 def _settings(**overrides):
@@ -14,6 +15,7 @@ def _settings(**overrides):
         "environment": "production",
         "secret_key": GOOD_KEY,
         "cors_origins": GOOD_ORIGINS,
+        "bootstrap_admin_password": GOOD_ADMIN_PASSWORD,
         "_env_file": None,  # не подхватывать .env разработчика
     }
     return Settings(**{**base, **overrides})
@@ -43,6 +45,13 @@ def test_wildcard_cors_is_rejected_in_production():
 def test_empty_cors_is_rejected_in_production():
     with pytest.raises(ValueError, match="CORS_ORIGINS"):
         _settings(cors_origins="   ")
+
+
+def test_default_admin_password_is_rejected_in_production():
+    """В docker-compose переменная обязательна, но приложение запускают не
+    только им — дефолт не должен молча пройти и здесь."""
+    with pytest.raises(ValueError, match="BOOTSTRAP_ADMIN_PASSWORD"):
+        _settings(bootstrap_admin_password="change-me-please")
 
 
 def test_development_tolerates_defaults():

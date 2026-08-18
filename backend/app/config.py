@@ -79,6 +79,17 @@ class Settings(BaseSettings):
                 "CORS_ORIGINS='*' в продуктиве недопустим — перечислите конкретные адреса через запятую"
             )
 
+        # В docker-compose переменная обязательна (BOOTSTRAP_ADMIN_PASSWORD:?…),
+        # поэтому путь через compose и так закрыт, — но приложение запускают
+        # не только им, и дефолт всё равно должен быть перехвачен здесь же,
+        # рядом с SECRET_KEY и CORS_ORIGINS, а не остаться единственной
+        # настройкой без проверки.
+        if self.bootstrap_admin_password.strip().lower() == "change-me-please":
+            problems.append(
+                "BOOTSTRAP_ADMIN_PASSWORD оставлен значением по умолчанию — "
+                "задайте свой пароль первому администратору"
+            )
+
         if problems:
             raise ValueError(
                 "Небезопасная конфигурация при ENVIRONMENT=production:\n  - " + "\n  - ".join(problems)
