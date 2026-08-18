@@ -153,8 +153,10 @@ export function useUpdateConnectorType() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: ConnectorTypeUpdate }) => api.updateConnectorType(id, body),
-    // Разъём виден и в шаблонах, и в портах устройств.
-    onSuccess: () => invalidateAll(qc, ['connectorTypes', 'deviceTemplates', 'devices']),
+    // Разъём виден в шаблонах, в списке устройств и в раскрытой таблице
+    // портов конкретного устройства — без deviceInterfaces переименование
+    // оставалось в открытой таблице портов старым до перезагрузки страницы.
+    onSuccess: () => invalidateAll(qc, ['connectorTypes', 'deviceTemplates', 'devices', 'deviceInterfaces']),
   });
 }
 export function useDeleteConnectorType() {
