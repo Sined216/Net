@@ -9,6 +9,24 @@ from app.audit import log_change
 router = APIRouter(prefix="/links", tags=["links"])
 
 
+def _lock_interfaces(db: Session, interface_ids: list[int]) -> None:
+    """Занять порты на время проверки и записи связи.
+
+    Без этого проверка «порт свободен» и сама вставка — это классический
+    check-then-act: два одновременных запроса читают пустоту оба, оба её
+    проходят, порт получает два кабеля разом. `FOR UPDATE` берёт блокировку
+    строк портов до конца транзакции — второй запрос ждёт коммита первого и
+    видит уже занятый порт, а не устаревшую пустоту. Сортировка id — чтобы
+    два запроса с разным набором портов брали блокировки в одном порядке и
+    не столкнулись во взаимной блокировке.
+    """
+    if not interface_ids:
+        return
+    db.query(models.Interface.id).filter(
+        models.Interface.id.in_(sorted(set(interface_ids)))
+    ).order_by(models.Interface.id).with_for_update().all()
+
+
 def _busy(db: Session, interface_ids: list[int], exclude_link_id: int | None = None) -> bool:
     """Порт участвует не более чем в одной связи — в том числе если второй
     её конец подвешен: кабель-то в порт воткнут."""
@@ -68,6 +86,7 @@ def create_link(payload: schemas.LinkCreate, db: Session = Depends(get_db),
         if not db.query(models.LinkTemplate).filter(models.LinkTemplate.id == payload.template_id).first():
             raise HTTPException(status_code=404, detail="Шаблон связи не найден")
 
+    _lock_interfaces(db, [a_id, b_id])
     if _busy(db, [a_id, b_id]):
         raise HTTPException(status_code=409, detail="Один из интерфейсов уже занят другой связью")
 
@@ -160,6 +179,7 @@ def attach_link_end(link_id: int, payload: schemas.LinkAttach, db: Session = Dep
     other_id = link.interface_a_id if link.interface_a_id is not None else link.interface_b_id
     if other_id == iface.id:
         raise HTTPException(status_code=400, detail="Нельзя соединить интерфейс сам с собой")
+    _lock_interfaces(db, [iface.id])
     if _busy(db, [iface.id], exclude_link_id=link.id):
         raise HTTPException(status_code=409, detail="Этот порт уже занят другой связью")
 
@@ -210,6 +230,7 @@ def reconnect_link_end(link_id: int, payload: schemas.LinkReconnect, db: Session
     other_id = ends[1] if ends[0] == payload.from_interface_id else ends[0]
     if other_id == iface.id:
         raise HTTPException(status_code=400, detail="Нельзя соединить интерфейс сам с собой")
+    _lock_interfaces(db, [iface.id])
     if _busy(db, [iface.id], exclude_link_id=link.id):
         raise HTTPException(status_code=409, detail="Этот порт уже занят другой связью")
 
