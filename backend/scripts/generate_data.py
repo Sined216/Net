@@ -48,11 +48,30 @@ def main() -> int:
             return 1
 
         if args.clean:
+            device_ids = [
+                row[0] for row in db.query(models.Device.id).filter(
+                    models.Device.site_id == site.id, models.Device.notes == MARK
+                )
+            ]
+            # Кабели между двумя генерированными устройствами удаляются явно
+            # и первыми: `ON DELETE SET NULL` у links держит повисший конец,
+            # когда пропадает один конец кабеля, — но при массовом удалении
+            # обоих устройств сразу оба конца обнулились бы одновременно, а
+            # такую запись база не примет (`ck_links_has_endpoint`).
+            interface_ids = [
+                row[0] for row in db.query(models.Interface.id).filter(
+                    models.Interface.device_id.in_(device_ids)
+                )
+            ] if device_ids else []
+            removed_links = db.query(models.Link).filter(
+                models.Link.interface_a_id.in_(interface_ids)
+                | models.Link.interface_b_id.in_(interface_ids)
+            ).delete(synchronize_session=False) if interface_ids else 0
             removed = db.query(models.Device).filter(
-                models.Device.site_id == site.id, models.Device.notes == MARK
-            ).delete(synchronize_session=False)
+                models.Device.id.in_(device_ids)
+            ).delete(synchronize_session=False) if device_ids else 0
             db.commit()
-            print(f"Удалено устройств: {removed}")
+            print(f"Удалено устройств: {removed}, кабелей: {removed_links}")
             return 0
 
         random.seed(42)  # повторяемость: одна и та же база на каждом прогоне
@@ -125,7 +144,6 @@ def _make_devices(db, site_id: int, count: int, templates, groups) -> list[int]:
         device = models.Device(
             site_id=site_id, template_id=template.id, code=code,
             name=f"{template.name} №{index + 1}",
-            location=f"Цех {index % 5 + 1}, шкаф {index % 40 + 1}",
             management_ip=f"10.{index // 65025 % 255}.{index // 255 % 255}.{index % 255}",
             notes=MARK,
             topology_group_id=groups[index % len(groups)].id,

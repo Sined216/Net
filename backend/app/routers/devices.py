@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import models, ports, provisioning, schemas, auth, serialize, sites, versioning
 from app.audit import log_change
-from app.codegen import next_device_code
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
