@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Тот же режим, что у tsconfig.app.json: Playwright гоняет тесты через
+     * собственный транспайлер (как Vite — src/), а не нативным резолвером
+     * Node, поэтому расширение `.js` у относительных импортов ему не нужно —
+     * в отличие от tsconfig.node.json, который проверяет vite.config.ts,
+     * запускаемый именно нативным Node ESM при старте самого Vite. */
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}
