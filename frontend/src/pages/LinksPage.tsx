@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ActionIcon, Badge, Button, ColorInput, Group, Modal, Select,
+  ActionIcon, Alert, Badge, Button, ColorInput, Group, Modal, Select,
   Stack, Table, Text, TextInput, Title,
 } from '@mantine/core';
 import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
@@ -27,7 +27,7 @@ export function LinksPage() {
   // Концы приходят уже с подписями: раньше страница везла все устройства со
   // всеми портами только ради того, чтобы вместо номера порта показать «Gi0/2».
   const [shown, setShown] = useState(PAGE);
-  const { data: linkPage } = useLinks({ limit: shown });
+  const { data: linkPage, error: linksError } = useLinks({ limit: shown });
   const links = linkPage?.items ?? [];
   const total = linkPage?.total ?? 0;
   const [ltModalOpen, setLtModalOpen] = useState(false);
@@ -106,6 +106,9 @@ export function LinksPage() {
         шаблон, уточнить длину/разъём или удалить связь. «Подвешен» означает, что порт на этом конце удалили
         (например сняли сетевую карту), а кабель остался: подключить его заново можно у любого свободного порта.
       </Text>
+
+      {linksError && <Alert color="red">{(linksError as Error).message}</Alert>}
+
       <Table withTableBorder verticalSpacing="xs">
         <Table.Thead>
           <Table.Tr>

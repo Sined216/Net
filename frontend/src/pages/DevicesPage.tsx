@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Group, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Button, Group, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
 import { IconFilterOff, IconPlus } from '@tabler/icons-react';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
@@ -48,7 +48,7 @@ export function DevicesPage() {
   // продолжало бы список, которого уже нет.
   useEffect(() => setShown(PAGE), [debouncedText, picked]);
 
-  const { data, isLoading } = useDevices({
+  const { data, isLoading, error } = useDevices({
     code: debouncedText.code.trim() || undefined,
     name: debouncedText.name.trim() || undefined,
     management_ip: debouncedText.management_ip.trim() || undefined,
@@ -106,6 +106,8 @@ export function DevicesPage() {
           )}
         </Group>
       </Group>
+
+      {error && <Alert color="red">{(error as Error).message}</Alert>}
 
       <Table.ScrollContainer minWidth={1100}>
         <Table withTableBorder verticalSpacing="xs" horizontalSpacing="sm" highlightOnHover>

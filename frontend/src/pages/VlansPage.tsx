@@ -95,10 +95,13 @@ function VlanFormModal({ vlan, onClose }: { vlan?: VlanOut; onClose: () => void 
   const createVlan = useCreateVlan();
   const updateVlan = useUpdateVlan();
   const saving = createVlan.isPending || updateVlan.isPending;
+  // Сервер тоже это проверяет, но отказ формы до отправки быстрее и не
+  // требует сначала нажать «Создать», чтобы узнать про допустимый диапазон.
+  const outOfRange = num !== '' && (num < 1 || num > 4094);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (num === '') return;
+    if (num === '' || outOfRange) return;
     const body = { vlan_number: num, name: nn(name), subnet: nn(subnet), gateway: nn(gateway), dhcp_range: nn(dhcp), notes: nn(notes) };
     if (vlan) {
       updateVlan.mutate(
@@ -118,7 +121,11 @@ function VlanFormModal({ vlan, onClose }: { vlan?: VlanOut; onClose: () => void 
       <form onSubmit={handleSubmit}>
         <Stack>
           <Group grow>
-            <NumberInput label="Номер" value={num} onChange={(v) => setNum(v === '' ? '' : Number(v))} required min={1} max={4094} />
+            <NumberInput
+              label="Номер" value={num} onChange={(v) => setNum(v === '' ? '' : Number(v))}
+              required min={1} max={4094}
+              error={outOfRange ? 'От 1 до 4094' : null}
+            />
             <TextInput label="Название" value={name} onChange={(e) => setName(e.currentTarget.value)} />
           </Group>
           <Group grow>
@@ -128,7 +135,7 @@ function VlanFormModal({ vlan, onClose }: { vlan?: VlanOut; onClose: () => void 
           <TextInput label="DHCP-диапазон" value={dhcp} onChange={(e) => setDhcp(e.currentTarget.value)} />
           <TextInput label="Заметки" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} />
           <Group justify="flex-end" mt="sm">
-            <Button type="submit" loading={saving}>
+            <Button type="submit" loading={saving} disabled={outOfRange}>
               {vlan ? 'Сохранить' : 'Создать'}
             </Button>
           </Group>

@@ -59,7 +59,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     setUser(await api.me());
-  }, []);
+    // Пока стоял must_change_password, сервер отбивал 403 на всех списках,
+    // и TanStack Query запомнил эти отказы. Роль и права могли смениться
+    // тоже — сбрасываем кэш целиком, а не только «пока был запрет», чтобы
+    // не гадать, что именно изменилось.
+    await queryClient.invalidateQueries();
+  }, [queryClient]);
 
   const signOut = useCallback(() => {
     setToken(null);
