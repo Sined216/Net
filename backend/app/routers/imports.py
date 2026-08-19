@@ -11,6 +11,7 @@
 """
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app import auth, importer, models, provisioning, schemas, serialize, sites
@@ -23,19 +24,38 @@ router = APIRouter(prefix="/import", tags=["import"])
 # ошибка выгрузки; такой файл лучше отбить сразу.
 MAX_ROWS = 10_000
 MAX_BYTES = 16 * 1024 * 1024
+# Кусками по мегабайту: лимит проверяется по ходу чтения, а не после того,
+# как файл — каким бы огромным он ни был — уже целиком лёг в память.
+_CHUNK_SIZE = 1024 * 1024
 
 
-@router.post("/devices", response_model=schemas.ImportSummary, status_code=201)
-async def upload_devices(file: UploadFile = File(...), db: Session = Depends(get_db),
-                          user: models.User = Depends(auth.can_edit),
-                          site_id: int = Depends(sites.current_site_id)):
-    """Прочитать файл и сложить строки в промежуточную таблицу."""
-    content = await file.read()
-    if len(content) > MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Файл больше 16 МБ — разделите его на части")
+async def _read_limited(file: UploadFile, max_bytes: int) -> bytes:
+    """Прочитать файл потоком, оборвав сразу на превышении лимита."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(_CHUNK_SIZE):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail="Файл больше 16 МБ — разделите его на части")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
+
+def _import_sync(filename: str, content: bytes, db: Session,
+                  user: models.User, site_id: int) -> schemas.ImportSummary:
+    """Разбор файла и запись строк — весь синхронный кусок работы разом.
+
+    Остальные маршруты этого файла — обычные `def`, и FastAPI сам уводит их
+    в пул потоков. Этот маршрут вынужден быть `async def` ради потокового
+    чтения загружаемого файла (`UploadFile.read`) — но раз он `async def`,
+    синхронная часть внутри него сама по себе в пул не попадёт и будет
+    держать event loop, пока не отработает. Оборачивать в `run_in_threadpool`
+    только `importer.parse()` было недостаточно: запись девяти с лишним
+    тысяч строк и `commit()` — тоже синхронные и тоже блокировали event loop,
+    просто уже после разбора. Здесь — целиком, одним вызовом.
+    """
     try:
-        parsed = importer.parse(file.filename or "файл", content)
+        parsed = importer.parse(filename, content)
     except importer.ImportError_ as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
@@ -48,7 +68,7 @@ async def upload_devices(file: UploadFile = File(...), db: Session = Depends(get
     for row in parsed:
         db.add(models.ImportRow(
             site_id=site_id,
-            source_file=file.filename or "файл",
+            source_file=filename,
             row_number=row.row_number,
             extra=row.extra or None,
             imported_by=user.id,
@@ -56,9 +76,19 @@ async def upload_devices(file: UploadFile = File(...), db: Session = Depends(get
         ))
 
     log_change(db, user.id, "create", "import", None, old=None,
-               new={"файл": file.filename, "строк": len(parsed)})
+               new={"файл": filename, "строк": len(parsed)})
     db.commit()
-    return schemas.ImportSummary(file=file.filename or "файл", added=len(parsed), skipped_empty=0)
+    return schemas.ImportSummary(file=filename, added=len(parsed), skipped_empty=0)
+
+
+@router.post("/devices", response_model=schemas.ImportSummary, status_code=201)
+async def upload_devices(file: UploadFile = File(...), db: Session = Depends(get_db),
+                          user: models.User = Depends(auth.can_edit),
+                          site_id: int = Depends(sites.current_site_id)):
+    """Прочитать файл и сложить строки в промежуточную таблицу."""
+    content = await _read_limited(file, MAX_BYTES)
+    filename = file.filename or "файл"
+    return await run_in_threadpool(_import_sync, filename, content, db, user, site_id)
 
 
 @router.get("/rows", response_model=list[schemas.ImportRowOut])

@@ -226,6 +226,18 @@ def test_unreadable_file_is_refused_clearly(client, headers):
     assert "xlsx" in response.json()["detail"]
 
 
+def test_file_over_size_limit_is_refused_without_reading_it_whole(client, headers):
+    """16 МБ — предел; выше него файл отбивается 413, а не проглатывается
+    целиком. Проверяем именно факт отказа, а не то, где именно оборвалось
+    чтение — это деталь реализации."""
+    from app.routers.imports import MAX_BYTES
+
+    oversized = b"a" * (MAX_BYTES + 1)
+    response = upload(client, headers, "огромный.csv", oversized)
+    assert response.status_code == 413
+    assert "16" in response.json()["detail"]
+
+
 def test_viewer_cannot_import(client, headers):
     response = client.post(
         "/import/devices",
