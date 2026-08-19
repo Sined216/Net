@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth
+from app import models, schemas, auth, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/link-templates", tags=["link-templates"])
@@ -33,9 +33,14 @@ def update_link_template(template_id: int, payload: schemas.LinkTemplateUpdate, 
     template = db.query(models.LinkTemplate).filter(models.LinkTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон связи не найден")
+    versioning.check(template, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     old = {c.name: getattr(template, c.name) for c in template.__table__.columns}
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changed = versioning.differs(template, data)
+    for field, value in data.items():
         setattr(template, field, value)
+    if changed:
+        versioning.bump(template)
     log_change(db, user.id, "update", "link_template", template.id, old=old, new=template)
     db.commit()
     db.refresh(template)

@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import cables, models, ports, schemas, auth, sites
+from app import cables, models, ports, schemas, auth, sites, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/device-templates", tags=["device-templates"])
@@ -89,9 +89,14 @@ def update_template(template_id: int, payload: schemas.DeviceTemplateUpdate, db:
     if not template:
         raise HTTPException(status_code=404, detail="Шаблон устройства не найден")
 
+    versioning.check(template, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     old_snapshot = {c.name: getattr(template, c.name) for c in template.__table__.columns}
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changed = versioning.differs(template, data)
+    for field, value in data.items():
         setattr(template, field, value)
+    if changed:
+        versioning.bump(template)
 
     log_change(db, user.id, "update", "device_template", template.id, old=old_snapshot, new=template)
     db.commit()
@@ -257,14 +262,18 @@ def update_template_interface(template_id: int, iface_id: int, payload: schemas.
     if not iface:
         raise HTTPException(status_code=404, detail="Порт шаблона не найден")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(iface, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     if not data:
         return iface
     if data.get("connector_id") is not None and not db.get(models.ConnectorType, data["connector_id"]):
         raise HTTPException(status_code=404, detail="Разъём не найден")
 
+    changed = versioning.differs(iface, data)
     for field, value in data.items():
         setattr(iface, field, value)
+    if changed:
+        versioning.bump(iface)
 
     # Порты устройств находятся по ссылке на порт модели, а не по номеру:
     # у устройства со съёмными картами номера могли сомкнуться после снятой

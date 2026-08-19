@@ -122,7 +122,8 @@ function DeviceTypeModal({ deviceType, onClose }: { deviceType: DeviceTypeOut | 
     if (deviceType) {
       if (body.code_prefix !== deviceType.code_prefix
         && !(await confirmAction('Сменить префикс? Коды уже заведённых устройств останутся прежними — новый префикс получат только новые.'))) return;
-      updateType.mutate({ id: deviceType.id, body }, { onSuccess, onError: notifyError });
+      // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+      updateType.mutate({ id: deviceType.id, body: { ...body, version: deviceType.version } }, { onSuccess, onError: notifyError });
     } else {
       createType.mutate(body, { onSuccess, onError: notifyError });
     }
@@ -227,7 +228,8 @@ function ConnectorModal({ connector, onClose }: { connector: ConnectorTypeOut | 
     if (!name.trim()) return;
     const body = { name: name.trim(), media: (media ?? 'copper') as ConnectorMedia, is_cage: isCage };
     const onSuccess = () => { notifySuccess(connector ? 'Разъём сохранён' : 'Разъём создан'); onClose(); };
-    if (connector) updateConnector.mutate({ id: connector.id, body }, { onSuccess, onError: notifyError });
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+    if (connector) updateConnector.mutate({ id: connector.id, body: { ...body, version: connector.version } }, { onSuccess, onError: notifyError });
     else createConnector.mutate(body, { onSuccess, onError: notifyError });
   }
 
@@ -349,7 +351,8 @@ function ModuleModal({ module, onClose }: { module: TransceiverModuleOut | null;
       notes: nn(notes),
     };
     const onSuccess = () => { notifySuccess(module ? 'Модуль сохранён' : 'Модуль создан'); onClose(); };
-    if (module) updateModule.mutate({ id: module.id, body }, { onSuccess, onError: notifyError });
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+    if (module) updateModule.mutate({ id: module.id, body: { ...body, version: module.version } }, { onSuccess, onError: notifyError });
     else createModule.mutate(body, { onSuccess, onError: notifyError });
   }
 

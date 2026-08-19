@@ -147,7 +147,9 @@ export function DevicePage() {
           </Table.Thead>
           <Table.Tbody>
             {interfaces.map((i) => (
-              <InterfaceRow key={i.id} iface={i} vlans={vlans} portsEditable={portsEditable} />
+              // Ключ с номером правки — см. комментарий у того же места в
+              // devices/DeviceRow.tsx.
+              <InterfaceRow key={`${i.id}-${i.version}`} iface={i} vlans={vlans} portsEditable={portsEditable} />
             ))}
             {interfaces.length === 0 && (
               <Table.Tr><Table.Td colSpan={10}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>

@@ -30,6 +30,8 @@ class Site(Base):
     name = Column(Text, unique=True, nullable=False)
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
 
 # Кому какие площадки доступны. Роль admin видит все и в этой таблице не
@@ -55,6 +57,8 @@ class Tag(Base):
     name = Column(Text, nullable=False)
     parent_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"))
     color = Column(Text)
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (UniqueConstraint("site_id", "parent_id", "name"),)
 
@@ -93,6 +97,8 @@ class User(Base):
     failed_logins = Column(Integer, nullable=False, server_default="0")
     locked_until = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (CheckConstraint("role IN ('admin','editor','viewer')"),)
 
@@ -104,6 +110,8 @@ class DeviceType(Base):
     id = Column(Integer, primary_key=True)
     name = Column(Text, unique=True, nullable=False)
     code_prefix = Column(Text, unique=True, nullable=False)
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     templates = relationship("DeviceTemplate", back_populates="device_type")
 
@@ -128,6 +136,8 @@ class Vlan(Base):
     gateway = Column(INET)
     dhcp_range = Column(Text)
     notes = Column(Text)
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         UniqueConstraint("site_id", "vlan_number"),
@@ -157,6 +167,8 @@ class DeviceTemplate(Base):
     # устройства.
     ports_editable_on_device = Column(Boolean, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     device_type = relationship("DeviceType", back_populates="templates")
     # Порты отдаются в порядке гнёзд, а не в порядке заведения в базе:
@@ -183,6 +195,8 @@ class InterfaceTemplate(Base):
     # SFP. Режима (доступ/транк) здесь намеренно нет: он настраивается на
     # конкретной железке и в модели ничего не значит.
     connector_id = Column(Integer, ForeignKey("connector_types.id", ondelete="SET NULL"))
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (UniqueConstraint("template_id", "port_number"),)
 
@@ -207,6 +221,8 @@ class ConnectorType(Base):
     # Среда: по ней потом видно, что медный патч-корд воткнут в оптику.
     media = Column(Text, nullable=False, default="copper")
     is_cage = Column(Boolean, nullable=False, server_default="false")
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (CheckConstraint("media IN ('copper','fiber','other')"),)
 
@@ -228,6 +244,8 @@ class TransceiverModule(Base):
     # Что даёт наружу (LC, RJ45...).
     connector_id = Column(Integer, ForeignKey("connector_types.id", ondelete="SET NULL"))
     notes = Column(Text)
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     cage_connector = relationship("ConnectorType", foreign_keys=[cage_connector_id])
     connector = relationship("ConnectorType", foreign_keys=[connector_id])
@@ -265,6 +283,9 @@ class TopologyGroup(Base):
     y = Column(Float)
     width = Column(Float)
     height = Column(Float)
+    # Номер правки — см. app/versioning.py. Перетаскивание рамки (эндпоинт
+    # /box) его не трогает: это не правка записи, а положение на плане.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         UniqueConstraint("site_id", "name"),
@@ -453,6 +474,8 @@ class LinkTemplate(Base):
     cable_category = Column(Text)
     color = Column(Text, nullable=False, default="#888888")
     line_style = Column(Text, nullable=False, default="solid")
+    # Номер правки — см. app/versioning.py.
+    version = Column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         CheckConstraint("media_type IN ('copper','fiber','wireless','dac','other')"),

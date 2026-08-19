@@ -127,7 +127,13 @@ export function DeviceRow({
               </Table.Thead>
               <Table.Tbody>
                 {ifaces.map((i) => (
-                  <InterfaceRow key={i.id} iface={i} vlans={vlans} portsEditable={portsEditable} />
+                  // Номер правки — в ключе, а не только в проверке на
+                  // сохранении: строка держит поля формы в локальном
+                  // состоянии, и без этого правка порта другим человеком не
+                  // обновляла бы то, что видно на экране (ТЗ 1.6, остаток
+                  // E10 сплошной проверки). Ключ меняется — React
+                  // пересоздаёт строку заново со свежим снимком.
+                  <InterfaceRow key={`${i.id}-${i.version}`} iface={i} vlans={vlans} portsEditable={portsEditable} />
                 ))}
                 {ifaces.length === 0 && (
                   <Table.Tr>

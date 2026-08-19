@@ -9,7 +9,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import auth, models, schemas, sites
+from app import auth, models, schemas, sites, versioning
 from app.audit import log_change
 from app.database import get_db
 
@@ -42,9 +42,14 @@ def update_site(site_id: int, payload: schemas.SiteUpdate, db: Session = Depends
     site = db.get(models.Site, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Площадка не найдена")
+    versioning.check(site, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     old = {c.name: getattr(site, c.name) for c in site.__table__.columns}
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changed = versioning.differs(site, data)
+    for field, value in data.items():
         setattr(site, field, value)
+    if changed:
+        versioning.bump(site)
     log_change(db, user.id, "update", "site", site.id, old=old, new=site)
     db.commit()
     db.refresh(site)

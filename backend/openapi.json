@@ -309,6 +309,11 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -359,6 +364,17 @@
               }
             ],
             "title": "Name"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "ConnectorTypeUpdate",
@@ -1034,6 +1050,11 @@
             "default": false,
             "title": "Ports Editable On Device",
             "type": "boolean"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -1113,6 +1134,17 @@
               }
             ],
             "title": "Ports Editable On Device"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "DeviceTemplateUpdate",
@@ -1153,6 +1185,11 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -1191,6 +1228,17 @@
               }
             ],
             "title": "Name"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "DeviceTypeUpdate",
@@ -1916,6 +1964,11 @@
           "port_number": {
             "title": "Port Number",
             "type": "integer"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -1952,6 +2005,17 @@
               }
             ],
             "title": "Label"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "InterfaceTemplateUpdate",
@@ -2482,6 +2546,11 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -2562,6 +2631,17 @@
               }
             ],
             "title": "Name"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "LinkTemplateUpdate",
@@ -2925,6 +3005,11 @@
               }
             ],
             "title": "Notes"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -2960,6 +3045,17 @@
               }
             ],
             "title": "Notes"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "SiteUpdate",
@@ -3033,6 +3129,11 @@
               }
             ],
             "title": "Parent Id"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -3078,6 +3179,17 @@
               }
             ],
             "title": "Parent Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "TagUpdate",
@@ -3394,6 +3506,11 @@
             ],
             "title": "Parent Id"
           },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
           "width": {
             "anyOf": [
               {
@@ -3486,6 +3603,17 @@
               }
             ],
             "title": "Parent Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "TopologyGroupUpdate",
@@ -3740,6 +3868,11 @@
               }
             ],
             "title": "Notes"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -3796,6 +3929,17 @@
               }
             ],
             "title": "Notes"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "TransceiverModuleUpdate",
@@ -3875,6 +4019,11 @@
           "username": {
             "title": "Username",
             "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -3931,6 +4080,17 @@
               }
             ],
             "title": "Role"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "UserUpdate",
@@ -4102,6 +4262,11 @@
             ],
             "title": "Subnet"
           },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
           "vlan_number": {
             "title": "Vlan Number",
             "type": "integer"
@@ -4173,6 +4338,17 @@
               }
             ],
             "title": "Subnet"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           },
           "vlan_number": {
             "anyOf": [

@@ -98,7 +98,8 @@ function SiteFormModal({ site, onClose }: { site: SiteOut | null; onClose: () =>
     event.preventDefault();
     const body = { name: name.trim(), notes: notes.trim() || null };
     const done = { onSuccess: () => { notifySuccess('Сохранено'); onClose(); }, onError: notifyError };
-    if (site) update.mutate({ id: site.id, body }, done);
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+    if (site) update.mutate({ id: site.id, body: { ...body, version: site.version } }, done);
     else create.mutate(body, done);
   }
 

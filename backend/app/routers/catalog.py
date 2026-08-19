@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth, sites
+from app import models, schemas, auth, sites, versioning
 from app.audit import log_change
 
 router = APIRouter(tags=["catalog"])
@@ -43,7 +43,8 @@ def update_device_type(type_id: int, payload: schemas.DeviceTypeUpdate, db: Sess
     if not device_type:
         raise HTTPException(status_code=404, detail="Тип устройства не найден")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(device_type, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     if "code_prefix" in data:
         data["code_prefix"] = data["code_prefix"].upper()
     if "name" in data and db.query(models.DeviceType).filter(
@@ -56,8 +57,11 @@ def update_device_type(type_id: int, payload: schemas.DeviceTypeUpdate, db: Sess
         raise HTTPException(status_code=409, detail="Такой префикс кода уже используется другим типом")
 
     old = {c.name: getattr(device_type, c.name) for c in device_type.__table__.columns}
+    changed = versioning.differs(device_type, data)
     for field, value in data.items():
         setattr(device_type, field, value)
+    if changed:
+        versioning.bump(device_type)
     log_change(db, user.id, "update", "device_type", device_type.id, old=old, new=device_type)
     db.commit()
     db.refresh(device_type)
@@ -114,14 +118,18 @@ def update_connector_type(connector_id: int, payload: schemas.ConnectorTypeUpdat
     connector = db.get(models.ConnectorType, connector_id)
     if not connector:
         raise HTTPException(status_code=404, detail="Разъём не найден")
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(connector, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     if "name" in data and db.query(models.ConnectorType).filter(
         models.ConnectorType.name == data["name"], models.ConnectorType.id != connector_id
     ).first():
         raise HTTPException(status_code=409, detail="Разъём с таким названием уже есть")
     old = {c.name: getattr(connector, c.name) for c in connector.__table__.columns}
+    changed = versioning.differs(connector, data)
     for field, value in data.items():
         setattr(connector, field, value)
+    if changed:
+        versioning.bump(connector)
     log_change(db, user.id, "update", "connector_type", connector.id, old=old, new=connector)
     db.commit()
     db.refresh(connector)
@@ -203,15 +211,19 @@ def update_module(module_id: int, payload: schemas.TransceiverModuleUpdate, db: 
     module = db.get(models.TransceiverModule, module_id)
     if not module:
         raise HTTPException(status_code=404, detail="Модуль не найден")
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(module, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     if "name" in data and db.query(models.TransceiverModule).filter(
         models.TransceiverModule.name == data["name"], models.TransceiverModule.id != module_id
     ).first():
         raise HTTPException(status_code=409, detail="Модуль с таким названием уже есть")
     _check_connectors(db, data)
     old = {c.name: getattr(module, c.name) for c in module.__table__.columns}
+    changed = versioning.differs(module, data)
     for field, value in data.items():
         setattr(module, field, value)
+    if changed:
+        versioning.bump(module)
     log_change(db, user.id, "update", "transceiver_module", module.id, old=old, new=module)
     db.commit()
     db.refresh(module)
@@ -274,7 +286,8 @@ def update_vlan(vlan_id: int, payload: schemas.VlanUpdate, db: Session = Depends
     if not vlan:
         raise HTTPException(status_code=404, detail="VLAN не найден")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(vlan, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     new_number = data.get("vlan_number", vlan.vlan_number)
     if new_number != vlan.vlan_number and db.query(models.Vlan).filter(
         models.Vlan.vlan_number == new_number, models.Vlan.site_id == site_id
@@ -282,8 +295,11 @@ def update_vlan(vlan_id: int, payload: schemas.VlanUpdate, db: Session = Depends
         raise HTTPException(status_code=409, detail="VLAN с таким номером уже существует")
 
     old = {c.name: getattr(vlan, c.name) for c in vlan.__table__.columns}
+    changed = versioning.differs(vlan, data)
     for field, value in data.items():
         setattr(vlan, field, value)
+    if changed:
+        versioning.bump(vlan)
     log_change(db, user.id, "update", "vlan", vlan.id, old=old, new=vlan)
     db.commit()
     db.refresh(vlan)

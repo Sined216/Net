@@ -263,8 +263,11 @@ export function TemplateFormModal({ template, draftName, onClose, onCreated }: {
    * сохранённой модели — запросом, который доезжает до всех её устройств. */
   function changePort(port: InterfaceTemplateOut | DraftPort, patch: { label?: string; connector_id?: number | null }) {
     if (isEdit) {
+      const saved = port as InterfaceTemplateOut;
+      // Номер правки — тот, что видели в текущем списке портов: см.
+      // app/versioning.py.
       updatePort.mutate(
-        { templateId: template!.id, ifaceId: (port as InterfaceTemplateOut).id, body: patch },
+        { templateId: template!.id, ifaceId: saved.id, body: { ...patch, version: saved.version } },
         { onError: notifyError },
       );
     } else {
@@ -294,8 +297,9 @@ export function TemplateFormModal({ template, draftName, onClose, onCreated }: {
       ports_editable_on_device: portsEditable,
     };
     if (isEdit) {
+      // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
       updateTemplate.mutate(
-        { id: template!.id, body },
+        { id: template!.id, body: { ...body, version: template!.version } },
         { onSuccess: () => { notifySuccess('Шаблон обновлён'); onClose(); }, onError: notifyError },
       );
     } else {

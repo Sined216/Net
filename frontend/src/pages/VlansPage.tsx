@@ -104,7 +104,9 @@ function VlanFormModal({ vlan, onClose }: { vlan?: VlanOut; onClose: () => void 
     const body = { vlan_number: num, name: nn(name), subnet: nn(subnet), gateway: nn(gateway), dhcp_range: nn(dhcp), notes: nn(notes) };
     if (vlan) {
       updateVlan.mutate(
-        { id: vlan.id, body },
+        // Номер правки — тот, что видели при открытии формы: см.
+        // app/versioning.py. Разойдётся с текущим — сервер отобьёт 409.
+        { id: vlan.id, body: { ...body, version: vlan.version } },
         { onSuccess: () => { notifySuccess('VLAN сохранён'); onClose(); }, onError: notifyError },
       );
     } else {

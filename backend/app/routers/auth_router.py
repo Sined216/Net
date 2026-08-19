@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth
+from app import models, schemas, auth, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -135,15 +135,19 @@ def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db),
 def update_user(user_id: int, payload: schemas.UserUpdate, db: Session = Depends(get_db),
                 admin: models.User = Depends(auth.can_admin)):
     user = _get_user(db, user_id)
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(user, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
 
     losing_admin = (data.get("role") is not None and data["role"] != "admin") or data.get("is_active") is False
     if losing_admin:
         _assert_not_last_admin(db, user)
 
     old_snapshot = {"full_name": user.full_name, "role": user.role, "is_active": user.is_active}
+    changed = versioning.differs(user, data)
     for field, value in data.items():
         setattr(user, field, value)
+    if changed:
+        versioning.bump(user)
 
     log_change(db, admin.id, "update", "user", user.id, old=old_snapshot, new=data)
     db.commit()

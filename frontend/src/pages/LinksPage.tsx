@@ -212,7 +212,8 @@ function LinkTemplateFormModal({ template, onClose }: { template: LinkTemplateOu
     e.preventDefault();
     const body = { name: name.trim(), media_type: media as MediaType, cable_category: nn(cable), color, line_style: lineStyle as LineStyle };
     const onSuccess = () => { notifySuccess(isEdit ? 'Шаблон связи обновлён' : 'Шаблон связи создан'); onClose(); };
-    if (isEdit) updateLt.mutate({ id: template!.id, body }, { onSuccess, onError: notifyError });
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+    if (isEdit) updateLt.mutate({ id: template!.id, body: { ...body, version: template!.version } }, { onSuccess, onError: notifyError });
     else createLt.mutate(body, { onSuccess, onError: notifyError });
   }
 

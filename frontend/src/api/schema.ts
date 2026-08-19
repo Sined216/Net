@@ -1314,6 +1314,11 @@ export interface components {
             media: "copper" | "fiber" | "other";
             /** Name */
             name: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** ConnectorTypeUpdate */
         ConnectorTypeUpdate: {
@@ -1323,6 +1328,8 @@ export interface components {
             media?: ("copper" | "fiber" | "other") | null;
             /** Name */
             name?: string | null;
+            /** Version */
+            version?: number | null;
         };
         /** DatabaseSchema */
         DatabaseSchema: {
@@ -1560,6 +1567,11 @@ export interface components {
              * @default false
              */
             ports_editable_on_device: boolean;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** DeviceTemplateUpdate */
         DeviceTemplateUpdate: {
@@ -1575,6 +1587,8 @@ export interface components {
             notes?: string | null;
             /** Ports Editable On Device */
             ports_editable_on_device?: boolean | null;
+            /** Version */
+            version?: number | null;
         };
         /** DeviceTypeCreate */
         DeviceTypeCreate: {
@@ -1591,6 +1605,11 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /**
          * DeviceTypeUpdate
@@ -1602,6 +1621,8 @@ export interface components {
             code_prefix?: string | null;
             /** Name */
             name?: string | null;
+            /** Version */
+            version?: number | null;
         };
         /** DeviceUpdate */
         DeviceUpdate: {
@@ -1797,6 +1818,11 @@ export interface components {
             label: string;
             /** Port Number */
             port_number: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /**
          * InterfaceTemplateUpdate
@@ -1808,6 +1834,8 @@ export interface components {
             connector_id?: number | null;
             /** Label */
             label?: string | null;
+            /** Version */
+            version?: number | null;
         };
         /**
          * InterfaceUpdate
@@ -1991,6 +2019,11 @@ export interface components {
             media_type: "copper" | "fiber" | "wireless" | "dac" | "other";
             /** Name */
             name: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** LinkTemplateUpdate */
         LinkTemplateUpdate: {
@@ -2004,6 +2037,8 @@ export interface components {
             media_type?: ("copper" | "fiber" | "wireless" | "dac" | "other") | null;
             /** Name */
             name?: string | null;
+            /** Version */
+            version?: number | null;
         };
         /** LinkUpdate */
         LinkUpdate: {
@@ -2122,6 +2157,11 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** SiteUpdate */
         SiteUpdate: {
@@ -2129,6 +2169,8 @@ export interface components {
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Version */
+            version?: number | null;
         };
         /** TagCreate */
         TagCreate: {
@@ -2149,6 +2191,11 @@ export interface components {
             name: string;
             /** Parent Id */
             parent_id?: number | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** TagUpdate */
         TagUpdate: {
@@ -2158,6 +2205,8 @@ export interface components {
             name?: string | null;
             /** Parent Id */
             parent_id?: number | null;
+            /** Version */
+            version?: number | null;
         };
         /**
          * TemplateImpact
@@ -2269,6 +2318,11 @@ export interface components {
             name: string;
             /** Parent Id */
             parent_id?: number | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
             /** Width */
             width?: number | null;
             /** X */
@@ -2286,6 +2340,8 @@ export interface components {
             name?: string | null;
             /** Parent Id */
             parent_id?: number | null;
+            /** Version */
+            version?: number | null;
         };
         /**
          * TopologyNode
@@ -2367,6 +2423,11 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** TransceiverModuleUpdate */
         TransceiverModuleUpdate: {
@@ -2378,6 +2439,8 @@ export interface components {
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Version */
+            version?: number | null;
         };
         /** UserCreate */
         UserCreate: {
@@ -2416,6 +2479,11 @@ export interface components {
             role: "admin" | "editor" | "viewer";
             /** Username */
             username: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /**
          * UserUpdate
@@ -2430,6 +2498,8 @@ export interface components {
             is_active?: boolean | null;
             /** Role */
             role?: ("admin" | "editor" | "viewer") | null;
+            /** Version */
+            version?: number | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2469,6 +2539,11 @@ export interface components {
             notes?: string | null;
             /** Subnet */
             subnet?: string | null;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
             /** Vlan Number */
             vlan_number: number;
         };
@@ -2489,6 +2564,8 @@ export interface components {
             notes?: string | null;
             /** Subnet */
             subnet?: string | null;
+            /** Version */
+            version?: number | null;
             /** Vlan Number */
             vlan_number?: number | null;
         };

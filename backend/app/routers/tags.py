@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth, sites
+from app import models, schemas, auth, sites, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/tags", tags=["tags"])
@@ -66,7 +66,8 @@ def update_tag(tag_id: int, payload: schemas.TagUpdate, db: Session = Depends(ge
     if not tag:
         raise HTTPException(status_code=404, detail="Тег не найден")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(tag, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     new_parent_id = data.get("parent_id", tag.parent_id)
     if new_parent_id is not None:
         if new_parent_id == tag_id:
@@ -82,8 +83,11 @@ def update_tag(tag_id: int, payload: schemas.TagUpdate, db: Session = Depends(ge
         raise HTTPException(status_code=409, detail="У этого родителя уже есть тег с таким названием")
 
     old = {c.name: getattr(tag, c.name) for c in tag.__table__.columns}
+    changed = versioning.differs(tag, data)
     for field, value in data.items():
         setattr(tag, field, value)
+    if changed:
+        versioning.bump(tag)
     log_change(db, user.id, "update", "tag", tag.id, old=old, new=tag)
     db.commit()
     db.refresh(tag)

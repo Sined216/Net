@@ -95,7 +95,9 @@ export function GroupEditModal({
       return;
     }
 
-    updateGroup.mutate({ id: group!.id, body }, {
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+    // Перетаскивание рамки мышью сюда не заходит — у него свой маршрут /box.
+    updateGroup.mutate({ id: group!.id, body: { ...body, version: group!.version } }, {
       onSuccess: () => {
         // Состав применяется отдельными правками устройств: группа у
         // устройства — его собственное поле, а не список внутри группы.

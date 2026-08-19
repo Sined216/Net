@@ -42,6 +42,10 @@ class UserUpdate(BaseModel):
     """Правка чужой учётной записи администратором. Пароль сюда не входит —
     для него отдельный эндпоинт, чтобы случайная отправка формы не сбрасывала
     его молча."""
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     full_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     role: Optional[Role] = None
     is_active: Optional[bool] = None
@@ -69,6 +73,7 @@ class UserOut(BaseModel):
     is_active: bool
     must_change_password: bool
     created_at: datetime
+    version: int = 1
 
 
 class LoginRequest(BaseModel):
@@ -114,6 +119,10 @@ class SiteCreate(BaseModel):
 
 
 class SiteUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     notes: Optional[str] = Field(default=None, max_length=2000)
 
@@ -123,6 +132,7 @@ class SiteOut(BaseModel):
     id: int
     name: str
     notes: Optional[str] = None
+    version: int = 1
 
 
 class SiteAccessUpdate(BaseModel):
@@ -146,6 +156,10 @@ class TagCreate(TagBase):
 
 
 class TagUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     parent_id: Optional[int] = None
     color: Optional[str] = None
@@ -154,6 +168,7 @@ class TagUpdate(BaseModel):
 class TagOut(TagBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    version: int = 1
 
 
 # ---------- Topology group (отдельный от тегов параметр: одна группа на
@@ -182,6 +197,12 @@ class TopologyGroupCreate(BaseModel):
 
 
 class TopologyGroupUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    # Перетаскивание рамки (TopologyGroupBox) через эту схему не идёт —
+    # у него свой маршрут /box, и номер правки он не трогает.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     color: Optional[str] = None
     parent_id: Optional[int] = None
@@ -195,6 +216,7 @@ class TopologyGroupOut(BaseModel):
     color: Optional[str] = None
     parent_id: Optional[int] = None
     kind: GroupKind = "area"
+    version: int = 1
     # Пусто, пока рамку ни разу не двигали: тогда она считается по
     # содержимому, как было до появления ручной правки.
     x: Optional[float] = None
@@ -259,6 +281,10 @@ class DeviceTypeCreate(BaseModel):
 class DeviceTypeUpdate(BaseModel):
     """Правка типа. Смена префикса действует только на будущие устройства:
     коды уже заведённых напечатаны на наклейках и не переписываются."""
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     code_prefix: Optional[str] = Field(default=None, min_length=1, max_length=10)
 
@@ -268,6 +294,7 @@ class DeviceTypeOut(BaseModel):
     id: int
     name: str
     code_prefix: str
+    version: int = 1
 
 
 # ---------- Разъёмы и модули ----------
@@ -283,6 +310,10 @@ class ConnectorTypeCreate(ConnectorTypeBase):
 
 
 class ConnectorTypeUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=50)
     media: Optional[ConnectorMedia] = None
     is_cage: Optional[bool] = None
@@ -291,6 +322,7 @@ class ConnectorTypeUpdate(BaseModel):
 class ConnectorTypeOut(ConnectorTypeBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    version: int = 1
 
 
 class TransceiverModuleBase(BaseModel):
@@ -306,6 +338,10 @@ class TransceiverModuleCreate(TransceiverModuleBase):
 
 
 class TransceiverModuleUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     cage_connector_id: Optional[int] = None
     connector_id: Optional[int] = None
@@ -315,6 +351,7 @@ class TransceiverModuleUpdate(BaseModel):
 class TransceiverModuleOut(TransceiverModuleBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    version: int = 1
 
 
 # ---------- VLAN ----------
@@ -337,6 +374,10 @@ class VlanUpdate(BaseModel):
     """Опечатка в номере или подсети раньше лечилась только удалением VLAN
     и заведением заново — с потерей DHCP-диапазона и заметок, если их
     забыли переписать вручную. Здесь то же самое можно поправить на месте."""
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     vlan_number: Optional[int] = Field(default=None, ge=1, le=4094)
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     subnet: Optional[IPNetworkStr] = None
@@ -348,6 +389,7 @@ class VlanUpdate(BaseModel):
 class VlanOut(VlanBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    version: int = 1
 
 
 # ---------- Interface template (порт в шаблоне устройства) ----------
@@ -378,6 +420,10 @@ class PortsBulkCreate(BaseModel):
 class InterfaceTemplateUpdate(BaseModel):
     """Правка порта модели. Название и разъём разъезжаются по всем её
     устройствам: порт устройства — копия порта модели."""
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     label: Optional[str] = Field(default=None, min_length=1, max_length=100)
     connector_id: Optional[int] = None
 
@@ -388,6 +434,7 @@ class InterfaceTemplateOut(InterfaceTemplateBase):
     # Номер — место порта в ряду гнёзд, им порт и опознаётся. Ряд всегда
     # сплошной, поэтому номер назначает сервер, а не пользователь.
     port_number: int
+    version: int = 1
 
 
 # ---------- Device template (шаблон устройства/модель) ----------
@@ -409,6 +456,10 @@ class DeviceTemplateCreate(DeviceTemplateBase):
 
 
 class DeviceTemplateUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     device_type_id: Optional[int] = None
     manufacturer: Optional[str] = None
@@ -427,6 +478,7 @@ class TemplateImpact(BaseModel):
 class DeviceTemplateOut(DeviceTemplateBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    version: int = 1
     interfaces: List[InterfaceTemplateOut] = []
     # Сколько железок этой модели заведено на текущей площадке. Сам шаблон
     # общий для всех площадок, а счёт — местный: он отвечает на вопрос «что
@@ -659,6 +711,10 @@ class LinkTemplateCreate(LinkTemplateBase):
 
 
 class LinkTemplateUpdate(BaseModel):
+    # Номер правки, который клиент видел на экране. Расхождение с текущим
+    # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
+    # проверки нет: так ведут себя старые клиенты и служебные вызовы.
+    version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     media_type: Optional[MediaType] = None
     cable_category: Optional[str] = None
@@ -669,6 +725,7 @@ class LinkTemplateUpdate(BaseModel):
 class LinkTemplateOut(LinkTemplateBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    version: int = 1
 
 
 # ---------- Link ----------

@@ -111,7 +111,8 @@ export function TagFormModal({ tag, tags, draftName, onClose }: {
       notifySuccess(isEdit ? 'Тег обновлён' : 'Тег создан');
       onClose();
     };
-    if (isEdit) updateTag.mutate({ id: tag!.id, body }, { onSuccess, onError: notifyError });
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+    if (isEdit) updateTag.mutate({ id: tag!.id, body: { ...body, version: tag!.version } }, { onSuccess, onError: notifyError });
     else createTag.mutate(body, { onSuccess, onError: notifyError });
   }
 

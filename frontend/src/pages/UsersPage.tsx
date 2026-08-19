@@ -183,8 +183,9 @@ function EditUserModal({ user, onClose }: { user: UserOut; onClose: () => void }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
     updateUser.mutate(
-      { id: user.id, body: { full_name: fullName.trim(), role } },
+      { id: user.id, body: { full_name: fullName.trim(), role, version: user.version } },
       { onSuccess: () => { notifySuccess('Учётная запись обновлена'); onClose(); }, onError: notifyError },
     );
   }

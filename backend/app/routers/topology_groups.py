@@ -3,7 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth, sites
+from app import models, schemas, auth, sites, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/topology-groups", tags=["topology-groups"])
@@ -132,7 +132,8 @@ def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, d
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
 
-    data = payload.model_dump(exclude_unset=True)
+    versioning.check(group, payload.version)
+    data = payload.model_dump(exclude_unset=True, exclude={"version"})
     if "parent_id" in data:
         _check_parent(db, site_id, data["parent_id"], group_id)
     if data.get("kind") == "cabinet" and db.query(models.TopologyGroup).filter(
@@ -149,8 +150,11 @@ def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, d
         raise HTTPException(status_code=409, detail="Группа с таким названием уже существует")
 
     old = {c.name: getattr(group, c.name) for c in group.__table__.columns}
+    changed = versioning.differs(group, data)
     for field, value in data.items():
         setattr(group, field, value)
+    if changed:
+        versioning.bump(group)
     log_change(db, user.id, "update", "topology_group", group.id, old=old, new=group)
     db.commit()
     db.refresh(group)
