@@ -35,46 +35,48 @@ export function VlansPage() {
 
       {error && <Alert color="red">{(error as Error).message}</Alert>}
 
-      <Table withTableBorder verticalSpacing="xs">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>№</Table.Th>
-            <Table.Th>Название</Table.Th>
-            <Table.Th>Подсеть</Table.Th>
-            <Table.Th>Шлюз</Table.Th>
-            <Table.Th>DHCP-диапазон</Table.Th>
-            <Table.Th>Заметки</Table.Th>
-            <Table.Th w={80} />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {vlans.map((v) => (
-            <Table.Tr key={v.id}>
-              <Table.Td>{v.vlan_number}</Table.Td>
-              <Table.Td>{v.name || '—'}</Table.Td>
-              <Table.Td>{v.subnet || '—'}</Table.Td>
-              <Table.Td>{v.gateway || '—'}</Table.Td>
-              <Table.Td>{v.dhcp_range || '—'}</Table.Td>
-              <Table.Td>{v.notes || '—'}</Table.Td>
-              <Table.Td>
-                {canEdit && (
-                  <Group gap={4} wrap="nowrap">
-                    <EditAction label={`Изменить VLAN ${v.vlan_number}`} onClick={() => setEditing(v)} />
-                    <DeleteAction label={`Удалить VLAN ${v.vlan_number}`} onClick={() => handleDelete(v.id)} />
-                  </Group>
-                )}
-              </Table.Td>
-            </Table.Tr>
-          ))}
-          {!isLoading && vlans.length === 0 && (
+      <Table.ScrollContainer minWidth={900}>
+        <Table withTableBorder verticalSpacing="xs">
+          <Table.Thead>
             <Table.Tr>
-              <Table.Td colSpan={7}>
-                <Text c="dimmed">VLAN ещё не заведены</Text>
-              </Table.Td>
+              <Table.Th>№</Table.Th>
+              <Table.Th>Название</Table.Th>
+              <Table.Th>Подсеть</Table.Th>
+              <Table.Th>Шлюз</Table.Th>
+              <Table.Th>DHCP-диапазон</Table.Th>
+              <Table.Th>Заметки</Table.Th>
+              <Table.Th w={80} />
             </Table.Tr>
-          )}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {vlans.map((v) => (
+              <Table.Tr key={v.id}>
+                <Table.Td>{v.vlan_number}</Table.Td>
+                <Table.Td>{v.name || '—'}</Table.Td>
+                <Table.Td>{v.subnet || '—'}</Table.Td>
+                <Table.Td>{v.gateway || '—'}</Table.Td>
+                <Table.Td>{v.dhcp_range || '—'}</Table.Td>
+                <Table.Td>{v.notes || '—'}</Table.Td>
+                <Table.Td>
+                  {canEdit && (
+                    <Group gap={4} wrap="nowrap">
+                      <EditAction label={`Изменить VLAN ${v.vlan_number}`} onClick={() => setEditing(v)} />
+                      <DeleteAction label={`Удалить VLAN ${v.vlan_number}`} onClick={() => handleDelete(v.id)} />
+                    </Group>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            ))}
+            {!isLoading && vlans.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={7}>
+                  <Text c="dimmed">VLAN ещё не заведены</Text>
+                </Table.Td>
+              </Table.Tr>
+            )}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
 
       {opened && <VlanFormModal onClose={() => setOpened(false)} />}
       {editing && <VlanFormModal vlan={editing} onClose={() => setEditing(null)} />}

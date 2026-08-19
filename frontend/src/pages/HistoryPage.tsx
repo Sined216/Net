@@ -76,37 +76,39 @@ export function HistoryPage() {
 
       {error && <Alert color="red">{(error as Error).message}</Alert>}
 
-      <Table withTableBorder verticalSpacing="xs" horizontalSpacing="sm" striped>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th w={150}>Когда</Table.Th>
-            <Table.Th w={110}>Действие</Table.Th>
-            <Table.Th w={190}>Что</Table.Th>
-            <Table.Th w={170}>Кто</Table.Th>
-            <Table.Th>Изменения</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {items.map((entry) => (
-            <Table.Tr key={entry.id}>
-              <Table.Td><Text size="xs" c="dimmed">{formatMoment(entry.created_at)}</Text></Table.Td>
-              <Table.Td>
-                <Badge size="sm" variant="light" color={actionColor(entry.action)}>
-                  {actionLabel(entry.action)}
-                </Badge>
-              </Table.Td>
-              <Table.Td>
-                <Text size="sm">
-                  {entry.entity_label}
-                  {entry.entity_id != null && <Text span c="dimmed"> #{entry.entity_id}</Text>}
-                </Text>
-              </Table.Td>
-              <Table.Td><Text size="sm">{entry.user_name ?? '—'}</Text></Table.Td>
-              <Table.Td><AuditChanges entry={entry} /></Table.Td>
+      <Table.ScrollContainer minWidth={800}>
+        <Table withTableBorder verticalSpacing="xs" horizontalSpacing="sm" striped>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w={150}>Когда</Table.Th>
+              <Table.Th w={110}>Действие</Table.Th>
+              <Table.Th w={190}>Что</Table.Th>
+              <Table.Th w={170}>Кто</Table.Th>
+              <Table.Th>Изменения</Table.Th>
             </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {items.map((entry) => (
+              <Table.Tr key={entry.id}>
+                <Table.Td><Text size="xs" c="dimmed">{formatMoment(entry.created_at)}</Text></Table.Td>
+                <Table.Td>
+                  <Badge size="sm" variant="light" color={actionColor(entry.action)}>
+                    {actionLabel(entry.action)}
+                  </Badge>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm">
+                    {entry.entity_label}
+                    {entry.entity_id != null && <Text span c="dimmed"> #{entry.entity_id}</Text>}
+                  </Text>
+                </Table.Td>
+                <Table.Td><Text size="sm">{entry.user_name ?? '—'}</Text></Table.Td>
+                <Table.Td><AuditChanges entry={entry} /></Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
 
       {items.length === 0 && (
         <Text c="dimmed">{isLoading ? 'Загрузка…' : 'Записей нет'}</Text>

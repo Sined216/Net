@@ -56,48 +56,50 @@ export function LinksPage() {
         Шаблон задаёт среду передачи, категорию кабеля и оформление на топологии (цвет, стиль линии). Длина и разъём —
         свойства конкретной связи, в шаблон не входят.
       </Text>
-      <Table withTableBorder verticalSpacing="xs" mb="md">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Название</Table.Th>
-            <Table.Th>Среда</Table.Th>
-            <Table.Th>Категория</Table.Th>
-            <Table.Th>Цвет</Table.Th>
-            <Table.Th>Линия</Table.Th>
-            <Table.Th w={80} />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {linkTemplates.map((t) => (
-            <Table.Tr key={t.id}>
-              <Table.Td>{t.name}</Table.Td>
-              <Table.Td>{mediaTypeLabel(t.media_type)}</Table.Td>
-              <Table.Td>{t.cable_category || '—'}</Table.Td>
-              <Table.Td><span className="tag-badge-dot" style={{ background: t.color }} />{t.color}</Table.Td>
-              <Table.Td>{lineStyleLabel(t.line_style)}</Table.Td>
-              <Table.Td>
-                <Group gap={4}>
-                  {canEdit && (
-                    <EditAction label={`Изменить шаблон связи «${t.name}»`} onClick={() => setEditingLt(t)} />
-                  )}
-                  {canAdmin && (
-                    <DeleteAction
-                      label={`Удалить шаблон связи «${t.name}»`}
-                      onClick={async () => {
-                        if (!(await confirmAction('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.'))) return;
-                        deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
-                      }}
-                    />
-                  )}
-                </Group>
-              </Table.Td>
+      <Table.ScrollContainer minWidth={620}>
+        <Table withTableBorder verticalSpacing="xs" mb="md">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Название</Table.Th>
+              <Table.Th>Среда</Table.Th>
+              <Table.Th>Категория</Table.Th>
+              <Table.Th>Цвет</Table.Th>
+              <Table.Th>Линия</Table.Th>
+              <Table.Th w={80} />
             </Table.Tr>
-          ))}
-          {linkTemplates.length === 0 && (
-            <Table.Tr><Table.Td colSpan={6}><Text c="dimmed">Шаблонов связи ещё нет</Text></Table.Td></Table.Tr>
-          )}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {linkTemplates.map((t) => (
+              <Table.Tr key={t.id}>
+                <Table.Td>{t.name}</Table.Td>
+                <Table.Td>{mediaTypeLabel(t.media_type)}</Table.Td>
+                <Table.Td>{t.cable_category || '—'}</Table.Td>
+                <Table.Td><span className="tag-badge-dot" style={{ background: t.color }} />{t.color}</Table.Td>
+                <Table.Td>{lineStyleLabel(t.line_style)}</Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    {canEdit && (
+                      <EditAction label={`Изменить шаблон связи «${t.name}»`} onClick={() => setEditingLt(t)} />
+                    )}
+                    {canAdmin && (
+                      <DeleteAction
+                        label={`Удалить шаблон связи «${t.name}»`}
+                        onClick={async () => {
+                          if (!(await confirmAction('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.'))) return;
+                          deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
+                        }}
+                      />
+                    )}
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+            {linkTemplates.length === 0 && (
+              <Table.Tr><Table.Td colSpan={6}><Text c="dimmed">Шаблонов связи ещё нет</Text></Table.Td></Table.Tr>
+            )}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
 
       <Title order={2}>Связи между портами</Title>
       <Text c="dimmed" size="sm">
@@ -108,17 +110,18 @@ export function LinksPage() {
 
       {linksError && <Alert color="red">{(linksError as Error).message}</Alert>}
 
-      <Table withTableBorder verticalSpacing="xs">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Устройство A</Table.Th><Table.Th>Порт A</Table.Th>
-            <Table.Th>Устройство B</Table.Th><Table.Th>Порт B</Table.Th>
-            <Table.Th>Шаблон</Table.Th><Table.Th>Разъём</Table.Th><Table.Th>Длина, м</Table.Th>
-            <Table.Th>Источник</Table.Th><Table.Th>Состояние</Table.Th><Table.Th w={80} />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {links.map((l) => {
+      <Table.ScrollContainer minWidth={1050}>
+        <Table withTableBorder verticalSpacing="xs">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Устройство A</Table.Th><Table.Th>Порт A</Table.Th>
+              <Table.Th>Устройство B</Table.Th><Table.Th>Порт B</Table.Th>
+              <Table.Th>Шаблон</Table.Th><Table.Th>Разъём</Table.Th><Table.Th>Длина, м</Table.Th>
+              <Table.Th>Источник</Table.Th><Table.Th>Состояние</Table.Th><Table.Th w={80} />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {links.map((l) => {
             // Конец может пустовать: порт удалили (сняли сетевую карту), а
             // кабель остался проложен.
             const a = l.end_a ?? undefined;
@@ -171,8 +174,9 @@ export function LinksPage() {
           {links.length === 0 && (
             <Table.Tr><Table.Td colSpan={10}><Text c="dimmed">Связей ещё нет</Text></Table.Td></Table.Tr>
           )}
-        </Table.Tbody>
-      </Table>
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
       {links.length < total && (
         <Group justify="center">
           <Button variant="default" onClick={() => setShown((n) => n + PAGE)}>
