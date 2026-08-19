@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import {
-  ActionIcon, Badge, Button, Group, NumberInput, Table, Text, Tooltip,
+  Badge, Button, Group, NumberInput, Table, Text,
 } from '@mantine/core';
 import {
-  IconChevronDown, IconChevronRight, IconEdit, IconExternalLink, IconPlus, IconTrash,
+  IconChevronDown, IconChevronRight, IconExternalLink, IconPlus,
 } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDeviceInterfaces } from '../../api/hooks';
 import { notifyError, notifySuccess } from '../../lib/notify';
 import { confirmAction } from '../../lib/confirm';
+import { DeleteAction, EditAction, RowAction } from '../../components/RowAction';
 import { InterfaceRow } from './InterfaceRow';
 import type { DeviceListItem, DeviceTemplateOut, DeviceTypeOut, VlanOut } from '../../api/types';
 import { useCan } from '../../auth/permissions';
@@ -95,21 +96,16 @@ export function DeviceRow({
         </Table.Td>
         <Table.Td onClick={(e) => e.stopPropagation()}>
           <Group gap={2} wrap="nowrap" justify="flex-end">
-            <Tooltip label="Страница устройства">
-              <ActionIcon variant="subtle" size="sm" component={Link} to={`/devices/${device.id}`}>
-                <IconExternalLink size={15} />
-              </ActionIcon>
-            </Tooltip>
+            <RowAction
+              label={`Страница устройства «${device.code}»`}
+              icon={<IconExternalLink size={15} />}
+              component={Link}
+              to={`/devices/${device.id}`}
+            />
             {canEdit && (
               <>
-                <Tooltip label="Править">
-                  <ActionIcon variant="subtle" size="sm" onClick={onEdit}><IconEdit size={15} /></ActionIcon>
-                </Tooltip>
-                <Tooltip label="Удалить">
-                  <ActionIcon variant="subtle" size="sm" color="red" onClick={handleDelete}>
-                    <IconTrash size={15} />
-                  </ActionIcon>
-                </Tooltip>
+                <EditAction label={`Изменить «${device.code}»`} onClick={onEdit} />
+                <DeleteAction label={`Удалить «${device.code}»`} onClick={handleDelete} />
               </>
             )}
           </Group>

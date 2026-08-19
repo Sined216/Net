@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
-  ActionIcon, Badge, Button, Group, Modal, Select, Stack, Switch, Table, Text, TextInput, Title,
+  Badge, Button, Group, Modal, Select, Stack, Switch, Table, Text, TextInput, Title,
 } from '@mantine/core';
-import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus } from '@tabler/icons-react';
+import { DeleteAction, EditAction } from '../components/RowAction';
 import {
   useConnectorTypes, useCreateConnectorType, useCreateDeviceType, useCreateModule,
   useDeleteConnectorType, useDeleteDeviceType, useDeleteModule, useDeviceTypes, useModules,
@@ -78,22 +79,20 @@ function DeviceTypes() {
               <Table.Td>{t.name}</Table.Td>
               <Table.Td><Text ff="monospace">{t.code_prefix}</Text></Table.Td>
               <Table.Td>
-                <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
-                  <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(t)}>
-                    <IconPencil size={15} />
-                  </ActionIcon>
-                  {canAdmin && (
-                    <ActionIcon
-                      variant="subtle" size="sm" color="red"
-                      onClick={async () => {
-                        if (!(await confirmAction(`Удалить тип «${t.name}»?`))) return;
-                        deleteType.mutate(t.id, { onSuccess: () => notifySuccess('Тип удалён'), onError: notifyError });
-                      }}
-                    >
-                      <IconTrash size={15} />
-                    </ActionIcon>
-                  )}
-                </Group>
+                {canEdit && (
+                  <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <EditAction label={`Изменить тип «${t.name}»`} onClick={() => setEditing(t)} />
+                    {canAdmin && (
+                      <DeleteAction
+                        label={`Удалить тип «${t.name}»`}
+                        onClick={async () => {
+                          if (!(await confirmAction(`Удалить тип «${t.name}»?`))) return;
+                          deleteType.mutate(t.id, { onSuccess: () => notifySuccess('Тип удалён'), onError: notifyError });
+                        }}
+                      />
+                    )}
+                  </Group>
+                )}
               </Table.Td>
             </Table.Tr>
           ))}
@@ -185,24 +184,22 @@ function Connectors() {
               <Table.Td>{mediaLabel(c.media)}</Table.Td>
               <Table.Td>{c.is_cage && <Badge size="sm" variant="light" color="grape">под модуль</Badge>}</Table.Td>
               <Table.Td>
-                <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
-                  <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(c)}>
-                    <IconPencil size={15} />
-                  </ActionIcon>
-                  {canAdmin && (
-                    <ActionIcon
-                      variant="subtle" size="sm" color="red"
-                      onClick={async () => {
-                        if (!(await confirmAction(`Удалить разъём «${c.name}»?`))) return;
-                        deleteConnector.mutate(c.id, {
-                          onSuccess: () => notifySuccess('Разъём удалён'), onError: notifyError,
-                        });
-                      }}
-                    >
-                      <IconTrash size={15} />
-                    </ActionIcon>
-                  )}
-                </Group>
+                {canEdit && (
+                  <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <EditAction label={`Изменить разъём «${c.name}»`} onClick={() => setEditing(c)} />
+                    {canAdmin && (
+                      <DeleteAction
+                        label={`Удалить разъём «${c.name}»`}
+                        onClick={async () => {
+                          if (!(await confirmAction(`Удалить разъём «${c.name}»?`))) return;
+                          deleteConnector.mutate(c.id, {
+                            onSuccess: () => notifySuccess('Разъём удалён'), onError: notifyError,
+                          });
+                        }}
+                      />
+                    )}
+                  </Group>
+                )}
               </Table.Td>
             </Table.Tr>
           ))}
@@ -299,24 +296,22 @@ function Modules() {
               <Table.Td>{connectorName(m.connector_id)}</Table.Td>
               <Table.Td><Text size="sm" c="dimmed">{m.notes ?? '—'}</Text></Table.Td>
               <Table.Td>
-                <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
-                  <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(m)}>
-                    <IconPencil size={15} />
-                  </ActionIcon>
-                  {canAdmin && (
-                    <ActionIcon
-                      variant="subtle" size="sm" color="red"
-                      onClick={async () => {
-                        if (!(await confirmAction(`Удалить модуль «${m.name}»?`))) return;
-                        deleteModule.mutate(m.id, {
-                          onSuccess: () => notifySuccess('Модуль удалён'), onError: notifyError,
-                        });
-                      }}
-                    >
-                      <IconTrash size={15} />
-                    </ActionIcon>
-                  )}
-                </Group>
+                {canEdit && (
+                  <Group gap={2} justify="flex-end" wrap="nowrap">
+                    <EditAction label={`Изменить модуль «${m.name}»`} onClick={() => setEditing(m)} />
+                    {canAdmin && (
+                      <DeleteAction
+                        label={`Удалить модуль «${m.name}»`}
+                        onClick={async () => {
+                          if (!(await confirmAction(`Удалить модуль «${m.name}»?`))) return;
+                          deleteModule.mutate(m.id, {
+                            onSuccess: () => notifySuccess('Модуль удалён'), onError: notifyError,
+                          });
+                        }}
+                      />
+                    )}
+                  </Group>
+                )}
               </Table.Td>
             </Table.Tr>
           ))}

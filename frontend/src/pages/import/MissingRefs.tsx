@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActionIcon, Paper, Stack, Table, Text, Title, Tooltip } from '@mantine/core';
+import { Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
+import { RowAction } from '../../components/RowAction';
 import { useTags } from '../../api/hooks';
 import { GroupEditModal } from '../topology/GroupEditModal';
 import { TagFormModal } from '../TagsPage';
@@ -91,11 +92,7 @@ function NameTable({ title, names, onAdd }: {
             <Table.Tr key={name}>
               <Table.Td><Text size="sm">{name}</Text></Table.Td>
               <Table.Td>
-                <Tooltip label={`Завести «${name}»`}>
-                  <ActionIcon variant="subtle" size="sm" onClick={() => onAdd(name)}>
-                    <IconPlus size={16} />
-                  </ActionIcon>
-                </Tooltip>
+                <RowAction label={`Завести «${name}»`} icon={<IconPlus size={16} />} onClick={() => onAdd(name)} />
               </Table.Td>
             </Table.Tr>
           ))}

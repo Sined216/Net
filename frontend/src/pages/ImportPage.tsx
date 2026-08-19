@@ -3,8 +3,9 @@ import {
   ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Table, Text, Title, Tooltip, UnstyledButton,
 } from '@mantine/core';
 import {
-  IconArrowsSort, IconChevronDown, IconChevronUp, IconDotsVertical, IconPlus, IconTrash, IconUpload,
+  IconArrowsSort, IconChevronDown, IconChevronUp, IconDotsVertical, IconPlus, IconUpload,
 } from '@tabler/icons-react';
+import { DeleteAction, RowAction } from '../components/RowAction';
 import { Link } from 'react-router-dom';
 import {
   useClearImportRows, useDeleteImportRow, useDeviceTemplates, useImportRows, useUploadImportFile,
@@ -62,7 +63,9 @@ export function ImportPage() {
           {canEdit && rows.length > 0 && (
             <Menu>
               <Menu.Target>
-                <ActionIcon variant="default" size="lg"><IconDotsVertical size={16} /></ActionIcon>
+                <ActionIcon variant="default" size="lg" aria-label="Действия со строками импорта">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item
@@ -204,27 +207,25 @@ export function ImportPage() {
                     )}
                   </Table.Td>
                   <Table.Td>
-                    <Group gap={2} justify="flex-end" wrap="nowrap" display={canEdit ? undefined : 'none'}>
-                      {row.status === 'new' && (
-                        <Tooltip label="Завести устройство по этой строке">
-                          <ActionIcon variant="subtle" size="sm" onClick={() => setAdding(row)}>
-                            <IconPlus size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      )}
-                      <Tooltip label="Убрать строку из импорта">
-                        <ActionIcon
-                          variant="subtle" size="sm" color="red"
+                    {canEdit && (
+                      <Group gap={2} justify="flex-end" wrap="nowrap">
+                        {row.status === 'new' && (
+                          <RowAction
+                            label={`Завести устройство по строке №${row.row_number}`}
+                            icon={<IconPlus size={16} />}
+                            onClick={() => setAdding(row)}
+                          />
+                        )}
+                        <DeleteAction
+                          label={`Убрать строку №${row.row_number} из импорта`}
                           onClick={async () => {
                             if (!(await confirmAction('Убрать строку из импорта? Устройство это не тронет, но саму строку'
                               + ' придётся заново читать из файла.'))) return;
                             deleteRow.mutate(row.id, { onError: notifyError });
                           }}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
+                        />
+                      </Group>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}

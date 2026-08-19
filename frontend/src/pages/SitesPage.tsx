@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  ActionIcon, Alert, Button, Checkbox, Group, Modal, Stack, Table, Text, TextInput, Textarea,
-  Title, Tooltip,
+  Alert, Button, Checkbox, Group, Modal, Stack, Table, Text, TextInput, Textarea, Title,
 } from '@mantine/core';
-import { IconPencil, IconPlus, IconTrash, IconUsers } from '@tabler/icons-react';
+import { IconPlus, IconUsers } from '@tabler/icons-react';
+import { DeleteAction, EditAction, RowAction } from '../components/RowAction';
 import {
   useCreateSite, useDeleteSite, useSetSiteAccess, useSiteAccess, useSites, useUpdateSite, useUsers,
 } from '../api/hooks';
@@ -57,29 +57,21 @@ export function SitesPage() {
               <Table.Td><Text size="sm" c="dimmed">{site.notes || '—'}</Text></Table.Td>
               <Table.Td>
                 <Group gap={2} justify="flex-end" wrap="nowrap">
-                  <Tooltip label="Кому доступна">
-                    <ActionIcon variant="subtle" size="sm" onClick={() => setSharing(site)}>
-                      <IconUsers size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Переименовать">
-                    <ActionIcon variant="subtle" size="sm" onClick={() => setEditing(site)}>
-                      <IconPencil size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Удалить — только пустую">
-                    <ActionIcon
-                      variant="subtle" size="sm" color="red"
-                      onClick={async () => {
-                        if (!(await confirmAction(`Удалить площадку «${site.name}»? Вместе с ней исчезнут её теги, VLAN и группы.`))) return;
-                        remove.mutate(site.id, {
-                          onSuccess: () => notifySuccess('Площадка удалена'), onError: notifyError,
-                        });
-                      }}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Tooltip>
+                  <RowAction
+                    label={`Кому доступна площадка «${site.name}»`}
+                    icon={<IconUsers size={16} />}
+                    onClick={() => setSharing(site)}
+                  />
+                  <EditAction label={`Переименовать площадку «${site.name}»`} onClick={() => setEditing(site)} />
+                  <DeleteAction
+                    label={`Удалить площадку «${site.name}»`}
+                    onClick={async () => {
+                      if (!(await confirmAction(`Удалить площадку «${site.name}»? Вместе с ней исчезнут её теги, VLAN и группы.`))) return;
+                      remove.mutate(site.id, {
+                        onSuccess: () => notifySuccess('Площадка удалена'), onError: notifyError,
+                      });
+                    }}
+                  />
                 </Group>
               </Table.Td>
             </Table.Tr>

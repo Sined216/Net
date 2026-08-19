@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActionIcon, Badge, Group, Select, Table, Text, TextInput } from '@mantine/core';
-import { IconCheck, IconPlugConnected, IconTrash } from '@tabler/icons-react';
+import { Badge, Group, Select, Table, Text, TextInput } from '@mantine/core';
+import { IconCheck, IconPlugConnected } from '@tabler/icons-react';
+import { DeleteAction, RowAction } from '../../components/RowAction';
 import {
   useAttachLinkEnd, useCreateLink, useDeleteInterface, useDeleteLink, useFreePorts, useModules,
   useUpdateInterface,
@@ -172,7 +173,7 @@ export function InterfaceRow({
           <Group gap={4} wrap="nowrap">
             <Text size="xs" c="teal">→ {iface.connected_to.device_code} · {iface.connected_to.interface_label}</Text>
             {canEdit && (
-              <ActionIcon size="sm" variant="subtle" color="red" onClick={disconnect}><IconTrash size={14} /></ActionIcon>
+              <DeleteAction label={`Убрать связь у порта №${iface.port_number}`} size={14} onClick={disconnect} />
             )}
           </Group>
         ) : !canEdit ? (
@@ -188,29 +189,31 @@ export function InterfaceRow({
               size="xs" w={150} placeholder="повис — куда воткнуть?" data={connectData}
               value={connectTarget} onChange={setConnectTarget} searchable
             />
-            <ActionIcon size="sm" variant="subtle" color="orange" onClick={attach} title="Подключить второй конец">
-              <IconPlugConnected size={14} />
-            </ActionIcon>
-            <ActionIcon size="sm" variant="subtle" color="red" onClick={disconnect} title="Убрать кабель">
-              <IconTrash size={14} />
-            </ActionIcon>
+            <RowAction
+              label={`Подключить второй конец кабеля к порту №${iface.port_number}`}
+              icon={<IconPlugConnected size={14} />}
+              color="orange" onClick={attach}
+            />
+            <DeleteAction label={`Убрать кабель у порта №${iface.port_number}`} size={14} onClick={disconnect} />
           </Group>
         ) : (
           <Group gap={4} wrap="nowrap">
             <Select size="xs" w={150} placeholder="— свободен —" data={connectData} value={connectTarget} onChange={setConnectTarget} searchable />
-            <ActionIcon size="sm" variant="subtle" onClick={connect}>
-              <IconCheck size={14} />
-            </ActionIcon>
+            <RowAction
+              label={`Подключить порт №${iface.port_number}`}
+              icon={<IconCheck size={14} />}
+              onClick={connect}
+            />
           </Group>
         )}
       </Table.Td>
       <Table.Td>
         <Group gap={4} wrap="nowrap">
-          {canEdit && <ActionIcon size="sm" variant="subtle" onClick={save}><IconCheck size={14} /></ActionIcon>}
+          {canEdit && (
+            <RowAction label={`Сохранить порт №${iface.port_number}`} icon={<IconCheck size={14} />} onClick={save} />
+          )}
           {portsEditable && canEdit && (
-            <ActionIcon size="sm" variant="subtle" color="red" onClick={remove} title="Убрать порт">
-              <IconTrash size={14} />
-            </ActionIcon>
+            <DeleteAction label={`Убрать порт №${iface.port_number}`} size={14} onClick={remove} />
           )}
         </Group>
       </Table.Td>

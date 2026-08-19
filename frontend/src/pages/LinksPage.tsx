@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import {
-  ActionIcon, Alert, Badge, Button, ColorInput, Group, Modal, Select,
+  Alert, Badge, Button, ColorInput, Group, Modal, Select,
   Stack, Table, Text, TextInput, Title,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus } from '@tabler/icons-react';
+import { DeleteAction, EditAction } from '../components/RowAction';
 import {
   useCreateLinkTemplate, useDeleteLink, useDeleteLinkTemplate,
   useLinkTemplates, useLinks, useUpdateLinkTemplate,
@@ -77,18 +78,16 @@ export function LinksPage() {
               <Table.Td>
                 <Group gap={4}>
                   {canEdit && (
-                    <ActionIcon variant="subtle" onClick={() => setEditingLt(t)}><IconEdit size={16} /></ActionIcon>
+                    <EditAction label={`Изменить шаблон связи «${t.name}»`} onClick={() => setEditingLt(t)} />
                   )}
                   {canAdmin && (
-                    <ActionIcon
-                      variant="subtle" color="red"
+                    <DeleteAction
+                      label={`Удалить шаблон связи «${t.name}»`}
                       onClick={async () => {
                         if (!(await confirmAction('Удалить шаблон связи? У существующих связей с этим шаблоном он просто снимется, сами связи останутся.'))) return;
                         deleteLt.mutate(t.id, { onSuccess: () => notifySuccess('Шаблон связи удалён'), onError: notifyError });
                       }}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
+                    />
                   )}
                 </Group>
               </Table.Td>
@@ -151,16 +150,17 @@ export function LinksPage() {
                   <Group gap={4}>
                     {canEdit && (
                       <>
-                        <ActionIcon variant="subtle" onClick={() => setEditingLink(l)}><IconEdit size={16} /></ActionIcon>
-                        <ActionIcon
-                          variant="subtle" color="red"
+                        <EditAction
+                          label={`Изменить связь ${a?.device_code ?? '—'} — ${b?.device_code ?? '—'}`}
+                          onClick={() => setEditingLink(l)}
+                        />
+                        <DeleteAction
+                          label={`Удалить связь ${a?.device_code ?? '—'} — ${b?.device_code ?? '—'}`}
                           onClick={async () => {
                             if (!(await confirmAction('Удалить связь? Оба порта снова станут свободными.'))) return;
                             deleteLink.mutate(l.id, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
                           }}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        />
                       </>
                     )}
                   </Group>

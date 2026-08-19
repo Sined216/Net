@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import {
-  ActionIcon, Anchor, Badge, Button, Card, Group, NumberInput, Paper, Stack, Table, Text, Title,
+  Anchor, Badge, Button, Card, Group, NumberInput, Paper, Stack, Table, Text, Title,
 } from '@mantine/core';
 import { IconArrowLeft, IconEdit, IconPlus, IconTopologyStar, IconTrash } from '@tabler/icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDevice, useDeviceTemplates, useDeviceTypes, useVlans,
 } from '../api/hooks';
+import { RowAction } from '../components/RowAction';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { confirmAction } from '../lib/confirm';
 import { deviceRoleLabel } from '../lib/enumLabels';
@@ -85,9 +86,7 @@ export function DevicePage() {
     <Stack>
       <Group justify="space-between" wrap="wrap">
         <Group gap="xs">
-          <ActionIcon variant="subtle" component={Link} to="/devices" aria-label="К списку">
-            <IconArrowLeft size={18} />
-          </ActionIcon>
+          <RowAction label="К списку устройств" icon={<IconArrowLeft size={18} />} size="md" component={Link} to="/devices" />
           <Title order={2}>{device.code}</Title>
           <Text c="dimmed" size="lg">{device.name || template?.name || '—'}</Text>
         </Group>

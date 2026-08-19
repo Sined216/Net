@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActionIcon, Badge, Button, Group, Modal, NumberInput, Select, Stack,
+  Badge, Button, Group, Modal, NumberInput, Select, Stack,
   Table, Text, TextInput, Textarea, Title, Card, Collapse, ColorInput, Switch, Alert, UnstyledButton,
 } from '@mantine/core';
 import {
-  IconChevronDown, IconChevronRight, IconCopy, IconEdit, IconPlus, IconTrash,
+  IconChevronDown, IconChevronRight, IconCopy, IconPlus,
 } from '@tabler/icons-react';
+import { DeleteAction, EditAction, RowAction } from '../components/RowAction';
 import {
   useAddTemplateInterface, useAddTemplateInterfacesBulk, useConnectorTypes, useCopyDeviceTemplate, useCreateDeviceTemplate, useTemplateImpact,
   useDeleteDeviceTemplate, useDeleteTemplateInterface, useDeviceTemplates, useDeviceTypes,
@@ -95,32 +96,28 @@ export function TemplatesPage() {
                         </Badge>
                       </Group>
                     </UnstyledButton>
-                    <Group gap={4} display={canEdit ? undefined : 'none'}>
-                      <ActionIcon variant="subtle" onClick={() => setEditingTemplate(tpl)} title="Правка">
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle" title="Копия модели со всеми портами"
-                        onClick={() => copyTemplate.mutate(tpl.id, {
-                          onSuccess: (created) => notifySuccess(`Создан шаблон «${created.name}»`),
-                          onError: notifyError,
-                        })}
-                      >
-                        <IconCopy size={16} />
-                      </ActionIcon>
-                      {canAdmin && (
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={async () => {
-                            if (!(await confirmAction(`Удалить шаблон "${tpl.name}"?`))) return;
-                            deleteTemplate.mutate(tpl.id, { onSuccess: () => notifySuccess('Шаблон удалён'), onError: notifyError });
-                          }}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      )}
-                    </Group>
+                    {canEdit && (
+                      <Group gap={4}>
+                        <EditAction label={`Изменить шаблон «${tpl.name}»`} onClick={() => setEditingTemplate(tpl)} />
+                        <RowAction
+                          label={`Копия шаблона «${tpl.name}» со всеми портами`}
+                          icon={<IconCopy size={16} />}
+                          onClick={() => copyTemplate.mutate(tpl.id, {
+                            onSuccess: (created) => notifySuccess(`Создан шаблон «${created.name}»`),
+                            onError: notifyError,
+                          })}
+                        />
+                        {canAdmin && (
+                          <DeleteAction
+                            label={`Удалить шаблон «${tpl.name}»`}
+                            onClick={async () => {
+                              if (!(await confirmAction(`Удалить шаблон "${tpl.name}"?`))) return;
+                              deleteTemplate.mutate(tpl.id, { onSuccess: () => notifySuccess('Шаблон удалён'), onError: notifyError });
+                            }}
+                          />
+                        )}
+                      </Group>
+                    )}
                   </Group>
                   <Collapse expanded={expanded === tpl.id}>
                     <Stack mt="sm" gap={4}>
@@ -473,9 +470,7 @@ function PortRow({ port, connectors, onChange, onRemove }: {
       </Table.Td>
       <Table.Td>
         <Group gap={2} wrap="nowrap" justify="flex-end">
-          <ActionIcon variant="subtle" color="red" size="sm" onClick={onRemove} title="Убрать порт">
-            <IconTrash size={14} />
-          </ActionIcon>
+          <DeleteAction label={`Убрать порт №${port.port_number}`} size={14} onClick={onRemove} />
         </Group>
       </Table.Td>
     </Table.Tr>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActionIcon, Alert, Button, Group, Modal, NumberInput, Stack, Table, Text, TextInput, Title } from '@mantine/core';
-import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { Alert, Button, Group, Modal, NumberInput, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
+import { DeleteAction, EditAction } from '../components/RowAction';
 import { useCreateVlan, useDeleteVlan, useUpdateVlan, useVlans } from '../api/hooks';
 import { nn } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
@@ -58,12 +59,8 @@ export function VlansPage() {
               <Table.Td>
                 {canEdit && (
                   <Group gap={4} wrap="nowrap">
-                    <ActionIcon variant="subtle" onClick={() => setEditing(v)} title="Изменить">
-                      <IconPencil size={16} />
-                    </ActionIcon>
-                    <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(v.id)} title="Удалить">
-                      <IconTrash size={16} />
-                    </ActionIcon>
+                    <EditAction label={`Изменить VLAN ${v.vlan_number}`} onClick={() => setEditing(v)} />
+                    <DeleteAction label={`Удалить VLAN ${v.vlan_number}`} onClick={() => handleDelete(v.id)} />
                   </Group>
                 )}
               </Table.Td>

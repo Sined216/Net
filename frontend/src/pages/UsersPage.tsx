@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import {
-  ActionIcon, Alert, Badge, Button, Group, Modal, PasswordInput, Select, Stack, Table, Text,
-  TextInput, Title, Tooltip,
+  Alert, Badge, Button, Group, Modal, PasswordInput, Select, Stack, Table, Text,
+  TextInput, Title,
 } from '@mantine/core';
-import { IconKey, IconLock, IconLockOpen, IconPencil, IconPlus } from '@tabler/icons-react';
+import { IconKey, IconLock, IconLockOpen, IconPlus } from '@tabler/icons-react';
+import { EditAction, RowAction } from '../components/RowAction';
 import {
   useCreateUser, useDeactivateUser, useResetUserPassword, useUpdateUser, useUsers,
 } from '../api/hooks';
@@ -85,27 +86,20 @@ export function UsersPage() {
               <Table.Td>{new Date(u.created_at).toLocaleString('ru-RU')}</Table.Td>
               <Table.Td>
                 <Group gap={4} wrap="nowrap">
-                  <Tooltip label="Имя и роль">
-                    <ActionIcon variant="subtle" onClick={() => setEditing(u)}>
-                      <IconPencil size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label="Задать новый пароль">
-                    <ActionIcon variant="subtle" onClick={() => setResetting(u)}>
-                      <IconKey size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label={u.is_active ? 'Заблокировать' : 'Восстановить доступ'}>
-                    <ActionIcon
-                      variant="subtle"
-                      color={u.is_active ? 'red' : 'green'}
-                      // Себя блокировать нельзя — бэкенд тоже это отклонит.
-                      disabled={u.is_active && u.id === me?.id}
-                      onClick={() => toggleActive(u)}
-                    >
-                      {u.is_active ? <IconLock size={16} /> : <IconLockOpen size={16} />}
-                    </ActionIcon>
-                  </Tooltip>
+                  <EditAction label={`Изменить имя и роль «${u.full_name}»`} onClick={() => setEditing(u)} />
+                  <RowAction
+                    label={`Задать новый пароль «${u.full_name}»`}
+                    icon={<IconKey size={16} />}
+                    onClick={() => setResetting(u)}
+                  />
+                  <RowAction
+                    label={u.is_active ? `Заблокировать «${u.full_name}»` : `Восстановить доступ «${u.full_name}»`}
+                    icon={u.is_active ? <IconLock size={16} /> : <IconLockOpen size={16} />}
+                    color={u.is_active ? 'red' : 'green'}
+                    // Себя блокировать нельзя — бэкенд тоже это отклонит.
+                    disabled={u.is_active && u.id === me?.id}
+                    onClick={() => toggleActive(u)}
+                  />
                 </Group>
               </Table.Td>
             </Table.Tr>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActionIcon, Alert, Button, ColorInput, Group, Modal, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
+import { Alert, Button, ColorInput, Group, Modal, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
+import { DeleteAction, EditAction } from '../components/RowAction';
 import { useCreateTag, useDeleteTag, useTags, useUpdateTag } from '../api/hooks';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
@@ -59,12 +60,8 @@ export function TagsPage() {
                 <Group gap={4} justify="flex-end">
                   {canEdit && (
                     <>
-                      <ActionIcon variant="subtle" onClick={() => setEditing(tag)}>
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(tag)}>
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                      <EditAction label={`Изменить тег «${tag.name}»`} onClick={() => setEditing(tag)} />
+                      <DeleteAction label={`Удалить тег «${tag.name}»`} onClick={() => handleDelete(tag)} />
                     </>
                   )}
                 </Group>
