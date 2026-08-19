@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Group, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Button, Group, Select, Stack, Table, Text, TextInput, Title, Tooltip } from '@mantine/core';
 import { IconFilterOff, IconPlus } from '@tabler/icons-react';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
@@ -121,7 +121,11 @@ export function DevicesPage() {
               <Table.Th w={150}>MAC</Table.Th>
               <Table.Th w={140}>Группа</Table.Th>
               <Table.Th>Теги</Table.Th>
-              <Table.Th w={80}>Порты</Table.Th>
+              <Table.Th w={80}>
+                <Tooltip label="Занято портов / всего">
+                  <Text span size="sm" fw={700} style={{ textDecoration: 'underline dotted' }}>Порты</Text>
+                </Tooltip>
+              </Table.Th>
               <Table.Th w={100} />
             </Table.Tr>
             <Table.Tr>

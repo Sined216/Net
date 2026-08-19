@@ -12,7 +12,7 @@ import {
   useDeleteDeviceTemplate, useDeleteTemplateInterface, useDeviceTemplates, useDeviceTypes,
   useUpdateDeviceTemplate, useUpdateTemplateInterface,
 } from '../api/hooks';
-import { nn } from '../lib/utils';
+import { nn, withCountRu } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { confirmAction } from '../lib/confirm';
 import type { ConnectorTypeOut, DeviceTemplateOut, InterfaceTemplateOut } from '../api/types';
@@ -50,6 +50,19 @@ export function TemplatesPage() {
       devices: list.reduce((sum, t) => sum + t.devices_count, 0),
     }));
 
+  // Первая группа раскрыта сама — при нескольких типах и десятке моделей
+  // список иначе встречает пустотой, и первым действием оказывается клик по
+  // тому единственному, что там вообще есть (находка 12 проверки удобства).
+  // Ставится один раз при загрузке: свернуть эту группу или раскрыть другую
+  // остаётся обычным кликом, автооткрытие в это не вмешивается повторно.
+  const firstGroupId = byType.length > 0 ? (byType[0].type?.id ?? 0) : null;
+  const autoOpenedType = useRef(false);
+  useEffect(() => {
+    if (autoOpenedType.current || firstGroupId === null) return;
+    autoOpenedType.current = true;
+    setOpenType(firstGroupId);
+  }, [firstGroupId]);
+
   return (
     <Stack>
       <EquipmentTabs />
@@ -75,8 +88,10 @@ export function TemplatesPage() {
             <Group gap="xs" py={4}>
               {openType === (type?.id ?? 0) ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
               <Text fw={700}>{type?.name ?? 'Без типа'}</Text>
-              <Badge variant="light" color="gray">{list.length} шаблон(ов)</Badge>
-              <Badge variant="light" color={devices > 0 ? 'teal' : 'gray'}>{devices} устройств(а)</Badge>
+              <Badge variant="light" color="gray">{withCountRu(list.length, 'шаблон', 'шаблона', 'шаблонов')}</Badge>
+              <Badge variant="light" color={devices > 0 ? 'teal' : 'gray'}>
+                {withCountRu(devices, 'устройство', 'устройства', 'устройств')}
+              </Badge>
             </Group>
           </UnstyledButton>
           <Collapse expanded={openType === (type?.id ?? 0)}>
@@ -90,9 +105,11 @@ export function TemplatesPage() {
                         <Text fw={600}>{tpl.name}</Text>
                         {tpl.color && <span className="tag-badge-dot" style={{ background: tpl.color }} />}
                         {tpl.manufacturer && <Text c="dimmed">{tpl.manufacturer}</Text>}
-                        <Badge variant="light" color="gray">{tpl.interfaces.length} порт(ов)</Badge>
+                        <Badge variant="light" color="gray">
+                          {withCountRu(tpl.interfaces.length, 'порт', 'порта', 'портов')}
+                        </Badge>
                         <Badge variant="light" color={tpl.devices_count > 0 ? 'teal' : 'gray'}>
-                          {tpl.devices_count} устройств(а)
+                          {withCountRu(tpl.devices_count, 'устройство', 'устройства', 'устройств')}
                         </Badge>
                       </Group>
                     </UnstyledButton>

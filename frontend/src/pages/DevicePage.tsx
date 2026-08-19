@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Anchor, Badge, Button, Card, Group, NumberInput, Paper, Stack, Table, Text, Title,
 } from '@mantine/core';
@@ -37,6 +37,14 @@ export function DevicePage() {
   const deleteDevice = useDeleteDevice();
   const [bulkCount, setBulkCount] = useState<number | ''>(24);
   const [editing, setEditing] = useState(false);
+
+  // AppLayout уже поставил заголовок «Устройство — WireMap» как запасной —
+  // здесь он уточняется до кода конкретной железки, только когда она
+  // известна: несколько открытых карточек иначе было не различить по
+  // вкладкам (находка 8 проверки удобства).
+  useEffect(() => {
+    if (device) document.title = `${device.code} — WireMap`;
+  }, [device]);
 
   const template = templates.find((t) => t.id === device?.template_id);
   const typeName = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '—' : '—';

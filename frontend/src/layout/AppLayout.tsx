@@ -64,6 +64,29 @@ const NAV_SECTIONS: {
   },
 ];
 
+/** Заголовок вкладки браузера по разделу — раньше везде было голое
+ * «WireMap», и несколько открытых вкладок было не различить (находка 8
+ * проверки удобства). Порядок важен: «/devices/» проверяется раньше
+ * «/devices», иначе карточка устройства получала бы заголовок списка.
+ * Для самой карточки это только запасной вариант — код устройства в
+ * заголовке ставит DevicePage, как только он известен. */
+const PAGE_TITLES: { test: (path: string) => boolean; title: string }[] = [
+  { test: (p) => p.startsWith('/devices/'), title: 'Устройство' },
+  { test: (p) => p === '/devices', title: 'Оборудование' },
+  { test: (p) => p === '/templates', title: 'Шаблоны' },
+  { test: (p) => p === '/catalog', title: 'Справочники' },
+  { test: (p) => p === '/links', title: 'Связи' },
+  { test: (p) => p === '/topology', title: 'Топология' },
+  { test: (p) => p === '/search', title: 'Поиск' },
+  { test: (p) => p === '/tags', title: 'Теги' },
+  { test: (p) => p === '/vlans', title: 'VLAN' },
+  { test: (p) => p === '/import', title: 'Импорт' },
+  { test: (p) => p === '/history', title: 'История' },
+  { test: (p) => p === '/schema', title: 'Структура БД' },
+  { test: (p) => p === '/sites', title: 'Площадки' },
+  { test: (p) => p === '/users', title: 'Пользователи' },
+];
+
 export function AppLayout() {
   const { user, signOut } = useAuth();
   const { sites, siteId, selectSite } = useSite();
@@ -76,6 +99,11 @@ export function AppLayout() {
   // страницы.
   const [navOpened, setNavOpened] = useState(false);
   useEffect(() => setNavOpened(false), [pathname]);
+
+  useEffect(() => {
+    const page = PAGE_TITLES.find(({ test }) => test(pathname));
+    document.title = page ? `${page.title} — WireMap` : 'WireMap';
+  }, [pathname]);
 
   // Пароль назначен не владельцем — до смены работать нельзя. Модалка без
   // крестика, мимо неё не пройти.
