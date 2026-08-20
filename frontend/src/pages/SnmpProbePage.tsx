@@ -314,7 +314,7 @@ export function SnmpProbePage() {
       )}
 
       {result && (
-        <Stack maw={900}>
+        <Stack maw={1100}>
           <Text size="xs" c="dimmed">Опрос занял {result.elapsed_ms} мс</Text>
 
           {!result.ok && (
@@ -347,13 +347,14 @@ export function SnmpProbePage() {
               {result.interfaces.length === 0 ? (
                 <Text c="dimmed" size="sm">Устройство не отдало ни одного порта.</Text>
               ) : (
-                <Table.ScrollContainer minWidth={760}>
+                <Table.ScrollContainer minWidth={1050}>
                   <Table verticalSpacing={4} highlightOnHover>
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Псевдоним</Table.Th>
-                        <Table.Th>Тип</Table.Th><Table.Th>Скорость</Table.Th><Table.Th>MAC</Table.Th>
-                        <Table.Th>VLAN</Table.Th><Table.Th>Состояние</Table.Th>
+                        <Table.Th>Тип</Table.Th><Table.Th>Скорость</Table.Th><Table.Th>MTU</Table.Th>
+                        <Table.Th>MAC</Table.Th><Table.Th>VLAN</Table.Th>
+                        <Table.Th w={120}>Админ.</Table.Th><Table.Th w={150}>Рабочее состояние</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
@@ -369,9 +370,15 @@ export function SnmpProbePage() {
                           <Table.Td>{iface.alias ?? '—'}</Table.Td>
                           <Table.Td>{iface.type_label ?? (iface.type_raw != null ? `тип ${iface.type_raw}` : '—')}</Table.Td>
                           <Table.Td>{formatSpeed(iface.speed_bps)}</Table.Td>
+                          <Table.Td>{iface.mtu ?? '—'}</Table.Td>
                           <Table.Td ff="monospace">{iface.mac ?? '—'}</Table.Td>
                           <Table.Td>{iface.vlan ?? '—'}</Table.Td>
-                          <Table.Td>
+                          <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                            {iface.admin_status
+                              ? <Badge size="sm" variant="light" color={STATUS_COLOR[iface.admin_status] ?? 'orange'}>{iface.admin_status}</Badge>
+                              : '—'}
+                          </Table.Td>
+                          <Table.Td style={{ whiteSpace: 'nowrap' }}>
                             {iface.oper_status
                               ? <Badge size="sm" variant="light" color={STATUS_COLOR[iface.oper_status] ?? 'orange'}>{iface.oper_status}</Badge>
                               : '—'}
