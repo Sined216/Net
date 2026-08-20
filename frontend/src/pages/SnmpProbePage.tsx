@@ -1,15 +1,106 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert, Badge, Button, Card, Group, NumberInput, Paper, Select, Stack,
-  Table, Text, TextInput, Title,
+  Table, Text, TextInput, Title, Tree, useTree,
 } from '@mantine/core';
-import { IconAlertTriangle, IconCheck, IconListTree, IconRouter, IconX } from '@tabler/icons-react';
+import type { RenderTreeNodePayload, TreeNodeData } from '@mantine/core';
+import {
+  IconAlertTriangle, IconChevronDown, IconChevronRight, IconCheck, IconListTree, IconRouter, IconX,
+} from '@tabler/icons-react';
 import { useSnmpProbe, useSnmpWalk } from '../api/hooks';
 import { useCan } from '../auth/permissions';
 import { notifyError } from '../lib/notify';
 import type {
-  SnmpAuthProtocol, SnmpPrivProtocol, SnmpSecurityLevel, SnmpTraceStep, SnmpVersion,
+  SnmpAuthProtocol, SnmpPrivProtocol, SnmpRawOid, SnmpSecurityLevel, SnmpTraceStep, SnmpVersion,
 } from '../api/types';
+
+interface OidTreeNode {
+  fullOid: string;
+  segment: string;
+  children: OidTreeNode[];
+  leaf?: SnmpRawOid;
+}
+
+/** Собранные OID приходят плоским списком в порядке обхода (лексикографический
+ * порядок дерева MIB) — списком их и читать неудобно: каждое значение тонет
+ * среди десятка компонентов общего для всех префикса. Строит из них дерево и
+ * сворачивает цепочки узлов с единственным ребёнком в одну строку — иначе на
+ * глубину OID в 10-11 компонентов пришлось бы столько же вложенных уровней
+ * ради одного значения. Останавливает свёртку узел с настоящим значением
+ * (лист) или точка ветвления (больше одного ребёнка) — так группы вроде
+ * «1.3.6.1.2.1.2.2.1.5» (колонка ifSpeed целиком) видны одной строкой, а
+ * порт 1 и порт 2 под ней — двумя раскрывающимися листьями. */
+function buildOidTree(oids: SnmpRawOid[]): OidTreeNode[] {
+  interface RawNode { children: Map<string, RawNode>; leaf?: SnmpRawOid }
+  const root: RawNode = { children: new Map() };
+  for (const o of oids) {
+    let node = root;
+    for (const part of o.oid.split('.')) {
+      let next = node.children.get(part);
+      if (!next) {
+        next = { children: new Map() };
+        node.children.set(part, next);
+      }
+      node = next;
+    }
+    node.leaf = o;
+  }
+
+  function compress(node: RawNode, prefix: string[]): OidTreeNode[] {
+    const result: OidTreeNode[] = [];
+    for (const [key, child] of node.children) {
+      const segParts = [key];
+      let cur = child;
+      while (!cur.leaf && cur.children.size === 1) {
+        const [[onlyKey, onlyChild]] = cur.children;
+        segParts.push(onlyKey);
+        cur = onlyChild;
+      }
+      const fullOid = [...prefix, ...segParts].join('.');
+      result.push({
+        fullOid, segment: segParts.join('.'), leaf: cur.leaf,
+        children: compress(cur, [...prefix, ...segParts]),
+      });
+    }
+    return result;
+  }
+
+  return compress(root, []);
+}
+
+function toTreeData(nodes: OidTreeNode[]): TreeNodeData[] {
+  return nodes.map((n) => ({
+    value: n.fullOid,
+    label: n.segment,
+    nodeProps: { oidNode: n },
+    children: n.children.length > 0 ? toTreeData(n.children) : undefined,
+  }));
+}
+
+function renderOidNode({ node, expanded, hasChildren, elementProps }: RenderTreeNodePayload) {
+  const data = node.nodeProps?.oidNode as OidTreeNode | undefined;
+  const leaf = data?.leaf;
+  return (
+    <Group gap={6} wrap="nowrap" py={3} {...elementProps} style={{ ...elementProps.style, cursor: hasChildren ? 'pointer' : 'default' }}>
+      <span style={{ width: 14, flexShrink: 0, display: 'flex' }}>
+        {hasChildren && (expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />)}
+      </span>
+      <Text size="sm" ff="monospace" fw={leaf ? 400 : 600}>{data?.segment}</Text>
+      {!leaf && data && data.children.length > 0 && (
+        <Text size="xs" c="dimmed">({data.children.length})</Text>
+      )}
+      {leaf && (
+        <>
+          <Badge size="xs" variant="light" color="gray">{leaf.type}</Badge>
+          <Text size="xs" c="dimmed">{leaf.module}</Text>
+          <Text size="sm" ff="monospace" style={{ wordBreak: 'break-word' }}>
+            {leaf.value || <Text span c="dimmed">—</Text>}
+          </Text>
+        </>
+      )}
+    </Group>
+  );
+}
 
 const VERSIONS: { value: SnmpVersion; label: string }[] = [
   { value: 'v2c', label: 'v2c — community-строка, без шифрования' },
@@ -62,6 +153,7 @@ export function SnmpProbePage() {
   const canEdit = useCan('edit');
   const probe = useSnmpProbe();
   const walk = useSnmpWalk();
+  const oidTree = useTree();
 
   const [host, setHost] = useState('');
   const [port, setPort] = useState<number | ''>(161);
@@ -120,6 +212,7 @@ export function SnmpProbePage() {
   // ответило» видно в теле, а не в статусе. probe.isError/walk.isError
   // остаются на случай настоящего сбоя сервера (сеть до самого бэкенда,
   // 5xx и т. п.).
+  const oidTreeData = useMemo(() => toTreeData(buildOidTree(walkResult?.oids ?? [])), [walkResult]);
 
   return (
     <Stack>
@@ -388,9 +481,9 @@ export function SnmpProbePage() {
         </Group>
         <Text size="sm" c="dimmed" mb="sm" maw={720}>
           Отдельное, осознанно медленное действие: сырой обход дерева OID устройства с заданного корня — без разбора
-          по полям, просто то, что оно отдаёт, включая собственные (vendor-specific) ветки производителя. Использует
-          адрес и учётные данные, заполненные выше. Останавливается сам — по числу собранных OID (не больше 500 за
-          раз) или по времени; если дерево больше, можно продолжить с более узкого корня.
+          по полям, просто то, что оно отдаёт, включая собственные (vendor-specific) ветки производителя, без
+          ограничения по числу. Использует адрес и учётные данные, заполненные выше. Останавливается только по
+          времени; если устройство отвечает медленно и дерево большое, можно продолжить с более узкого корня.
         </Text>
         <Group align="flex-end" mb="sm">
           <TextInput
@@ -417,7 +510,7 @@ export function SnmpProbePage() {
           <Stack>
             <Text size="xs" c="dimmed">
               Обход занял {walkResult.elapsed_ms} мс, собрано OID: {walkResult.oids.length}
-              {walkResult.truncated && ' (остановлено по пределу — см. след ниже)'}
+              {walkResult.truncated && ' (прервано по общему времени — см. след ниже)'}
             </Text>
 
             {!walkResult.ok && (
@@ -430,34 +523,21 @@ export function SnmpProbePage() {
 
             {walkResult.oids.length > 0 && (
               <Card withBorder padding="sm">
-                <Title order={5} mb="xs">Собранные OID</Title>
+                <Group justify="space-between" mb="xs">
+                  <Title order={5}>Собранные OID — {walkResult.oids.length}</Title>
+                  <Group gap="xs">
+                    <Button size="xs" variant="subtle" onClick={() => oidTree.expandAllNodes()}>Развернуть всё</Button>
+                    <Button size="xs" variant="subtle" onClick={() => oidTree.collapseAllNodes()}>Свернуть всё</Button>
+                  </Group>
+                </Group>
                 <Text size="xs" c="dimmed" mb="sm">
-                  Под каждым OID — модуль MIB, к которому относится ветка (по префиксу, не по настоящему разбору
-                  MIB-файлов — для частных веток производителя виден хотя бы номер).
+                  Ветки дерева — общие префиксы OID (по ним свёрнуты цепочки без развилок); у самого значения —
+                  модуль MIB, к которому оно относится (по префиксу, не по настоящему разбору MIB-файлов — для
+                  частных веток производителя виден хотя бы номер).
                 </Text>
-                <Table.ScrollContainer minWidth={700} mah={600} style={{ overflowY: 'auto' }}>
-                  <Table verticalSpacing={4} withRowBorders stickyHeader>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th w={280}>OID</Table.Th><Table.Th w={130}>Тип</Table.Th><Table.Th>Значение</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {walkResult.oids.map((o, i) => (
-                        <Table.Tr key={i}>
-                          <Table.Td valign="top">
-                            <Text size="sm" ff="monospace">{o.oid}</Text>
-                            <Text size="xs" c="dimmed">{o.module}</Text>
-                          </Table.Td>
-                          <Table.Td valign="top">{o.type}</Table.Td>
-                          <Table.Td valign="top" ff="monospace" style={{ wordBreak: 'break-word' }}>
-                            {o.value || <Text span c="dimmed">—</Text>}
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                </Table.ScrollContainer>
+                <div style={{ maxHeight: 600, overflow: 'auto' }}>
+                  <Tree data={oidTreeData} tree={oidTree} renderNode={renderOidNode} withLines levelOffset={22} />
+                </div>
               </Card>
             )}
           </Stack>
