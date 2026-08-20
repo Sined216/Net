@@ -3061,6 +3061,342 @@
         "title": "SiteUpdate",
         "type": "object"
       },
+      "SnmpInterfaceInfo": {
+        "properties": {
+          "admin_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Status"
+          },
+          "descr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descr"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
+          "mtu": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mtu"
+          },
+          "oper_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oper Status"
+          },
+          "speed_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Bps"
+          },
+          "type_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Label"
+          },
+          "type_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Raw"
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "title": "SnmpInterfaceInfo",
+        "type": "object"
+      },
+      "SnmpProbeRequest": {
+        "properties": {
+          "auth_password": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Password"
+          },
+          "auth_protocol": {
+            "anyOf": [
+              {
+                "enum": [
+                  "MD5",
+                  "SHA",
+                  "SHA224",
+                  "SHA256",
+                  "SHA384",
+                  "SHA512"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Protocol"
+          },
+          "community": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community"
+          },
+          "host": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "port": {
+            "default": 161,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "priv_password": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priv Password"
+          },
+          "priv_protocol": {
+            "anyOf": [
+              {
+                "enum": [
+                  "DES",
+                  "3DES",
+                  "AES",
+                  "AES192",
+                  "AES256"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priv Protocol"
+          },
+          "security_level": {
+            "default": "noAuthNoPriv",
+            "enum": [
+              "noAuthNoPriv",
+              "authNoPriv",
+              "authPriv"
+            ],
+            "title": "Security Level",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "version": {
+            "default": "v2c",
+            "enum": [
+              "v1",
+              "v2c",
+              "v3"
+            ],
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host"
+        ],
+        "title": "SnmpProbeRequest",
+        "type": "object"
+      },
+      "SnmpProbeResult": {
+        "properties": {
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "interfaces": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpInterfaceInfo"
+            },
+            "title": "Interfaces",
+            "type": "array"
+          },
+          "system": {
+            "$ref": "#/components/schemas/SnmpSystemInfo"
+          }
+        },
+        "required": [
+          "elapsed_ms",
+          "system"
+        ],
+        "title": "SnmpProbeResult",
+        "type": "object"
+      },
+      "SnmpSystemInfo": {
+        "properties": {
+          "sys_contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Contact"
+          },
+          "sys_descr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Descr"
+          },
+          "sys_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Location"
+          },
+          "sys_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Name"
+          },
+          "sys_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Object Id"
+          },
+          "sys_up_time_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Up Time Text"
+          },
+          "sys_up_time_ticks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Up Time Ticks"
+          }
+        },
+        "title": "SnmpSystemInfo",
+        "type": "object"
+      },
       "TagCreate": {
         "properties": {
           "color": {
@@ -8585,6 +8921,53 @@
         "summary": "Set Site Access",
         "tags": [
           "sites"
+        ]
+      }
+    },
+    "/snmp/probe": {
+      "post": {
+        "description": "Достаёт с устройства системную группу и таблицу интерфейсов.\n\nДоступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по\nадресу, который вводит человек, и это не праздное любопытство\nсмотрящего, а действие, сравнимое с остальными на этом уровне прав.",
+        "operationId": "probe_snmp_probe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnmpProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnmpProbeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Probe",
+        "tags": [
+          "snmp"
         ]
       }
     },

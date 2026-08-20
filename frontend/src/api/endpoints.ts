@@ -16,6 +16,7 @@ import type {
   SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
   SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
   DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
+  SnmpProbeRequest, SnmpProbeResult,
 } from './types';
 
 // ---------- Auth ----------
@@ -175,3 +176,7 @@ export const setSiteAccess = (id: number, userIds: number[]) =>
 // ---------- Журнал изменений ----------
 export const listAudit = (query: AuditQuery) =>
   apiFetch<AuditPage>('/audit', { query: query as Record<string, string | number | undefined> });
+
+// ---------- SNMP (отдельная страница, ничем не связана с остальным) ----------
+export const snmpProbe = (body: SnmpProbeRequest) =>
+  apiFetch<SnmpProbeResult>('/snmp/probe', { method: 'POST', body });

@@ -16,6 +16,7 @@ import { CatalogPage } from './pages/CatalogPage';
 import { ImportPage } from './pages/ImportPage';
 import { SitesPage } from './pages/SitesPage';
 import { HistoryPage } from './pages/HistoryPage';
+import { SnmpProbePage } from './pages/SnmpProbePage';
 import { SiteProvider } from './sites/SiteContext';
 
 export function App() {
@@ -46,6 +47,7 @@ export function App() {
         <Route path="/import" element={<ImportPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/schema" element={<SchemaPage />} />
+        <Route path="/snmp" element={<SnmpProbePage />} />
         <Route
           path="/users"
           element={

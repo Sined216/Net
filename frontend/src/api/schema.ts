@@ -1017,6 +1017,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/snmp/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe
+         * @description Достаёт с устройства системную группу и таблицу интерфейсов.
+         *
+         *     Доступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по
+         *     адресу, который вводит человек, и это не праздное любопытство
+         *     смотрящего, а действие, сравнимое с остальными на этом уровне прав.
+         */
+        post: operations["probe_snmp_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags": {
         parameters: {
             query?: never;
@@ -2171,6 +2195,89 @@ export interface components {
             notes?: string | null;
             /** Version */
             version?: number | null;
+        };
+        /** SnmpInterfaceInfo */
+        SnmpInterfaceInfo: {
+            /** Admin Status */
+            admin_status?: string | null;
+            /** Descr */
+            descr?: string | null;
+            /** Index */
+            index: number;
+            /** Mac */
+            mac?: string | null;
+            /** Mtu */
+            mtu?: number | null;
+            /** Oper Status */
+            oper_status?: string | null;
+            /** Speed Bps */
+            speed_bps?: number | null;
+            /** Type Label */
+            type_label?: string | null;
+            /** Type Raw */
+            type_raw?: number | null;
+        };
+        /** SnmpProbeRequest */
+        SnmpProbeRequest: {
+            /** Auth Password */
+            auth_password?: string | null;
+            /** Auth Protocol */
+            auth_protocol?: ("MD5" | "SHA" | "SHA224" | "SHA256" | "SHA384" | "SHA512") | null;
+            /** Community */
+            community?: string | null;
+            /** Host */
+            host: string;
+            /**
+             * Port
+             * @default 161
+             */
+            port: number;
+            /** Priv Password */
+            priv_password?: string | null;
+            /** Priv Protocol */
+            priv_protocol?: ("DES" | "3DES" | "AES" | "AES192" | "AES256") | null;
+            /**
+             * Security Level
+             * @default noAuthNoPriv
+             * @enum {string}
+             */
+            security_level: "noAuthNoPriv" | "authNoPriv" | "authPriv";
+            /** Username */
+            username?: string | null;
+            /**
+             * Version
+             * @default v2c
+             * @enum {string}
+             */
+            version: "v1" | "v2c" | "v3";
+        };
+        /** SnmpProbeResult */
+        SnmpProbeResult: {
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /**
+             * Interfaces
+             * @default []
+             */
+            interfaces: components["schemas"]["SnmpInterfaceInfo"][];
+            system: components["schemas"]["SnmpSystemInfo"];
+        };
+        /** SnmpSystemInfo */
+        SnmpSystemInfo: {
+            /** Sys Contact */
+            sys_contact?: string | null;
+            /** Sys Descr */
+            sys_descr?: string | null;
+            /** Sys Location */
+            sys_location?: string | null;
+            /** Sys Name */
+            sys_name?: string | null;
+            /** Sys Object Id */
+            sys_object_id?: string | null;
+            /** Sys Up Time Text */
+            sys_up_time_text?: string | null;
+            /** Sys Up Time Ticks */
+            sys_up_time_ticks?: number | null;
         };
         /** TagCreate */
         TagCreate: {
@@ -4843,6 +4950,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": number[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_snmp_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnmpProbeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnmpProbeResult"];
                 };
             };
             /** @description Validation Error */

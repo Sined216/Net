@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal, Optional, List
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.fields import IPAddressStr, IPNetworkStr, MacAddressStr
 
@@ -899,3 +899,75 @@ class SearchResult(BaseModel):
     interface_label: Optional[str] = None
     ip: Optional[str] = None
     mac: Optional[str] = None
+
+
+# ---------- SNMP (отдельная страница, см. app/snmp_probe.py) ----------
+SnmpVersion = Literal["v1", "v2c", "v3"]
+SnmpSecurityLevel = Literal["noAuthNoPriv", "authNoPriv", "authPriv"]
+SnmpAuthProtocol = Literal["MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512"]
+SnmpPrivProtocol = Literal["DES", "3DES", "AES", "AES192", "AES256"]
+
+
+class SnmpProbeRequest(BaseModel):
+    host: str = Field(min_length=1, max_length=255)
+    port: int = Field(default=161, ge=1, le=65535)
+    version: SnmpVersion = "v2c"
+
+    # v1/v2c
+    community: Optional[str] = Field(default=None, max_length=255)
+
+    # v3
+    username: Optional[str] = Field(default=None, max_length=255)
+    security_level: SnmpSecurityLevel = "noAuthNoPriv"
+    auth_protocol: Optional[SnmpAuthProtocol] = None
+    auth_password: Optional[str] = Field(default=None, max_length=255)
+    priv_protocol: Optional[SnmpPrivProtocol] = None
+    priv_password: Optional[str] = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def _check_credentials(self) -> "SnmpProbeRequest":
+        """То, чего форма на экране не может проверить сама: сочетание
+        версии, уровня защиты и реально заполненных полей."""
+        if self.version in ("v1", "v2c"):
+            if not self.community:
+                raise ValueError("Для SNMPv1/v2c нужна community-строка")
+            return self
+
+        # v3
+        if not self.username:
+            raise ValueError("Для SNMPv3 нужно имя пользователя")
+        if self.security_level in ("authNoPriv", "authPriv"):
+            if not self.auth_protocol or not self.auth_password:
+                raise ValueError("Выбранный уровень защиты требует протокол и пароль аутентификации")
+        if self.security_level == "authPriv":
+            if not self.priv_protocol or not self.priv_password:
+                raise ValueError("authPriv требует ещё и протокол с паролем шифрования")
+        return self
+
+
+class SnmpSystemInfo(BaseModel):
+    sys_descr: Optional[str] = None
+    sys_object_id: Optional[str] = None
+    sys_up_time_ticks: Optional[int] = None
+    sys_up_time_text: Optional[str] = None
+    sys_contact: Optional[str] = None
+    sys_name: Optional[str] = None
+    sys_location: Optional[str] = None
+
+
+class SnmpInterfaceInfo(BaseModel):
+    index: int
+    descr: Optional[str] = None
+    type_raw: Optional[int] = None
+    type_label: Optional[str] = None
+    mtu: Optional[int] = None
+    speed_bps: Optional[int] = None
+    mac: Optional[str] = None
+    admin_status: Optional[str] = None
+    oper_status: Optional[str] = None
+
+
+class SnmpProbeResult(BaseModel):
+    elapsed_ms: int
+    system: SnmpSystemInfo
+    interfaces: List[SnmpInterfaceInfo] = []

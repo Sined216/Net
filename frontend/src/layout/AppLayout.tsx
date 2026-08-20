@@ -5,7 +5,7 @@ import {
 import {
   IconDeviceDesktop, IconPlugConnected, IconTopologyStar,
   IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
-  IconFileImport, IconBuildingFactory2, IconHistory,
+  IconFileImport, IconBuildingFactory2, IconHistory, IconRouter,
 } from '@tabler/icons-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -58,6 +58,10 @@ const NAV_SECTIONS: {
     title: 'Система',
     items: [
       { to: '/schema', label: 'Структура БД', icon: IconDatabase },
+      // Отдельная, ничем не связанная с остальным приложением страница —
+      // см. комментарий у SnmpProbePage. Смотреть её может любая роль,
+      // сам опрос (как правка) — только canEdit внутри страницы.
+      { to: '/snmp', label: 'SNMP', icon: IconRouter },
       { to: '/sites', label: 'Площадки', icon: IconBuildingFactory2, admin: true },
       { to: '/users', label: 'Пользователи', icon: IconUsers, admin: true },
     ],
@@ -83,6 +87,7 @@ const PAGE_TITLES: { test: (path: string) => boolean; title: string }[] = [
   { test: (p) => p === '/import', title: 'Импорт' },
   { test: (p) => p === '/history', title: 'История' },
   { test: (p) => p === '/schema', title: 'Структура БД' },
+  { test: (p) => p === '/snmp', title: 'SNMP' },
   { test: (p) => p === '/sites', title: 'Площадки' },
   { test: (p) => p === '/users', title: 'Пользователи' },
 ];

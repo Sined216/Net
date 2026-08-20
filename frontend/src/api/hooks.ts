@@ -15,6 +15,7 @@ import type {
   TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
   UserCreate, UserUpdate, PasswordReset,
   SiteCreate, SiteUpdate, AuditQuery, DeviceQuery, LinkQuery, FreePortQuery,
+  SnmpProbeRequest,
 } from './types';
 
 // ---------- Queries ----------
@@ -566,3 +567,10 @@ export function useSetSiteAccess() {
 // ---------- Журнал изменений ----------
 export const useAudit = (query: AuditQuery) =>
   useQuery({ queryKey: ['audit', query], queryFn: () => api.listAudit(query) });
+
+// ---------- SNMP (отдельная страница, ничем не связана с остальным) ----------
+// Не invalidateQueries ни в onSuccess: результат нигде не кэшируется как
+// список — каждый опрос самостоятелен, страница просто держит последний
+// ответ в своём состоянии.
+export const useSnmpProbe = () =>
+  useMutation({ mutationFn: (body: SnmpProbeRequest) => api.snmpProbe(body) });

@@ -10,3 +10,9 @@ argon2-cffi==23.1.0
 python-multipart==0.0.9
 # Чтение .xlsx при импорте устройств из файла.
 openpyxl==3.1.5
+# Опрос устройств по SNMP (страница «SNMP», отдельно от остального
+# функционала — см. app/snmp_probe.py). cryptography нужна для
+# шифрования в SNMPv3 (privacy); версия не ниже 43 — там появился
+# hazmat.decrepit.ciphers, куда переехал DES.
+pysnmp==7.1.28
+cryptography>=43
