@@ -58,9 +58,27 @@ _SYSTEM_OIDS = {
     "sys_location": "1.3.6.1.2.1.1.6.0",
 }
 
+# Официальные имена переменных из SNMPv2-MIB — для диагностического следа:
+# без них строка «получено N из 6» ничего не говорит о том, какие именно
+# N и какие именно 6.
+_SYSTEM_LABELS = {
+    "sys_descr": "sysDescr",
+    "sys_object_id": "sysObjectID",
+    "sys_up_time": "sysUpTime",
+    "sys_contact": "sysContact",
+    "sys_name": "sysName",
+    "sys_location": "sysLocation",
+}
+
 # IF-MIB::ifTable — префикс, за которым у каждой колонки идёт .<индекс порта>.
 _IF_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 2, 2, 1)
 _IF_COLUMNS = {2: "descr", 3: "type", 4: "mtu", 5: "speed", 6: "mac", 7: "admin_status", 8: "oper_status"}
+# Официальные имена колонок IF-MIB::ifEntry — тоже для следа, тем же поводом,
+# что и _SYSTEM_LABELS выше.
+_IF_COLUMN_LABELS = {
+    2: "ifDescr", 3: "ifType", 4: "ifMtu", 5: "ifSpeed",
+    6: "ifPhysAddress", 7: "ifAdminStatus", 8: "ifOperStatus",
+}
 
 _STATUS_LABELS = {
     1: "включён", 2: "выключен", 3: "тест", 4: "неизвестно",
@@ -158,6 +176,16 @@ def _is_missing(value) -> bool:
     """Устройство не реализует эту переменную — это не ошибка запроса,
     ответ просто не про неё (бывает у нестандартных SNMP-агентов)."""
     return isinstance(value, (hlapi.NoSuchObject, hlapi.NoSuchInstance))
+
+
+def _preview_value(value, limit: int = 60) -> str:
+    """Короткое текстовое представление значения для следа — не разбор по
+    полям (это отдельно делают _fetch_system/_fetch_interfaces), а просто
+    «что реально пришло», как оно есть."""
+    text = value.prettyPrint()
+    if len(text) > limit:
+        text = text[:limit] + "…"
+    return text
 
 
 def _build_auth_data(
@@ -303,11 +331,19 @@ async def _fetch_system(engine, auth, target, trace) -> tuple:
 
     values: dict = {}
     got = 0
+    lines = []
     for field_name, (_, value) in zip(_SYSTEM_OIDS.keys(), var_binds):
         v = None if _is_missing(value) else value
         values[field_name] = v
         got += v is not None
-    trace.append(_step(t0, True, "Системная группа (GET)", f"получено {got} из {len(_SYSTEM_OIDS)} значений"))
+        oid = _SYSTEM_OIDS[field_name]
+        label = _SYSTEM_LABELS[field_name]
+        preview = "пусто" if v is None else _preview_value(v)
+        lines.append(f"{label} ({oid}) = {preview}")
+    trace.append(_step(
+        t0, True, "Системная группа (GET)",
+        f"один пакет, получено {got} из {len(_SYSTEM_OIDS)} значений:\n" + "\n".join(lines),
+    ))
 
     system = SystemInfo()
     if values["sys_descr"] is not None:
@@ -330,20 +366,28 @@ async def _fetch_system(engine, auth, target, trace) -> tuple:
 async def _fetch_interfaces(engine, auth, target, trace, version) -> tuple:
     by_index: dict[int, dict] = {}
     prefix_len = len(_IF_TABLE_PREFIX)
-    root = hlapi.ObjectType(hlapi.ObjectIdentity(".".join(map(str, _IF_TABLE_PREFIX))))
+    root_oid = ".".join(map(str, _IF_TABLE_PREFIX))
+    root = hlapi.ObjectType(hlapi.ObjectIdentity(root_oid))
 
     if version == "v1":
         # GETBULK — только v2c/v3; SNMPv1 умеет забирать лишь одно значение
         # за запрос (GETNEXT).
+        method = "GETNEXT — по одному значению за запрос"
         walker = hlapi.walk_cmd(
             engine, auth, target, hlapi.ContextData(), root,
             lookupMib=False, lexicographicMode=False,
         )
     else:
+        method = f"GETBULK — пачками до {_BULK_MAX_REPETITIONS} значений за запрос"
         walker = hlapi.bulk_walk_cmd(
             engine, auth, target, hlapi.ContextData(), 0, _BULK_MAX_REPETITIONS, root,
             lookupMib=False, lexicographicMode=False,
         )
+    trace.append(TraceStep(
+        label="Обход портов — начало", ok=True,
+        detail=f"таблица IF-MIB::ifTable, корень {root_oid}.*, способ: {method}",
+        elapsed_ms=0,
+    ))
 
     packet_no = 0
     step_start = time.monotonic()
@@ -357,6 +401,8 @@ async def _fetch_interfaces(engine, auth, target, trace, version) -> tuple:
             break
 
         added = 0
+        indexes_seen: set[int] = set()
+        columns_seen: set[int] = set()
         for name, value in var_binds:
             if _is_missing(value):
                 continue
@@ -369,16 +415,25 @@ async def _fetch_interfaces(engine, auth, target, trace, version) -> tuple:
                 continue  # ifIndex (колонка 1) и то, что не входит в перечень, нам отдельно не нужны
             by_index.setdefault(index, {})[field_name] = value
             added += 1
-        trace.append(_step(
-            step_start, True, f"Обход портов — пакет {packet_no}",
-            f"{len(var_binds)} значений в ответе, из них по делу {added}",
-        ))
+            indexes_seen.add(index)
+            columns_seen.add(column)
+
+        lines = [f"диапазон OID в ответе: {var_binds[0][0]} … {var_binds[-1][0]} ({len(var_binds)} подряд)"]
+        lines.append(f"из них в ifTable по нужным колонкам — {added}, вне таблицы или лишняя колонка — {len(var_binds) - added}")
+        if indexes_seen:
+            lines.append(f"порты в пакете: {', '.join(str(i) for i in sorted(indexes_seen))}")
+        if columns_seen:
+            col_names = ", ".join(_IF_COLUMN_LABELS[c] for c in sorted(columns_seen))
+            lines.append(f"колонки: {col_names}")
+        trace.append(_step(step_start, True, f"Обход портов — пакет {packet_no}", "\n".join(lines)))
         step_start = time.monotonic()
 
     if error is None:
+        ports = ", ".join(str(i) for i in sorted(by_index)) if by_index else "нет"
         trace.append(TraceStep(
             label="Обход портов — конец таблицы", ok=True,
-            detail=f"пакетов: {packet_no}, портов собрано: {len(by_index)}", elapsed_ms=0,
+            detail=f"пакетов: {packet_no}, портов собрано: {len(by_index)} (индексы: {ports})",
+            elapsed_ms=0,
         ))
 
     interfaces = []

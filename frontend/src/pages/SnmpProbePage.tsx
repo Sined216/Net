@@ -207,22 +207,31 @@ export function SnmpProbePage() {
           {result.trace.length > 0 && (
             <Card withBorder padding="sm">
               <Title order={5} mb="xs">Диагностика</Title>
-              <Table verticalSpacing={4} withRowBorders={false}>
-                <Table.Tbody>
-                  {result.trace.map((step, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td w={24}>
-                        {step.ok
-                          ? <IconCheck size={16} color="var(--mantine-color-teal-6)" />
-                          : <IconX size={16} color="var(--mantine-color-red-6)" />}
-                      </Table.Td>
-                      <Table.Td w={220}><Text size="sm" fw={500}>{step.label}</Text></Table.Td>
-                      <Table.Td><Text size="sm" c="dimmed">{step.detail}</Text></Table.Td>
-                      <Table.Td w={80}><Text size="xs" c="dimmed" ta="right">{step.elapsed_ms} мс</Text></Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+              <Text size="xs" c="dimmed" mb="sm">
+                Что опрашивали на каждом шаге, что реально пришло в ответ — с OID, где это уместно.
+              </Text>
+              <Table.ScrollContainer minWidth={620}>
+                <Table verticalSpacing={6} withRowBorders>
+                  <Table.Tbody>
+                    {result.trace.map((step, i) => (
+                      <Table.Tr key={i}>
+                        <Table.Td w={24} valign="top" pt={6}>
+                          {step.ok
+                            ? <IconCheck size={16} color="var(--mantine-color-teal-6)" />
+                            : <IconX size={16} color="var(--mantine-color-red-6)" />}
+                        </Table.Td>
+                        <Table.Td w={190} valign="top"><Text size="sm" fw={500}>{step.label}</Text></Table.Td>
+                        <Table.Td valign="top">
+                          <Text size="sm" c="dimmed" ff="monospace" style={{ whiteSpace: 'pre-line' }}>
+                            {step.detail}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td w={80} valign="top"><Text size="xs" c="dimmed" ta="right">{step.elapsed_ms} мс</Text></Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             </Card>
           )}
 
