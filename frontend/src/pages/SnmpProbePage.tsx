@@ -3,7 +3,7 @@ import {
   Alert, Badge, Button, Card, Group, NumberInput, Paper, Select, Stack,
   Table, Text, TextInput, Title,
 } from '@mantine/core';
-import { IconAlertTriangle, IconRouter } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCheck, IconRouter, IconX } from '@tabler/icons-react';
 import { useSnmpProbe } from '../api/hooks';
 import { useCan } from '../auth/permissions';
 import { notifyError } from '../lib/notify';
@@ -91,6 +91,9 @@ export function SnmpProbePage() {
   }
 
   const result = probe.data;
+  // Ручка отвечает 200 и на удачный, и на неудачный опрос — «устройство не
+  // ответило» видно в теле, а не в статусе. probe.isError остаётся на
+  // случай настоящего сбоя сервера (сеть до самого бэкенда, 5xx и т.п.).
 
   return (
     <Stack>
@@ -186,62 +189,94 @@ export function SnmpProbePage() {
       </Paper>
 
       {probe.isError && (
-        <Alert color="red" maw={720} title="Устройство не ответило так, как ожидалось">
+        <Alert color="red" maw={720} title="Не удалось выполнить опрос">
           {(probe.error as Error).message}
         </Alert>
       )}
 
       {result && (
         <Stack maw={900}>
-          <Text size="xs" c="dimmed">Ответ за {result.elapsed_ms} мс</Text>
+          <Text size="xs" c="dimmed">Опрос занял {result.elapsed_ms} мс</Text>
 
-          <Card withBorder padding="sm">
-            <Title order={5} mb="xs">Системная группа</Title>
-            <Table verticalSpacing={4} withRowBorders={false}>
-              <Table.Tbody>
-                <SystemRow label="Имя" value={result.system.sys_name} />
-                <SystemRow label="Описание" value={result.system.sys_descr} />
-                <SystemRow label="Время работы" value={result.system.sys_up_time_text} />
-                <SystemRow label="Расположение" value={result.system.sys_location} />
-                <SystemRow label="Контакт" value={result.system.sys_contact} />
-                <SystemRow label="sysObjectID" value={result.system.sys_object_id} mono />
-              </Table.Tbody>
-            </Table>
-          </Card>
+          {!result.ok && (
+            <Alert color="red" title="Устройство не ответило так, как ожидалось">
+              {result.error}
+            </Alert>
+          )}
 
-          <Card withBorder padding="sm">
-            <Title order={5} mb="xs">Порты (IF-MIB)</Title>
-            {result.interfaces.length === 0 ? (
-              <Text c="dimmed" size="sm">Устройство не отдало ни одного порта.</Text>
-            ) : (
-              <Table.ScrollContainer minWidth={620}>
-                <Table verticalSpacing={4} highlightOnHover>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Тип</Table.Th>
-                      <Table.Th>Скорость</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Состояние</Table.Th>
+          {result.trace.length > 0 && (
+            <Card withBorder padding="sm">
+              <Title order={5} mb="xs">Диагностика</Title>
+              <Table verticalSpacing={4} withRowBorders={false}>
+                <Table.Tbody>
+                  {result.trace.map((step, i) => (
+                    <Table.Tr key={i}>
+                      <Table.Td w={24}>
+                        {step.ok
+                          ? <IconCheck size={16} color="var(--mantine-color-teal-6)" />
+                          : <IconX size={16} color="var(--mantine-color-red-6)" />}
+                      </Table.Td>
+                      <Table.Td w={220}><Text size="sm" fw={500}>{step.label}</Text></Table.Td>
+                      <Table.Td><Text size="sm" c="dimmed">{step.detail}</Text></Table.Td>
+                      <Table.Td w={80}><Text size="xs" c="dimmed" ta="right">{step.elapsed_ms} мс</Text></Table.Td>
                     </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {result.interfaces.map((iface) => (
-                      <Table.Tr key={iface.index}>
-                        <Table.Td>{iface.index}</Table.Td>
-                        <Table.Td>{iface.descr ?? '—'}</Table.Td>
-                        <Table.Td>{iface.type_label ?? (iface.type_raw != null ? `тип ${iface.type_raw}` : '—')}</Table.Td>
-                        <Table.Td>{formatSpeed(iface.speed_bps)}</Table.Td>
-                        <Table.Td ff="monospace">{iface.mac ?? '—'}</Table.Td>
-                        <Table.Td>
-                          {iface.oper_status
-                            ? <Badge size="sm" variant="light" color={STATUS_COLOR[iface.oper_status] ?? 'orange'}>{iface.oper_status}</Badge>
-                            : '—'}
-                        </Table.Td>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Card>
+          )}
+
+          {result.system && (
+            <Card withBorder padding="sm">
+              <Title order={5} mb="xs">Системная группа</Title>
+              <Table verticalSpacing={4} withRowBorders={false}>
+                <Table.Tbody>
+                  <SystemRow label="Имя" value={result.system.sys_name} />
+                  <SystemRow label="Описание" value={result.system.sys_descr} />
+                  <SystemRow label="Время работы" value={result.system.sys_up_time_text} />
+                  <SystemRow label="Расположение" value={result.system.sys_location} />
+                  <SystemRow label="Контакт" value={result.system.sys_contact} />
+                  <SystemRow label="sysObjectID" value={result.system.sys_object_id} mono />
+                </Table.Tbody>
+              </Table>
+            </Card>
+          )}
+
+          {result.ok && (
+            <Card withBorder padding="sm">
+              <Title order={5} mb="xs">Порты (IF-MIB)</Title>
+              {result.interfaces.length === 0 ? (
+                <Text c="dimmed" size="sm">Устройство не отдало ни одного порта.</Text>
+              ) : (
+                <Table.ScrollContainer minWidth={620}>
+                  <Table verticalSpacing={4} highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Тип</Table.Th>
+                        <Table.Th>Скорость</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Состояние</Table.Th>
                       </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
-            )}
-          </Card>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {result.interfaces.map((iface) => (
+                        <Table.Tr key={iface.index}>
+                          <Table.Td>{iface.index}</Table.Td>
+                          <Table.Td>{iface.descr ?? '—'}</Table.Td>
+                          <Table.Td>{iface.type_label ?? (iface.type_raw != null ? `тип ${iface.type_raw}` : '—')}</Table.Td>
+                          <Table.Td>{formatSpeed(iface.speed_bps)}</Table.Td>
+                          <Table.Td ff="monospace">{iface.mac ?? '—'}</Table.Td>
+                          <Table.Td>
+                            {iface.oper_status
+                              ? <Badge size="sm" variant="light" color={STATUS_COLOR[iface.oper_status] ?? 'orange'}>{iface.oper_status}</Badge>
+                              : '—'}
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+            </Card>
+          )}
         </Stack>
       )}
     </Stack>

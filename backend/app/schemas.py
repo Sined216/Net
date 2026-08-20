@@ -967,7 +967,18 @@ class SnmpInterfaceInfo(BaseModel):
     oper_status: Optional[str] = None
 
 
-class SnmpProbeResult(BaseModel):
+class SnmpTraceStep(BaseModel):
+    """Один шаг диагностического следа опроса — что делали, чем кончилось."""
+    label: str
+    ok: bool
+    detail: str
     elapsed_ms: int
-    system: SnmpSystemInfo
+
+
+class SnmpProbeResult(BaseModel):
+    ok: bool
+    error: Optional[str] = None
+    elapsed_ms: int
+    trace: List[SnmpTraceStep] = []
+    system: Optional[SnmpSystemInfo] = None
     interfaces: List[SnmpInterfaceInfo] = []

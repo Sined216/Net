@@ -3295,6 +3295,17 @@
             "title": "Elapsed Ms",
             "type": "integer"
           },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
           "interfaces": {
             "default": [],
             "items": {
@@ -3303,13 +3314,32 @@
             "title": "Interfaces",
             "type": "array"
           },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
           "system": {
-            "$ref": "#/components/schemas/SnmpSystemInfo"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnmpSystemInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trace": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpTraceStep"
+            },
+            "title": "Trace",
+            "type": "array"
           }
         },
         "required": [
-          "elapsed_ms",
-          "system"
+          "ok",
+          "elapsed_ms"
         ],
         "title": "SnmpProbeResult",
         "type": "object"
@@ -3395,6 +3425,35 @@
           }
         },
         "title": "SnmpSystemInfo",
+        "type": "object"
+      },
+      "SnmpTraceStep": {
+        "description": "Один шаг диагностического следа опроса — что делали, чем кончилось.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label",
+          "ok",
+          "detail",
+          "elapsed_ms"
+        ],
+        "title": "SnmpTraceStep",
         "type": "object"
       },
       "TagCreate": {
@@ -8926,7 +8985,7 @@
     },
     "/snmp/probe": {
       "post": {
-        "description": "Достаёт с устройства системную группу и таблицу интерфейсов.\n\nДоступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по\nадресу, который вводит человек, и это не праздное любопытство\nсмотрящего, а действие, сравнимое с остальными на этом уровне прав.",
+        "description": "Достаёт с устройства системную группу и таблицу интерфейсов.\n\nДоступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по\nадресу, который вводит человек, и это не праздное любопытство\nсмотрящего, а действие, сравнимое с остальными на этом уровне прав.\n\nОтказ устройства ответить — не HTTP-ошибка: `snmp_probe.probe()` сама\nникогда не бросает исключение на этот счёт, а возвращает `ok=False` с\nтекстом причины и диагностическим следом (`trace`). 200 остаётся и для\nудачного, и для неудачного опроса — 5xx здесь означал бы настоящий сбой\nсервера, а не то, что устройство не ответило.",
         "operationId": "probe_snmp_probe_post",
         "requestBody": {
           "content": {

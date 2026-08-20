@@ -172,6 +172,7 @@ export type SnmpProbeRequest = S['SnmpProbeRequest'];
 export type SnmpProbeResult = S['SnmpProbeResult'];
 export type SnmpSystemInfo = S['SnmpSystemInfo'];
 export type SnmpInterfaceInfo = S['SnmpInterfaceInfo'];
+export type SnmpTraceStep = S['SnmpTraceStep'];
 export type SnmpVersion = SnmpProbeRequest['version'];
 export type SnmpSecurityLevel = NonNullable<SnmpProbeRequest['security_level']>;
 export type SnmpAuthProtocol = NonNullable<SnmpProbeRequest['auth_protocol']>;

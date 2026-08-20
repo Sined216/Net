@@ -1033,6 +1033,12 @@ export interface paths {
          *     Доступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по
          *     адресу, который вводит человек, и это не праздное любопытство
          *     смотрящего, а действие, сравнимое с остальными на этом уровне прав.
+         *
+         *     Отказ устройства ответить — не HTTP-ошибка: `snmp_probe.probe()` сама
+         *     никогда не бросает исключение на этот счёт, а возвращает `ok=False` с
+         *     текстом причины и диагностическим следом (`trace`). 200 остаётся и для
+         *     удачного, и для неудачного опроса — 5xx здесь означал бы настоящий сбой
+         *     сервера, а не то, что устройство не ответило.
          */
         post: operations["probe_snmp_probe_post"];
         delete?: never;
@@ -2255,12 +2261,21 @@ export interface components {
         SnmpProbeResult: {
             /** Elapsed Ms */
             elapsed_ms: number;
+            /** Error */
+            error?: string | null;
             /**
              * Interfaces
              * @default []
              */
             interfaces: components["schemas"]["SnmpInterfaceInfo"][];
-            system: components["schemas"]["SnmpSystemInfo"];
+            /** Ok */
+            ok: boolean;
+            system?: components["schemas"]["SnmpSystemInfo"] | null;
+            /**
+             * Trace
+             * @default []
+             */
+            trace: components["schemas"]["SnmpTraceStep"][];
         };
         /** SnmpSystemInfo */
         SnmpSystemInfo: {
@@ -2278,6 +2293,20 @@ export interface components {
             sys_up_time_text?: string | null;
             /** Sys Up Time Ticks */
             sys_up_time_ticks?: number | null;
+        };
+        /**
+         * SnmpTraceStep
+         * @description Один шаг диагностического следа опроса — что делали, чем кончилось.
+         */
+        SnmpTraceStep: {
+            /** Detail */
+            detail: string;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Label */
+            label: string;
+            /** Ok */
+            ok: boolean;
         };
         /** TagCreate */
         TagCreate: {

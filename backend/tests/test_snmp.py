@@ -44,7 +44,8 @@ def test_successful_probe_shape(client, headers, monkeypatch):
         assert kwargs["host"] == "10.0.0.1"
         assert kwargs["version"] == "v2c"
         return snmp_probe.ProbeResult(
-            elapsed_ms=42,
+            ok=True, elapsed_ms=42,
+            trace=[snmp_probe.TraceStep(label="Адрес 10.0.0.1:161", ok=True, detail="транспорт создан", elapsed_ms=1)],
             system=snmp_probe.SystemInfo(sys_name="SW-TEST-01", sys_descr="Test switch"),
             interfaces=[
                 snmp_probe.InterfaceInfo(index=1, descr="Gi0/1", oper_status="включён"),
@@ -60,7 +61,12 @@ def test_successful_probe_shape(client, headers, monkeypatch):
     )
     assert response.status_code == 200
     body = response.json()
+    assert body["ok"] is True
+    assert body["error"] is None
     assert body["elapsed_ms"] == 42
+    assert body["trace"] == [
+        {"label": "Адрес 10.0.0.1:161", "ok": True, "detail": "транспорт создан", "elapsed_ms": 1},
+    ]
     assert body["system"]["sys_name"] == "SW-TEST-01"
     assert body["interfaces"] == [
         {
@@ -71,9 +77,14 @@ def test_successful_probe_shape(client, headers, monkeypatch):
     ]
 
 
-def test_probe_error_becomes_502_with_readable_message(client, headers, monkeypatch):
+def test_failed_probe_returns_200_with_ok_false(client, headers, monkeypatch):
+    """Отказ устройства ответить — не HTTP-ошибка: ручка всегда 200,
+    а причину и диагностический след видно в теле ответа."""
     async def fake_probe(**kwargs):
-        raise snmp_probe.ProbeError("Устройство не ответило за отведённое время")
+        return snmp_probe.ProbeResult(
+            ok=False, elapsed_ms=8300, error="Устройство не ответило за отведённое время",
+            trace=[snmp_probe.TraceStep(label="Адрес 10.0.0.1:161", ok=True, detail="транспорт создан", elapsed_ms=1)],
+        )
 
     monkeypatch.setattr(snmp_probe, "probe", fake_probe)
 
@@ -82,8 +93,12 @@ def test_probe_error_becomes_502_with_readable_message(client, headers, monkeypa
         json={"host": "10.0.0.1", "version": "v2c", "community": "public"},
         headers=headers["editor"],
     )
-    assert response.status_code == 502
-    assert "не ответило" in response.json()["detail"]
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert "не ответило" in body["error"]
+    assert body["system"] is None
+    assert len(body["trace"]) == 1
 
 
 def test_request_schema_defaults():
