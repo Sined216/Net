@@ -77,6 +77,61 @@ _BULK_MAX_REPETITIONS = 25
 _RAW_WALK_BUDGET_S = 25.0
 _RAW_WALK_MAX_OIDS = 500
 
+# Для «сырого» обхода: к какому модулю MIB относится OID — не полноценный
+# разбор через настоящие MIB-файлы (это отдельная тяжёлая зависимость,
+# которую весь модуль сознательно обходит — везде lookupMib=False), а
+# короткая таблица самых ходовых префиксов дерева. Проверяется по самому
+# длинному совпадающему префиксу, поэтому порядок в списке не важен —
+# сортируется один раз при загрузке модуля.
+_MIB_MODULE_PREFIXES: list = [
+    ((1, 3, 6, 1, 2, 1, 1), "SNMPv2-MIB (система)"),
+    ((1, 3, 6, 1, 2, 1, 2, 2, 1), "IF-MIB::ifTable (порты)"),
+    ((1, 3, 6, 1, 2, 1, 2), "IF-MIB (interfaces)"),
+    ((1, 3, 6, 1, 2, 1, 31, 1, 1, 1), "IF-MIB::ifXTable (порты, расширение)"),
+    ((1, 3, 6, 1, 2, 1, 31), "IF-MIB"),
+    ((1, 3, 6, 1, 2, 1, 3), "IP-MIB::at (устарело)"),
+    ((1, 3, 6, 1, 2, 1, 4, 20, 1), "IP-MIB::ipAddrTable (IP-адреса)"),
+    ((1, 3, 6, 1, 2, 1, 4, 22, 1), "IP-MIB::ipNetToMediaTable (ARP)"),
+    ((1, 3, 6, 1, 2, 1, 4), "IP-MIB"),
+    ((1, 3, 6, 1, 2, 1, 5), "ICMP-MIB"),
+    ((1, 3, 6, 1, 2, 1, 6), "TCP-MIB"),
+    ((1, 3, 6, 1, 2, 1, 7), "UDP-MIB"),
+    ((1, 3, 6, 1, 2, 1, 8), "EGP-MIB"),
+    ((1, 3, 6, 1, 2, 1, 10), "TRANSMISSION-MIB"),
+    ((1, 3, 6, 1, 2, 1, 11), "SNMP-MIB (статистика самого агента)"),
+    ((1, 3, 6, 1, 2, 1, 17, 4, 3, 1), "BRIDGE-MIB::dot1dTpFwdTable (MAC-таблица)"),
+    ((1, 3, 6, 1, 2, 1, 17, 1, 4, 1), "BRIDGE-MIB::dot1dBasePortTable"),
+    ((1, 3, 6, 1, 2, 1, 17, 7), "Q-BRIDGE-MIB (VLAN)"),
+    ((1, 3, 6, 1, 2, 1, 17), "BRIDGE-MIB"),
+    ((1, 3, 6, 1, 2, 1, 25), "HOST-RESOURCES-MIB"),
+    ((1, 3, 6, 1, 2, 1, 47), "ENTITY-MIB"),
+    ((1, 3, 6, 1, 2, 1), "MIB-2 (стандартная ветка)"),
+    ((1, 3, 6, 1, 6, 3), "SNMP-FRAMEWORK-MIB (служебное — USM, VACM)"),
+    ((1, 3, 6, 1, 4, 1), "enterprises (частная ветка производителя)"),
+]
+_MIB_MODULE_PREFIXES.sort(key=lambda item: -len(item[0]))
+
+# Самые частые номера производителей в частной ветке (enterprises) — не
+# реестр IANA целиком, только то, что встречается на практике чаще всего.
+_KNOWN_ENTERPRISES = {
+    9: "Cisco", 11: "HP", 311: "Microsoft", 2636: "Juniper",
+    8072: "Net-SNMP", 8691: "Moxa", 2021: "UCD-SNMP/Net-SNMP",
+}
+
+_ENTERPRISES_PREFIX = (1, 3, 6, 1, 4, 1)
+
+
+def _describe_mib_module(oid_parts: tuple) -> str:
+    for prefix, name in _MIB_MODULE_PREFIXES:
+        if oid_parts[:len(prefix)] == prefix:
+            if prefix == _ENTERPRISES_PREFIX and len(oid_parts) > len(prefix):
+                vendor = oid_parts[len(prefix)]
+                vendor_name = _KNOWN_ENTERPRISES.get(vendor)
+                return f"enterprises ({vendor_name})" if vendor_name else f"enterprises (№{vendor})"
+            return name
+    return "неизвестная ветка"
+
+
 _SYSTEM_OIDS = {
     "sys_descr": "1.3.6.1.2.1.1.1.0",
     "sys_object_id": "1.3.6.1.2.1.1.2.0",
@@ -251,6 +306,7 @@ class ProbeResult:
 @dataclass
 class RawOid:
     oid: str
+    module: str
     type: str
     value: str
 
@@ -855,7 +911,11 @@ async def _run_raw_walk(
             for name, value in var_binds:
                 if _is_missing(value) or isinstance(value, hlapi.EndOfMibView):
                     continue
-                oids.append(RawOid(oid=str(name), type=type(value).__name__, value=_preview_value(value, limit=200)))
+                oid_parts = tuple(int(p) for p in str(name).split("."))
+                oids.append(RawOid(
+                    oid=str(name), module=_describe_mib_module(oid_parts),
+                    type=type(value).__name__, value=_preview_value(value, limit=200),
+                ))
                 if len(oids) >= _RAW_WALK_MAX_OIDS:
                     truncated = True
                     break

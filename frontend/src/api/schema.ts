@@ -2360,6 +2360,8 @@ export interface components {
         };
         /** SnmpRawOid */
         SnmpRawOid: {
+            /** Module */
+            module: string;
             /** Oid */
             oid: string;
             /** Type */

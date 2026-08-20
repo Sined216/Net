@@ -381,12 +381,12 @@ export function SnmpProbePage() {
         </Stack>
       )}
 
-      <Paper withBorder p="md" maw={720} mt="md">
+      <Paper withBorder p="md" mt="md">
         <Group gap="xs" mb="xs">
           <IconListTree size={20} />
           <Title order={4}>Обойти всё дерево MIB</Title>
         </Group>
-        <Text size="sm" c="dimmed" mb="sm">
+        <Text size="sm" c="dimmed" mb="sm" maw={720}>
           Отдельное, осознанно медленное действие: сырой обход дерева OID устройства с заданного корня — без разбора
           по полям, просто то, что оно отдаёт, включая собственные (vendor-specific) ветки производителя. Использует
           адрес и учётные данные, заполненные выше. Останавливается сам — по числу собранных OID (не больше 500 за
@@ -431,17 +431,28 @@ export function SnmpProbePage() {
             {walkResult.oids.length > 0 && (
               <Card withBorder padding="sm">
                 <Title order={5} mb="xs">Собранные OID</Title>
-                <Table.ScrollContainer minWidth={620} mah={480} style={{ overflowY: 'auto' }}>
-                  <Table verticalSpacing={4} withRowBorders={false} stickyHeader>
+                <Text size="xs" c="dimmed" mb="sm">
+                  Под каждым OID — модуль MIB, к которому относится ветка (по префиксу, не по настоящему разбору
+                  MIB-файлов — для частных веток производителя виден хотя бы номер).
+                </Text>
+                <Table.ScrollContainer minWidth={700} mah={600} style={{ overflowY: 'auto' }}>
+                  <Table verticalSpacing={4} withRowBorders stickyHeader>
                     <Table.Thead>
-                      <Table.Tr><Table.Th>OID</Table.Th><Table.Th>Тип</Table.Th><Table.Th>Значение</Table.Th></Table.Tr>
+                      <Table.Tr>
+                        <Table.Th w={280}>OID</Table.Th><Table.Th w={130}>Тип</Table.Th><Table.Th>Значение</Table.Th>
+                      </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
                       {walkResult.oids.map((o, i) => (
                         <Table.Tr key={i}>
-                          <Table.Td ff="monospace">{o.oid}</Table.Td>
-                          <Table.Td>{o.type}</Table.Td>
-                          <Table.Td ff="monospace">{o.value || <Text span c="dimmed">—</Text>}</Table.Td>
+                          <Table.Td valign="top">
+                            <Text size="sm" ff="monospace">{o.oid}</Text>
+                            <Text size="xs" c="dimmed">{o.module}</Text>
+                          </Table.Td>
+                          <Table.Td valign="top">{o.type}</Table.Td>
+                          <Table.Td valign="top" ff="monospace" style={{ wordBreak: 'break-word' }}>
+                            {o.value || <Text span c="dimmed">—</Text>}
+                          </Table.Td>
                         </Table.Tr>
                       ))}
                     </Table.Tbody>

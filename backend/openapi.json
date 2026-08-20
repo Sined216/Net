@@ -3552,6 +3552,10 @@
       },
       "SnmpRawOid": {
         "properties": {
+          "module": {
+            "title": "Module",
+            "type": "string"
+          },
           "oid": {
             "title": "Oid",
             "type": "string"
@@ -3567,6 +3571,7 @@
         },
         "required": [
           "oid",
+          "module",
           "type",
           "value"
         ],

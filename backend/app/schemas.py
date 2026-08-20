@@ -1020,6 +1020,7 @@ class SnmpWalkRequest(SnmpProbeRequest):
 
 class SnmpRawOid(BaseModel):
     oid: str
+    module: str
     type: str
     value: str
 

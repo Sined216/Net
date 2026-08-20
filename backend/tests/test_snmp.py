@@ -105,6 +105,18 @@ def test_failed_probe_returns_200_with_ok_false(client, headers, monkeypatch):
     assert len(body["trace"]) == 1
 
 
+def test_describe_mib_module_picks_longest_matching_prefix():
+    # ifTable — более длинный и более точный префикс, чем просто «interfaces»
+    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 2, 1, 2, 2, 1, 5, 1)) == "IF-MIB::ifTable (порты)"
+    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 2, 1, 2, 1, 0)) == "IF-MIB (interfaces)"
+    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 2, 1, 1, 5, 0)) == "SNMPv2-MIB (система)"
+    # известный производитель по номеру после enterprises
+    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 4, 1, 9, 1, 1)) == "enterprises (Cisco)"
+    # неизвестный производитель — номер виден, а не потерян
+    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 4, 1, 424242, 1)) == "enterprises (№424242)"
+    assert snmp_probe._describe_mib_module((1, 2, 3)) == "неизвестная ветка"
+
+
 def test_request_schema_defaults():
     """Порт по умолчанию 161, версия по умолчанию v2c — совпадает с тем,
     что человек ожидает увидеть уже заполненным на форме."""
@@ -142,7 +154,10 @@ def test_successful_walk_shape(client, headers, monkeypatch):
         return snmp_probe.WalkResult(
             ok=True, elapsed_ms=17, truncated=False,
             trace=[snmp_probe.TraceStep(label="Обход — начало", ok=True, detail="корень 1.3.6.1.2.1.1", elapsed_ms=0)],
-            oids=[snmp_probe.RawOid(oid="1.3.6.1.2.1.1.5.0", type="OctetString", value="SW-TEST-01")],
+            oids=[snmp_probe.RawOid(
+                oid="1.3.6.1.2.1.1.5.0", module="SNMPv2-MIB (система)",
+                type="OctetString", value="SW-TEST-01",
+            )],
         )
 
     monkeypatch.setattr(snmp_probe, "raw_walk", fake_walk)
@@ -156,4 +171,7 @@ def test_successful_walk_shape(client, headers, monkeypatch):
     body = response.json()
     assert body["ok"] is True
     assert body["truncated"] is False
-    assert body["oids"] == [{"oid": "1.3.6.1.2.1.1.5.0", "type": "OctetString", "value": "SW-TEST-01"}]
+    assert body["oids"] == [{
+        "oid": "1.3.6.1.2.1.1.5.0", "module": "SNMPv2-MIB (система)",
+        "type": "OctetString", "value": "SW-TEST-01",
+    }]
