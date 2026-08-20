@@ -16,6 +16,7 @@ SNMP/LLDP-опрос — тот раздел ждёт этой ручной пр
 данные, — это делает Pydantic-схема запроса.
 """
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -27,6 +28,13 @@ import pysnmp.hlapi.v3arch.asyncio as hlapi
 # запрос сервера на произвольный срок по чужой воле.
 _TIMEOUT_S = 4.0
 _RETRIES = 1
+
+# Общий потолок на весь опрос, а не только на отдельный запрос. Обход
+# таблицы портов — это отдельный запрос на каждую строку, и без общего
+# предела недоступное устройство с полусотней портов держало бы запрос
+# сервера дольше, чем ждёт прокси перед ним, — человек тогда видит не наше
+# понятное сообщение, а сырой «Gateway Time-out» от прокси.
+_TOTAL_BUDGET_S = 20.0
 
 _SYSTEM_OIDS = {
     "sys_descr": "1.3.6.1.2.1.1.1.0",
@@ -182,22 +190,50 @@ async def probe(
     priv_protocol: Optional[str] = None, priv_password: Optional[str] = None,
 ) -> ProbeResult:
     started = time.monotonic()
-    engine = hlapi.SnmpEngine()
     try:
-        target = await hlapi.UdpTransportTarget.create((host, port), timeout=_TIMEOUT_S, retries=_RETRIES)
-    except Exception as exc:
-        raise ProbeError(f"Не удалось обратиться по адресу «{host}:{port}»: {exc}") from None
-
-    auth = _build_auth_data(
-        version, community, username, security_level,
-        auth_protocol, auth_password, priv_protocol, priv_password,
-    )
-
-    system = await _fetch_system(engine, auth, target)
-    interfaces = await _fetch_interfaces(engine, auth, target)
+        system, interfaces = await asyncio.wait_for(
+            _run(
+                host, port, version, community, username, security_level,
+                auth_protocol, auth_password, priv_protocol, priv_password,
+            ),
+            timeout=_TOTAL_BUDGET_S,
+        )
+    except TimeoutError:
+        raise ProbeError(
+            f"Опрос не уложился в {int(_TOTAL_BUDGET_S)} секунд — устройство отвечает слишком "
+            "медленно или у него слишком много портов для такого срока. Проверьте, что адрес "
+            "верный и устройство доступно по сети."
+        ) from None
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
     return ProbeResult(elapsed_ms=elapsed_ms, system=system, interfaces=interfaces)
+
+
+async def _run(
+    host: str, port: int, version: str,
+    community: Optional[str], username: Optional[str], security_level: str,
+    auth_protocol: Optional[str], auth_password: Optional[str],
+    priv_protocol: Optional[str], priv_password: Optional[str],
+) -> tuple:
+    engine = hlapi.SnmpEngine()
+    try:
+        try:
+            target = await hlapi.UdpTransportTarget.create((host, port), timeout=_TIMEOUT_S, retries=_RETRIES)
+        except Exception as exc:
+            raise ProbeError(f"Не удалось обратиться по адресу «{host}:{port}»: {exc}") from None
+
+        auth = _build_auth_data(
+            version, community, username, security_level,
+            auth_protocol, auth_password, priv_protocol, priv_password,
+        )
+
+        system = await _fetch_system(engine, auth, target)
+        interfaces = await _fetch_interfaces(engine, auth, target)
+        return system, interfaces
+    finally:
+        # Иначе сокет на каждый опрос остаётся висеть до перезапуска
+        # процесса — страница ведь для повторных нажатий, а не одного раза.
+        engine.close_dispatcher()
 
 
 async def _fetch_system(engine, auth, target) -> SystemInfo:
