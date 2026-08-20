@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import type { RenderTreeNodePayload, TreeNodeData } from '@mantine/core';
 import {
-  IconAlertTriangle, IconChevronDown, IconChevronRight, IconCheck, IconListTree, IconRouter, IconX,
+  IconAlertTriangle, IconChevronDown, IconChevronRight, IconCheck, IconFlask2, IconListTree, IconRouter, IconX,
 } from '@tabler/icons-react';
 import { useSnmpProbe, useSnmpWalk } from '../api/hooks';
 import { useCan } from '../auth/permissions';
@@ -219,6 +219,9 @@ export function SnmpProbePage() {
       <Group gap="xs">
         <IconRouter size={22} />
         <Title order={2}>SNMP</Title>
+        <Badge size="sm" variant="light" color="grape" leftSection={<IconFlask2 size={12} />}>
+          Тестовая страница
+        </Badge>
       </Group>
       <Text c="dimmed" size="sm" maw={720}>
         SNMP — протокол, которым сетевое и промышленное оборудование само отвечает на вопрос «кто ты и что у тебя
@@ -227,6 +230,12 @@ export function SnmpProbePage() {
         для чтения), на v3 — настоящие логин и пароль, опционально с шифрованием. Эта страница отдельная и ничего не
         сохраняет: только спрашивает устройство напрямую и показывает, что оно ответило.
       </Text>
+      <Alert color="grape" variant="light" icon={<IconFlask2 size={16} />} maw={720}>
+        Это тестовый, исследовательский инструмент — способ вживую посмотреть, что такое SNMP и что реально отдаёт
+        оборудование, прежде чем решать, как встраивать опрос в документирование сети. Она сознательно не связана
+        с остальным приложением: ничего не пишет в базу, не создаёт устройств и связей. Дальнейшая судьба этих
+        данных — отдельный этап, см. план ниже.
+      </Alert>
 
       <Paper withBorder p="md" maw={640}>
         <form onSubmit={handleSubmit}>
