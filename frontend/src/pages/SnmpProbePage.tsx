@@ -3,11 +3,13 @@ import {
   Alert, Badge, Button, Card, Group, NumberInput, Paper, Select, Stack,
   Table, Text, TextInput, Title,
 } from '@mantine/core';
-import { IconAlertTriangle, IconCheck, IconRouter, IconX } from '@tabler/icons-react';
-import { useSnmpProbe } from '../api/hooks';
+import { IconAlertTriangle, IconCheck, IconListTree, IconRouter, IconX } from '@tabler/icons-react';
+import { useSnmpProbe, useSnmpWalk } from '../api/hooks';
 import { useCan } from '../auth/permissions';
 import { notifyError } from '../lib/notify';
-import type { SnmpAuthProtocol, SnmpPrivProtocol, SnmpSecurityLevel, SnmpVersion } from '../api/types';
+import type {
+  SnmpAuthProtocol, SnmpPrivProtocol, SnmpSecurityLevel, SnmpTraceStep, SnmpVersion,
+} from '../api/types';
 
 const VERSIONS: { value: SnmpVersion; label: string }[] = [
   { value: 'v2c', label: 'v2c — community-строка, без шифрования' },
@@ -26,8 +28,12 @@ const AUTH_PROTOCOLS: { value: SnmpAuthProtocol; label: string }[] =
 const PRIV_PROTOCOLS: { value: SnmpPrivProtocol; label: string }[] =
   (['DES', '3DES', 'AES', 'AES192', 'AES256'] as const).map((v) => ({ value: v, label: v }));
 
-/** Скорость порта в понятных единицах — ifSpeed приходит битами в секунду,
- * и «1000000000» ничего не говорит на глаз. */
+// Простая проверка формы OID на глаз — окончательное слово всё равно за
+// схемой на бэкенде, это только чтобы не гонять заведомо кривой ввод по сети.
+const OID_PATTERN = /^\.?\d+(\.\d+)+$/;
+
+/** Скорость порта в понятных единицах — ifSpeed/ifHighSpeed приходят
+ * битами в секунду, и «1000000000» ничего не говорит на глаз. */
 function formatSpeed(bps: number | null | undefined): string {
   if (bps == null) return '—';
   if (bps >= 1_000_000_000) return `${(bps / 1_000_000_000).toLocaleString('ru-RU')} Гбит/с`;
@@ -46,10 +52,16 @@ const STATUS_COLOR: Record<string, string> = {
  * оборудования. Задача — посмотреть вживую, что такое SNMP и что реальное
  * устройство по нему отдаёт, прежде чем решать, как это встраивать в
  * документирование сети (см. этап 4 ТЗ, SNMP/LLDP-опрос).
+ *
+ * По прямой просьбе «вытащить всё, что можно» опрос читает не только
+ * системную группу и порты, а ещё IP-адреса, ARP- и MAC-таблицы, VLAN на
+ * портах — и рядом отдельной кнопкой стоит совсем прямой инструмент:
+ * сырой обход произвольной ветки дерева MIB без разбора по полям.
  */
 export function SnmpProbePage() {
   const canEdit = useCan('edit');
   const probe = useSnmpProbe();
+  const walk = useSnmpWalk();
 
   const [host, setHost] = useState('');
   const [port, setPort] = useState<number | ''>(161);
@@ -63,6 +75,8 @@ export function SnmpProbePage() {
   const [privProtocol, setPrivProtocol] = useState<SnmpPrivProtocol | null>('AES');
   const [privPassword, setPrivPassword] = useState('');
 
+  const [rootOid, setRootOid] = useState('1.3.6.1');
+
   const isV3 = version === 'v3';
   const needsAuth = isV3 && securityLevel !== 'noAuthNoPriv';
   const needsPriv = isV3 && securityLevel === 'authPriv';
@@ -71,29 +85,41 @@ export function SnmpProbePage() {
     && (isV3 ? username.trim().length > 0 : community.trim().length > 0)
     && (!needsAuth || authPassword.length > 0)
     && (!needsPriv || privPassword.length > 0);
+  const canWalk = canSubmit && OID_PATTERN.test(rootOid.trim());
+
+  /** Общие для /probe и /walk поля подключения — версия, учётные данные —
+   * собираются один раз, дальше к ним добавляется только то, что у ручек
+   * своё. */
+  function connectionParams() {
+    return {
+      host: host.trim(), version,
+      community: isV3 ? undefined : community.trim(),
+      username: isV3 ? username.trim() : undefined,
+      security_level: securityLevel,
+      auth_protocol: needsAuth ? authProtocol ?? undefined : undefined,
+      auth_password: needsAuth ? authPassword : undefined,
+      priv_protocol: needsPriv ? privProtocol ?? undefined : undefined,
+      priv_password: needsPriv ? privPassword : undefined,
+    };
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || typeof port !== 'number') return;
-    probe.mutate(
-      {
-        host: host.trim(), port, version,
-        community: isV3 ? undefined : community.trim(),
-        username: isV3 ? username.trim() : undefined,
-        security_level: securityLevel,
-        auth_protocol: needsAuth ? authProtocol ?? undefined : undefined,
-        auth_password: needsAuth ? authPassword : undefined,
-        priv_protocol: needsPriv ? privProtocol ?? undefined : undefined,
-        priv_password: needsPriv ? privPassword : undefined,
-      },
-      { onError: notifyError },
-    );
+    probe.mutate({ ...connectionParams(), port }, { onError: notifyError });
+  }
+
+  function handleWalk() {
+    if (!canWalk || typeof port !== 'number') return;
+    walk.mutate({ ...connectionParams(), port, root_oid: rootOid.trim() }, { onError: notifyError });
   }
 
   const result = probe.data;
-  // Ручка отвечает 200 и на удачный, и на неудачный опрос — «устройство не
-  // ответило» видно в теле, а не в статусе. probe.isError остаётся на
-  // случай настоящего сбоя сервера (сеть до самого бэкенда, 5xx и т.п.).
+  const walkResult = walk.data;
+  // Обе ручки отвечают 200 и на удачу, и на неудачу опроса — «устройство не
+  // ответило» видно в теле, а не в статусе. probe.isError/walk.isError
+  // остаются на случай настоящего сбоя сервера (сеть до самого бэкенда,
+  // 5xx и т. п.).
 
   return (
     <Stack>
@@ -204,36 +230,7 @@ export function SnmpProbePage() {
             </Alert>
           )}
 
-          {result.trace.length > 0 && (
-            <Card withBorder padding="sm">
-              <Title order={5} mb="xs">Диагностика</Title>
-              <Text size="xs" c="dimmed" mb="sm">
-                Что опрашивали на каждом шаге, что реально пришло в ответ — с OID, где это уместно.
-              </Text>
-              <Table.ScrollContainer minWidth={620}>
-                <Table verticalSpacing={6} withRowBorders>
-                  <Table.Tbody>
-                    {result.trace.map((step, i) => (
-                      <Table.Tr key={i}>
-                        <Table.Td w={24} valign="top" pt={6}>
-                          {step.ok
-                            ? <IconCheck size={16} color="var(--mantine-color-teal-6)" />
-                            : <IconX size={16} color="var(--mantine-color-red-6)" />}
-                        </Table.Td>
-                        <Table.Td w={190} valign="top"><Text size="sm" fw={500}>{step.label}</Text></Table.Td>
-                        <Table.Td valign="top">
-                          <Text size="sm" c="dimmed" ff="monospace" style={{ whiteSpace: 'pre-line' }}>
-                            {step.detail}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td w={80} valign="top"><Text size="xs" c="dimmed" ta="right">{step.elapsed_ms} мс</Text></Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
-            </Card>
-          )}
+          <TraceCard trace={result.trace} />
 
           {result.system && (
             <Card withBorder padding="sm">
@@ -257,22 +254,30 @@ export function SnmpProbePage() {
               {result.interfaces.length === 0 ? (
                 <Text c="dimmed" size="sm">Устройство не отдало ни одного порта.</Text>
               ) : (
-                <Table.ScrollContainer minWidth={620}>
+                <Table.ScrollContainer minWidth={760}>
                   <Table verticalSpacing={4} highlightOnHover>
                     <Table.Thead>
                       <Table.Tr>
-                        <Table.Th>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Тип</Table.Th>
-                        <Table.Th>Скорость</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Состояние</Table.Th>
+                        <Table.Th>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Псевдоним</Table.Th>
+                        <Table.Th>Тип</Table.Th><Table.Th>Скорость</Table.Th><Table.Th>MAC</Table.Th>
+                        <Table.Th>VLAN</Table.Th><Table.Th>Состояние</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
                       {result.interfaces.map((iface) => (
                         <Table.Tr key={iface.index}>
                           <Table.Td>{iface.index}</Table.Td>
-                          <Table.Td>{iface.descr ?? '—'}</Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{iface.descr ?? iface.name ?? '—'}</Text>
+                            {iface.name && iface.descr && iface.name !== iface.descr && (
+                              <Text size="xs" c="dimmed">ifName: {iface.name}</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>{iface.alias ?? '—'}</Table.Td>
                           <Table.Td>{iface.type_label ?? (iface.type_raw != null ? `тип ${iface.type_raw}` : '—')}</Table.Td>
                           <Table.Td>{formatSpeed(iface.speed_bps)}</Table.Td>
                           <Table.Td ff="monospace">{iface.mac ?? '—'}</Table.Td>
+                          <Table.Td>{iface.vlan ?? '—'}</Table.Td>
                           <Table.Td>
                             {iface.oper_status
                               ? <Badge size="sm" variant="light" color={STATUS_COLOR[iface.oper_status] ?? 'orange'}>{iface.oper_status}</Badge>
@@ -286,8 +291,167 @@ export function SnmpProbePage() {
               )}
             </Card>
           )}
+
+          {result.ok && (
+            <Card withBorder padding="sm">
+              <Title order={5} mb="xs">IP-адреса (IP-MIB::ipAddrTable)</Title>
+              {result.ip_addresses.length === 0 ? (
+                <Text c="dimmed" size="sm">Устройство не отдало ни одного IP-адреса (или не поддерживает эту таблицу).</Text>
+              ) : (
+                <Table.ScrollContainer minWidth={500}>
+                  <Table verticalSpacing={4} highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Адрес</Table.Th><Table.Th>Маска</Table.Th><Table.Th>Порт</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {result.ip_addresses.map((a, i) => (
+                        <Table.Tr key={i}>
+                          <Table.Td ff="monospace">{a.address}</Table.Td>
+                          <Table.Td ff="monospace">{a.netmask ?? '—'}</Table.Td>
+                          <Table.Td>{a.if_descr ?? (a.if_index != null ? `ifIndex ${a.if_index}` : '—')}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+            </Card>
+          )}
+
+          {result.ok && (
+            <Card withBorder padding="sm">
+              <Title order={5} mb="xs">ARP-таблица (IP-MIB::ipNetToMediaTable)</Title>
+              <Text size="xs" c="dimmed" mb="sm">Какие MAC устройство видит за какими IP на своих портах.</Text>
+              {result.arp_entries.length === 0 ? (
+                <Text c="dimmed" size="sm">Пусто (или устройство не поддерживает эту таблицу).</Text>
+              ) : (
+                <Table.ScrollContainer minWidth={620}>
+                  <Table verticalSpacing={4} highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>IP</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Порт</Table.Th><Table.Th>Тип записи</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {result.arp_entries.map((a, i) => (
+                        <Table.Tr key={i}>
+                          <Table.Td ff="monospace">{a.ip}</Table.Td>
+                          <Table.Td ff="monospace">{a.mac ?? '—'}</Table.Td>
+                          <Table.Td>{a.if_descr ?? (a.if_index != null ? `ifIndex ${a.if_index}` : '—')}</Table.Td>
+                          <Table.Td>{a.type_label ?? '—'}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+            </Card>
+          )}
+
+          {result.ok && (
+            <Card withBorder padding="sm">
+              <Title order={5} mb="xs">MAC-таблица (BRIDGE-MIB::dot1dTpFwdTable)</Title>
+              <Text size="xs" c="dimmed" mb="sm">Какие MAC-адреса выучены на каких портах.</Text>
+              {result.mac_table.length === 0 ? (
+                <Text c="dimmed" size="sm">Пусто (или устройство не поддерживает Bridge-MIB).</Text>
+              ) : (
+                <Table.ScrollContainer minWidth={560}>
+                  <Table verticalSpacing={4} highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>MAC</Table.Th><Table.Th>Порт</Table.Th><Table.Th>Статус</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {result.mac_table.map((m, i) => (
+                        <Table.Tr key={i}>
+                          <Table.Td ff="monospace">{m.mac}</Table.Td>
+                          <Table.Td>{m.if_descr ?? (m.if_index != null ? `ifIndex ${m.if_index}` : '—')}</Table.Td>
+                          <Table.Td>{m.status_label ?? '—'}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+            </Card>
+          )}
         </Stack>
       )}
+
+      <Paper withBorder p="md" maw={720} mt="md">
+        <Group gap="xs" mb="xs">
+          <IconListTree size={20} />
+          <Title order={4}>Обойти всё дерево MIB</Title>
+        </Group>
+        <Text size="sm" c="dimmed" mb="sm">
+          Отдельное, осознанно медленное действие: сырой обход дерева OID устройства с заданного корня — без разбора
+          по полям, просто то, что оно отдаёт, включая собственные (vendor-specific) ветки производителя. Использует
+          адрес и учётные данные, заполненные выше. Останавливается сам — по числу собранных OID (не больше 500 за
+          раз) или по времени; если дерево больше, можно продолжить с более узкого корня.
+        </Text>
+        <Group align="flex-end" mb="sm">
+          <TextInput
+            label="Начальный OID" description="Например, «1.3.6.1» — вся ветка internet, или «1.3.6.1.2.1» — только стандартные MIB, без собственных веток производителя"
+            value={rootOid} onChange={(e) => setRootOid(e.currentTarget.value)}
+            error={rootOid.trim().length > 0 && !OID_PATTERN.test(rootOid.trim()) ? 'Похоже, это не OID' : undefined}
+            ff="monospace" w={320}
+          />
+          <Button
+            leftSection={<IconListTree size={16} />}
+            onClick={handleWalk} loading={walk.isPending} disabled={!canWalk || !canEdit}
+          >
+            Обойти
+          </Button>
+        </Group>
+
+        {walk.isError && (
+          <Alert color="red" mb="sm" title="Не удалось выполнить обход">
+            {(walk.error as Error).message}
+          </Alert>
+        )}
+
+        {walkResult && (
+          <Stack>
+            <Text size="xs" c="dimmed">
+              Обход занял {walkResult.elapsed_ms} мс, собрано OID: {walkResult.oids.length}
+              {walkResult.truncated && ' (остановлено по пределу — см. след ниже)'}
+            </Text>
+
+            {!walkResult.ok && (
+              <Alert color="red" title="Обход не завершился как ожидалось">
+                {walkResult.error}
+              </Alert>
+            )}
+
+            <TraceCard trace={walkResult.trace} />
+
+            {walkResult.oids.length > 0 && (
+              <Card withBorder padding="sm">
+                <Title order={5} mb="xs">Собранные OID</Title>
+                <Table.ScrollContainer minWidth={620} mah={480} style={{ overflowY: 'auto' }}>
+                  <Table verticalSpacing={4} withRowBorders={false} stickyHeader>
+                    <Table.Thead>
+                      <Table.Tr><Table.Th>OID</Table.Th><Table.Th>Тип</Table.Th><Table.Th>Значение</Table.Th></Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {walkResult.oids.map((o, i) => (
+                        <Table.Tr key={i}>
+                          <Table.Td ff="monospace">{o.oid}</Table.Td>
+                          <Table.Td>{o.type}</Table.Td>
+                          <Table.Td ff="monospace">{o.value || <Text span c="dimmed">—</Text>}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              </Card>
+            )}
+          </Stack>
+        )}
+      </Paper>
     </Stack>
   );
 }
@@ -298,5 +462,42 @@ function SystemRow({ label, value, mono = false }: { label: string; value?: stri
       <Table.Td w={140}><Text size="sm" c="dimmed">{label}</Text></Table.Td>
       <Table.Td ff={mono ? 'monospace' : undefined}>{value || <Text span c="dimmed">—</Text>}</Table.Td>
     </Table.Tr>
+  );
+}
+
+/** Диагностический след — общий вид для обычного опроса и для обхода
+ * дерева MIB: что делали на каждом шаге, что реально пришло, с OID, где
+ * это уместно, и на чём остановились. */
+function TraceCard({ trace }: { trace: SnmpTraceStep[] }) {
+  if (trace.length === 0) return null;
+  return (
+    <Card withBorder padding="sm">
+      <Title order={5} mb="xs">Диагностика</Title>
+      <Text size="xs" c="dimmed" mb="sm">
+        Что опрашивали на каждом шаге, что реально пришло в ответ — с OID, где это уместно.
+      </Text>
+      <Table.ScrollContainer minWidth={620}>
+        <Table verticalSpacing={6} withRowBorders>
+          <Table.Tbody>
+            {trace.map((step, i) => (
+              <Table.Tr key={i}>
+                <Table.Td w={24} valign="top" pt={6}>
+                  {step.ok
+                    ? <IconCheck size={16} color="var(--mantine-color-teal-6)" />
+                    : <IconX size={16} color="var(--mantine-color-red-6)" />}
+                </Table.Td>
+                <Table.Td w={190} valign="top"><Text size="sm" fw={500}>{step.label}</Text></Table.Td>
+                <Table.Td valign="top">
+                  <Text size="sm" c="dimmed" ff="monospace" style={{ whiteSpace: 'pre-line' }}>
+                    {step.detail}
+                  </Text>
+                </Table.Td>
+                <Table.Td w={80} valign="top"><Text size="xs" c="dimmed" ta="right">{step.elapsed_ms} мс</Text></Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+    </Card>
   );
 }

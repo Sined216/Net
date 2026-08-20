@@ -15,7 +15,7 @@ import type {
   TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
   UserCreate, UserUpdate, PasswordReset,
   SiteCreate, SiteUpdate, AuditQuery, DeviceQuery, LinkQuery, FreePortQuery,
-  SnmpProbeRequest,
+  SnmpProbeRequest, SnmpWalkRequest,
 } from './types';
 
 // ---------- Queries ----------
@@ -574,3 +574,5 @@ export const useAudit = (query: AuditQuery) =>
 // ответ в своём состоянии.
 export const useSnmpProbe = () =>
   useMutation({ mutationFn: (body: SnmpProbeRequest) => api.snmpProbe(body) });
+export const useSnmpWalk = () =>
+  useMutation({ mutationFn: (body: SnmpWalkRequest) => api.snmpWalk(body) });

@@ -16,7 +16,7 @@ import type {
   SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
   SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
   DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
-  SnmpProbeRequest, SnmpProbeResult,
+  SnmpProbeRequest, SnmpProbeResult, SnmpWalkRequest, SnmpWalkResult,
 } from './types';
 
 // ---------- Auth ----------
@@ -180,3 +180,5 @@ export const listAudit = (query: AuditQuery) =>
 // ---------- SNMP (отдельная страница, ничем не связана с остальным) ----------
 export const snmpProbe = (body: SnmpProbeRequest) =>
   apiFetch<SnmpProbeResult>('/snmp/probe', { method: 'POST', body });
+export const snmpWalk = (body: SnmpWalkRequest) =>
+  apiFetch<SnmpWalkResult>('/snmp/walk', { method: 'POST', body });

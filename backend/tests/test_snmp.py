@@ -70,11 +70,15 @@ def test_successful_probe_shape(client, headers, monkeypatch):
     assert body["system"]["sys_name"] == "SW-TEST-01"
     assert body["interfaces"] == [
         {
-            "index": 1, "descr": "Gi0/1", "type_raw": None, "type_label": None,
+            "index": 1, "descr": "Gi0/1", "name": None, "alias": None,
+            "type_raw": None, "type_label": None,
             "mtu": None, "speed_bps": None, "mac": None,
-            "admin_status": None, "oper_status": "включён",
+            "admin_status": None, "oper_status": "включён", "vlan": None,
         },
     ]
+    assert body["ip_addresses"] == []
+    assert body["arp_entries"] == []
+    assert body["mac_table"] == []
 
 
 def test_failed_probe_returns_200_with_ok_false(client, headers, monkeypatch):
@@ -107,3 +111,49 @@ def test_request_schema_defaults():
     payload = schemas.SnmpProbeRequest(host="10.0.0.1", community="public")
     assert payload.port == 161
     assert payload.version == "v2c"
+
+
+def test_walk_request_defaults_and_validates_root_oid():
+    payload = schemas.SnmpWalkRequest(host="10.0.0.1", community="public")
+    assert payload.root_oid == "1.3.6.1"
+
+
+def test_walk_rejects_malformed_root_oid(client, headers):
+    response = client.post(
+        "/snmp/walk",
+        json={"host": "10.0.0.1", "version": "v2c", "community": "public", "root_oid": "not-an-oid"},
+        headers=headers["editor"],
+    )
+    assert response.status_code == 422
+
+
+def test_viewer_cannot_walk(client, headers):
+    response = client.post(
+        "/snmp/walk",
+        json={"host": "10.0.0.1", "version": "v2c", "community": "public"},
+        headers=headers["viewer"],
+    )
+    assert response.status_code == 403
+
+
+def test_successful_walk_shape(client, headers, monkeypatch):
+    async def fake_walk(**kwargs):
+        assert kwargs["root_oid"] == "1.3.6.1.2.1.1"
+        return snmp_probe.WalkResult(
+            ok=True, elapsed_ms=17, truncated=False,
+            trace=[snmp_probe.TraceStep(label="Обход — начало", ok=True, detail="корень 1.3.6.1.2.1.1", elapsed_ms=0)],
+            oids=[snmp_probe.RawOid(oid="1.3.6.1.2.1.1.5.0", type="OctetString", value="SW-TEST-01")],
+        )
+
+    monkeypatch.setattr(snmp_probe, "raw_walk", fake_walk)
+
+    response = client.post(
+        "/snmp/walk",
+        json={"host": "10.0.0.1", "version": "v2c", "community": "public", "root_oid": "1.3.6.1.2.1.1"},
+        headers=headers["editor"],
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["truncated"] is False
+    assert body["oids"] == [{"oid": "1.3.6.1.2.1.1.5.0", "type": "OctetString", "value": "SW-TEST-01"}]

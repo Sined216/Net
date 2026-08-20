@@ -958,6 +958,8 @@ class SnmpSystemInfo(BaseModel):
 class SnmpInterfaceInfo(BaseModel):
     index: int
     descr: Optional[str] = None
+    name: Optional[str] = None
+    alias: Optional[str] = None
     type_raw: Optional[int] = None
     type_label: Optional[str] = None
     mtu: Optional[int] = None
@@ -965,6 +967,29 @@ class SnmpInterfaceInfo(BaseModel):
     mac: Optional[str] = None
     admin_status: Optional[str] = None
     oper_status: Optional[str] = None
+    vlan: Optional[int] = None
+
+
+class SnmpIpAddress(BaseModel):
+    address: str
+    netmask: Optional[str] = None
+    if_index: Optional[int] = None
+    if_descr: Optional[str] = None
+
+
+class SnmpArpEntry(BaseModel):
+    ip: str
+    mac: Optional[str] = None
+    if_index: Optional[int] = None
+    if_descr: Optional[str] = None
+    type_label: Optional[str] = None
+
+
+class SnmpMacEntry(BaseModel):
+    mac: str
+    if_index: Optional[int] = None
+    if_descr: Optional[str] = None
+    status_label: Optional[str] = None
 
 
 class SnmpTraceStep(BaseModel):
@@ -982,3 +1007,27 @@ class SnmpProbeResult(BaseModel):
     trace: List[SnmpTraceStep] = []
     system: Optional[SnmpSystemInfo] = None
     interfaces: List[SnmpInterfaceInfo] = []
+    ip_addresses: List[SnmpIpAddress] = []
+    arp_entries: List[SnmpArpEntry] = []
+    mac_table: List[SnmpMacEntry] = []
+
+
+class SnmpWalkRequest(SnmpProbeRequest):
+    """Опрос connection-полей — те же, что у обычного probe, плюс OID, с
+    которого начинать полный сырой обход дерева MIB."""
+    root_oid: str = Field(default="1.3.6.1", pattern=r"^\.?\d+(\.\d+)+$", max_length=512)
+
+
+class SnmpRawOid(BaseModel):
+    oid: str
+    type: str
+    value: str
+
+
+class SnmpWalkResult(BaseModel):
+    ok: bool
+    error: Optional[str] = None
+    elapsed_ms: int
+    trace: List[SnmpTraceStep] = []
+    oids: List[SnmpRawOid] = []
+    truncated: bool = False

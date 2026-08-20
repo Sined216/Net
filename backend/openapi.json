@@ -3061,6 +3061,63 @@
         "title": "SiteUpdate",
         "type": "object"
       },
+      "SnmpArpEntry": {
+        "properties": {
+          "if_descr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Descr"
+          },
+          "if_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Index"
+          },
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
+          "type_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Label"
+          }
+        },
+        "required": [
+          "ip"
+        ],
+        "title": "SnmpArpEntry",
+        "type": "object"
+      },
       "SnmpInterfaceInfo": {
         "properties": {
           "admin_status": {
@@ -3073,6 +3130,17 @@
               }
             ],
             "title": "Admin Status"
+          },
+          "alias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
           },
           "descr": {
             "anyOf": [
@@ -3110,6 +3178,17 @@
               }
             ],
             "title": "Mtu"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "oper_status": {
             "anyOf": [
@@ -3154,12 +3233,115 @@
               }
             ],
             "title": "Type Raw"
+          },
+          "vlan": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vlan"
           }
         },
         "required": [
           "index"
         ],
         "title": "SnmpInterfaceInfo",
+        "type": "object"
+      },
+      "SnmpIpAddress": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "if_descr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Descr"
+          },
+          "if_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Index"
+          },
+          "netmask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netmask"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "SnmpIpAddress",
+        "type": "object"
+      },
+      "SnmpMacEntry": {
+        "properties": {
+          "if_descr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Descr"
+          },
+          "if_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Index"
+          },
+          "mac": {
+            "title": "Mac",
+            "type": "string"
+          },
+          "status_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Label"
+          }
+        },
+        "required": [
+          "mac"
+        ],
+        "title": "SnmpMacEntry",
         "type": "object"
       },
       "SnmpProbeRequest": {
@@ -3291,6 +3473,14 @@
       },
       "SnmpProbeResult": {
         "properties": {
+          "arp_entries": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpArpEntry"
+            },
+            "title": "Arp Entries",
+            "type": "array"
+          },
           "elapsed_ms": {
             "title": "Elapsed Ms",
             "type": "integer"
@@ -3312,6 +3502,22 @@
               "$ref": "#/components/schemas/SnmpInterfaceInfo"
             },
             "title": "Interfaces",
+            "type": "array"
+          },
+          "ip_addresses": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpIpAddress"
+            },
+            "title": "Ip Addresses",
+            "type": "array"
+          },
+          "mac_table": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpMacEntry"
+            },
+            "title": "Mac Table",
             "type": "array"
           },
           "ok": {
@@ -3342,6 +3548,29 @@
           "elapsed_ms"
         ],
         "title": "SnmpProbeResult",
+        "type": "object"
+      },
+      "SnmpRawOid": {
+        "properties": {
+          "oid": {
+            "title": "Oid",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "oid",
+          "type",
+          "value"
+        ],
+        "title": "SnmpRawOid",
         "type": "object"
       },
       "SnmpSystemInfo": {
@@ -3454,6 +3683,191 @@
           "elapsed_ms"
         ],
         "title": "SnmpTraceStep",
+        "type": "object"
+      },
+      "SnmpWalkRequest": {
+        "description": "Опрос connection-полей — те же, что у обычного probe, плюс OID, с\nкоторого начинать полный сырой обход дерева MIB.",
+        "properties": {
+          "auth_password": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Password"
+          },
+          "auth_protocol": {
+            "anyOf": [
+              {
+                "enum": [
+                  "MD5",
+                  "SHA",
+                  "SHA224",
+                  "SHA256",
+                  "SHA384",
+                  "SHA512"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Protocol"
+          },
+          "community": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community"
+          },
+          "host": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "port": {
+            "default": 161,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "priv_password": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priv Password"
+          },
+          "priv_protocol": {
+            "anyOf": [
+              {
+                "enum": [
+                  "DES",
+                  "3DES",
+                  "AES",
+                  "AES192",
+                  "AES256"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priv Protocol"
+          },
+          "root_oid": {
+            "default": "1.3.6.1",
+            "maxLength": 512,
+            "pattern": "^\\.?\\d+(\\.\\d+)+$",
+            "title": "Root Oid",
+            "type": "string"
+          },
+          "security_level": {
+            "default": "noAuthNoPriv",
+            "enum": [
+              "noAuthNoPriv",
+              "authNoPriv",
+              "authPriv"
+            ],
+            "title": "Security Level",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "version": {
+            "default": "v2c",
+            "enum": [
+              "v1",
+              "v2c",
+              "v3"
+            ],
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host"
+        ],
+        "title": "SnmpWalkRequest",
+        "type": "object"
+      },
+      "SnmpWalkResult": {
+        "properties": {
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "oids": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpRawOid"
+            },
+            "title": "Oids",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "trace": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpTraceStep"
+            },
+            "title": "Trace",
+            "type": "array"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "elapsed_ms"
+        ],
+        "title": "SnmpWalkResult",
         "type": "object"
       },
       "TagCreate": {
@@ -8985,7 +9399,7 @@
     },
     "/snmp/probe": {
       "post": {
-        "description": "Достаёт с устройства системную группу и таблицу интерфейсов.\n\nДоступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по\nадресу, который вводит человек, и это не праздное любопытство\nсмотрящего, а действие, сравнимое с остальными на этом уровне прав.\n\nОтказ устройства ответить — не HTTP-ошибка: `snmp_probe.probe()` сама\nникогда не бросает исключение на этот счёт, а возвращает `ok=False` с\nтекстом причины и диагностическим следом (`trace`). 200 остаётся и для\nудачного, и для неудачного опроса — 5xx здесь означал бы настоящий сбой\nсервера, а не то, что устройство не ответило.",
+        "description": "Достаёт с устройства всё, что обычно умеет отдавать управляемый\nкоммутатор без специальных прав: системную группу, порты (базовые и\nрасширенные атрибуты), IP-адреса, ARP- и MAC-таблицы, VLAN на портах.\n\nДоступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по\nадресу, который вводит человек, и это не праздное любопытство\nсмотрящего, а действие, сравнимое с остальными на этом уровне прав.\n\nОтказ устройства ответить — не HTTP-ошибка: `snmp_probe.probe()` сама\nникогда не бросает исключение на этот счёт, а возвращает `ok=False` с\nтекстом причины и диагностическим следом (`trace`). 200 остаётся и для\nудачного, и для неудачного опроса — 5xx здесь означал бы настоящий сбой\nсервера, а не то, что устройство не ответило.",
         "operationId": "probe_snmp_probe_post",
         "requestBody": {
           "content": {
@@ -9025,6 +9439,53 @@
           }
         ],
         "summary": "Probe",
+        "tags": [
+          "snmp"
+        ]
+      }
+    },
+    "/snmp/walk": {
+      "post": {
+        "description": "Полный сырой обход дерева MIB от заданного корня — без разбора по\nполям, просто пары OID=значение, как их отдаёт устройство. Отдельное,\nосознанно медленное действие по отдельной кнопке — обычный `/snmp/probe`\nэтого не делает (см. docstring `snmp_probe.raw_walk`).",
+        "operationId": "walk_snmp_walk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnmpWalkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnmpWalkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Walk",
         "tags": [
           "snmp"
         ]

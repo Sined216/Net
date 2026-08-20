@@ -1028,7 +1028,9 @@ export interface paths {
         put?: never;
         /**
          * Probe
-         * @description Достаёт с устройства системную группу и таблицу интерфейсов.
+         * @description Достаёт с устройства всё, что обычно умеет отдавать управляемый
+         *     коммутатор без специальных прав: системную группу, порты (базовые и
+         *     расширенные атрибуты), IP-адреса, ARP- и MAC-таблицы, VLAN на портах.
          *
          *     Доступ — как у правки (`can_edit`): запрос уходит с сервера в сеть по
          *     адресу, который вводит человек, и это не праздное любопытство
@@ -1041,6 +1043,29 @@ export interface paths {
          *     сервера, а не то, что устройство не ответило.
          */
         post: operations["probe_snmp_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/snmp/walk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Walk
+         * @description Полный сырой обход дерева MIB от заданного корня — без разбора по
+         *     полям, просто пары OID=значение, как их отдаёт устройство. Отдельное,
+         *     осознанно медленное действие по отдельной кнопке — обычный `/snmp/probe`
+         *     этого не делает (см. docstring `snmp_probe.raw_walk`).
+         */
+        post: operations["walk_snmp_walk_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2202,10 +2227,25 @@ export interface components {
             /** Version */
             version?: number | null;
         };
+        /** SnmpArpEntry */
+        SnmpArpEntry: {
+            /** If Descr */
+            if_descr?: string | null;
+            /** If Index */
+            if_index?: number | null;
+            /** Ip */
+            ip: string;
+            /** Mac */
+            mac?: string | null;
+            /** Type Label */
+            type_label?: string | null;
+        };
         /** SnmpInterfaceInfo */
         SnmpInterfaceInfo: {
             /** Admin Status */
             admin_status?: string | null;
+            /** Alias */
+            alias?: string | null;
             /** Descr */
             descr?: string | null;
             /** Index */
@@ -2214,6 +2254,8 @@ export interface components {
             mac?: string | null;
             /** Mtu */
             mtu?: number | null;
+            /** Name */
+            name?: string | null;
             /** Oper Status */
             oper_status?: string | null;
             /** Speed Bps */
@@ -2222,6 +2264,30 @@ export interface components {
             type_label?: string | null;
             /** Type Raw */
             type_raw?: number | null;
+            /** Vlan */
+            vlan?: number | null;
+        };
+        /** SnmpIpAddress */
+        SnmpIpAddress: {
+            /** Address */
+            address: string;
+            /** If Descr */
+            if_descr?: string | null;
+            /** If Index */
+            if_index?: number | null;
+            /** Netmask */
+            netmask?: string | null;
+        };
+        /** SnmpMacEntry */
+        SnmpMacEntry: {
+            /** If Descr */
+            if_descr?: string | null;
+            /** If Index */
+            if_index?: number | null;
+            /** Mac */
+            mac: string;
+            /** Status Label */
+            status_label?: string | null;
         };
         /** SnmpProbeRequest */
         SnmpProbeRequest: {
@@ -2259,6 +2325,11 @@ export interface components {
         };
         /** SnmpProbeResult */
         SnmpProbeResult: {
+            /**
+             * Arp Entries
+             * @default []
+             */
+            arp_entries: components["schemas"]["SnmpArpEntry"][];
             /** Elapsed Ms */
             elapsed_ms: number;
             /** Error */
@@ -2268,6 +2339,16 @@ export interface components {
              * @default []
              */
             interfaces: components["schemas"]["SnmpInterfaceInfo"][];
+            /**
+             * Ip Addresses
+             * @default []
+             */
+            ip_addresses: components["schemas"]["SnmpIpAddress"][];
+            /**
+             * Mac Table
+             * @default []
+             */
+            mac_table: components["schemas"]["SnmpMacEntry"][];
             /** Ok */
             ok: boolean;
             system?: components["schemas"]["SnmpSystemInfo"] | null;
@@ -2276,6 +2357,15 @@ export interface components {
              * @default []
              */
             trace: components["schemas"]["SnmpTraceStep"][];
+        };
+        /** SnmpRawOid */
+        SnmpRawOid: {
+            /** Oid */
+            oid: string;
+            /** Type */
+            type: string;
+            /** Value */
+            value: string;
         };
         /** SnmpSystemInfo */
         SnmpSystemInfo: {
@@ -2307,6 +2397,73 @@ export interface components {
             label: string;
             /** Ok */
             ok: boolean;
+        };
+        /**
+         * SnmpWalkRequest
+         * @description Опрос connection-полей — те же, что у обычного probe, плюс OID, с
+         *     которого начинать полный сырой обход дерева MIB.
+         */
+        SnmpWalkRequest: {
+            /** Auth Password */
+            auth_password?: string | null;
+            /** Auth Protocol */
+            auth_protocol?: ("MD5" | "SHA" | "SHA224" | "SHA256" | "SHA384" | "SHA512") | null;
+            /** Community */
+            community?: string | null;
+            /** Host */
+            host: string;
+            /**
+             * Port
+             * @default 161
+             */
+            port: number;
+            /** Priv Password */
+            priv_password?: string | null;
+            /** Priv Protocol */
+            priv_protocol?: ("DES" | "3DES" | "AES" | "AES192" | "AES256") | null;
+            /**
+             * Root Oid
+             * @default 1.3.6.1
+             */
+            root_oid: string;
+            /**
+             * Security Level
+             * @default noAuthNoPriv
+             * @enum {string}
+             */
+            security_level: "noAuthNoPriv" | "authNoPriv" | "authPriv";
+            /** Username */
+            username?: string | null;
+            /**
+             * Version
+             * @default v2c
+             * @enum {string}
+             */
+            version: "v1" | "v2c" | "v3";
+        };
+        /** SnmpWalkResult */
+        SnmpWalkResult: {
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Oids
+             * @default []
+             */
+            oids: components["schemas"]["SnmpRawOid"][];
+            /** Ok */
+            ok: boolean;
+            /**
+             * Trace
+             * @default []
+             */
+            trace: components["schemas"]["SnmpTraceStep"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** TagCreate */
         TagCreate: {
@@ -5012,6 +5169,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnmpProbeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    walk_snmp_walk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnmpWalkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnmpWalkResult"];
                 };
             };
             /** @description Validation Error */
