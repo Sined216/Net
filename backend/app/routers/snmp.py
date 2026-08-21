@@ -65,6 +65,16 @@ async def walk(payload: schemas.SnmpWalkRequest, _: models.User = Depends(auth.c
     return schemas.SnmpWalkResult(
         ok=result.ok, error=result.error, elapsed_ms=result.elapsed_ms,
         trace=[schemas.SnmpTraceStep(**vars(step)) for step in result.trace],
-        oids=[schemas.SnmpRawOid(**vars(o)) for o in result.oids],
-        truncated=result.truncated,
+        tree=_convert_walk_tree(result.tree),
+        oid_count=result.oid_count, truncated=result.truncated,
     )
+
+
+def _convert_walk_tree(nodes: list) -> list:
+    return [
+        schemas.SnmpWalkTreeNode(
+            oid=n.oid, label=n.label, module=n.module, type=n.type, value=n.value,
+            children=_convert_walk_tree(n.children),
+        )
+        for n in nodes
+    ]

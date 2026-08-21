@@ -1018,11 +1018,19 @@ class SnmpWalkRequest(SnmpProbeRequest):
     root_oid: str = Field(default="1.3.6.1", pattern=r"^\.?\d+(\.\d+)+$", max_length=512)
 
 
-class SnmpRawOid(BaseModel):
+class SnmpWalkTreeNode(BaseModel):
+    """Один узел дерева «сырого» обхода — самая длинная цепочка компонентов
+    OID без развилки, подписанная настоящим именем объекта, если разбор
+    MIB это позволяет (app/mib_names.py), иначе — числом, как он есть."""
     oid: str
-    module: str
-    type: str
-    value: str
+    label: str
+    module: Optional[str] = None
+    type: Optional[str] = None
+    value: Optional[str] = None
+    children: List["SnmpWalkTreeNode"] = []
+
+
+SnmpWalkTreeNode.model_rebuild()
 
 
 class SnmpWalkResult(BaseModel):
@@ -1030,5 +1038,6 @@ class SnmpWalkResult(BaseModel):
     error: Optional[str] = None
     elapsed_ms: int
     trace: List[SnmpTraceStep] = []
-    oids: List[SnmpRawOid] = []
+    tree: List[SnmpWalkTreeNode] = []
+    oid_count: int = 0
     truncated: bool = False

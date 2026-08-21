@@ -182,4 +182,4 @@ export type SnmpAuthProtocol = NonNullable<SnmpProbeRequest['auth_protocol']>;
 export type SnmpPrivProtocol = NonNullable<SnmpProbeRequest['priv_protocol']>;
 export type SnmpWalkRequest = S['SnmpWalkRequest'];
 export type SnmpWalkResult = S['SnmpWalkResult'];
-export type SnmpRawOid = S['SnmpRawOid'];
+export type SnmpWalkTreeNode = S['SnmpWalkTreeNode'];

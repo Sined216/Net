@@ -7,7 +7,7 @@
 права и форма ответа, — а не сам протокол (у pysnmp есть свои тесты).
 """
 
-from app import schemas, snmp_probe
+from app import mib_names, schemas, snmp_probe
 
 
 def test_viewer_cannot_probe(client, headers):
@@ -105,16 +105,61 @@ def test_failed_probe_returns_200_with_ok_false(client, headers, monkeypatch):
     assert len(body["trace"]) == 1
 
 
-def test_describe_mib_module_picks_longest_matching_prefix():
-    # ifTable — более длинный и более точный префикс, чем просто «interfaces»
-    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 2, 1, 2, 2, 1, 5, 1)) == "IF-MIB::ifTable (порты)"
-    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 2, 1, 2, 1, 0)) == "IF-MIB (interfaces)"
-    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 2, 1, 1, 5, 0)) == "SNMPv2-MIB (система)"
-    # известный производитель по номеру после enterprises
-    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 4, 1, 9, 1, 1)) == "enterprises (Cisco)"
+def test_mib_names_resolve_real_objects():
+    """Настоящий разбор MIB — не свой список, поэтому и тест не про то,
+    что мы сами когда-то в него вписали, а про то, что резолвер вправду
+    узнаёт стандартные объекты."""
+    assert mib_names.resolve_symbol("1.3.6.1.2.1.2.2.1.5.1") == "ifSpeed"
+    assert mib_names.resolve_symbol("1.3.6.1.2.1.1.5.0") == "sysName"
+    # тот самый объект, из-за которого раньше в своём справочнике была
+    # ошибка (dot1dTpFwdPort вместо настоящего dot1dTpFdbPort)
+    assert mib_names.resolve_symbol("1.3.6.1.2.1.17.4.3.1.2.1.2.3.4.5.6") == "dot1dTpFdbPort"
+    assert mib_names.resolve_module("1.3.6.1.2.1.2.2.1.5.1") == "IF-MIB"
+
+
+def test_mib_names_falls_back_for_unknown_branches():
+    # служебная точка дерева ASN.1 (enterprises), а не настоящий объект —
+    # разбор не считается успешным
+    assert mib_names.resolve("1.3.6.1.4.1.9.1.1") is None
+    # но подсказка по известному производителю всё равно есть
+    assert mib_names.resolve_module("1.3.6.1.4.1.9.1.1") == "enterprises (Cisco)"
     # неизвестный производитель — номер виден, а не потерян
-    assert snmp_probe._describe_mib_module((1, 3, 6, 1, 4, 1, 424242, 1)) == "enterprises (№424242)"
-    assert snmp_probe._describe_mib_module((1, 2, 3)) == "неизвестная ветка"
+    assert mib_names.resolve_module("1.3.6.1.4.1.424242.1") == "enterprises (№424242)"
+    assert mib_names.resolve_module("1.2.3") == "неизвестная ветка"
+
+
+def _find_walk_leaf(nodes, oid):
+    for n in nodes:
+        if n.oid == oid and n.value is not None:
+            return n
+        found = _find_walk_leaf(n.children, oid)
+        if found:
+            return found
+    return None
+
+
+def test_build_walk_tree_labels_and_compresses():
+    pairs = [
+        ("1.3.6.1.2.1.1.5.0", "OctetString", "SW-TEST-01"),
+        ("1.3.6.1.2.1.2.2.1.5.1", "Gauge32", "1000000000"),
+        ("1.3.6.1.2.1.2.2.1.5.2", "Gauge32", "1000000000"),
+    ]
+    tree = snmp_probe._build_walk_tree(pairs)
+
+    sys_name = _find_walk_leaf(tree, "1.3.6.1.2.1.1.5.0")
+    assert sys_name is not None
+    assert sys_name.label == "sysName.0"
+    assert sys_name.module == "SNMPv2-MIB"
+    assert sys_name.value == "SW-TEST-01"
+
+    if_speed_1 = _find_walk_leaf(tree, "1.3.6.1.2.1.2.2.1.5.1")
+    assert if_speed_1 is not None
+    assert if_speed_1.label == "ifSpeed.1"
+    assert if_speed_1.module == "IF-MIB"
+
+    # общий префикс дерева (mib-2) сжат в один верхний узел, а не
+    # развёрнут по одному уровню на каждый компонент OID
+    assert len(tree) == 1
 
 
 def test_request_schema_defaults():
@@ -152,10 +197,10 @@ def test_successful_walk_shape(client, headers, monkeypatch):
     async def fake_walk(**kwargs):
         assert kwargs["root_oid"] == "1.3.6.1.2.1.1"
         return snmp_probe.WalkResult(
-            ok=True, elapsed_ms=17, truncated=False,
+            ok=True, elapsed_ms=17, truncated=False, oid_count=1,
             trace=[snmp_probe.TraceStep(label="Обход — начало", ok=True, detail="корень 1.3.6.1.2.1.1", elapsed_ms=0)],
-            oids=[snmp_probe.RawOid(
-                oid="1.3.6.1.2.1.1.5.0", module="SNMPv2-MIB (система)",
+            tree=[snmp_probe.WalkTreeNode(
+                oid="1.3.6.1.2.1.1.5.0", label="sysName.0", module="SNMPv2-MIB",
                 type="OctetString", value="SW-TEST-01",
             )],
         )
@@ -171,7 +216,8 @@ def test_successful_walk_shape(client, headers, monkeypatch):
     body = response.json()
     assert body["ok"] is True
     assert body["truncated"] is False
-    assert body["oids"] == [{
-        "oid": "1.3.6.1.2.1.1.5.0", "module": "SNMPv2-MIB (система)",
-        "type": "OctetString", "value": "SW-TEST-01",
+    assert body["oid_count"] == 1
+    assert body["tree"] == [{
+        "oid": "1.3.6.1.2.1.1.5.0", "label": "sysName.0", "module": "SNMPv2-MIB",
+        "type": "OctetString", "value": "SW-TEST-01", "children": [],
     }]

@@ -16,7 +16,7 @@ SNMP/LLDP-опрос — тот раздел ждёт этой ручной пр
 - IP-адреса на портах (IP-MIB::ipAddrTable);
 - ARP-таблица устройства (IP-MIB::ipNetToMediaTable) — какие MAC оно видит
   за какими IP;
-- MAC-таблица моста (BRIDGE-MIB::dot1dTpFwdTable) — какие MAC выучены на
+- MAC-таблица моста (BRIDGE-MIB::dot1dTpFdbTable) — какие MAC выучены на
   каких портах;
 - VLAN каждого порта (Q-BRIDGE-MIB::dot1qPvid) — только базовый untagged/
   access VLAN, разбор списка транковых VLAN сюда не входит.
@@ -32,6 +32,12 @@ OID=значение, как они есть у устройства, включ
 specific) ветки производителя, без ограничения по числу. Это отдельное,
 осознанно медленное действие со своим (более щедрым) пределом по
 времени — обычный опрос его не делает.
+
+Подписи объектов (и в следе обычного опроса, и в дереве «сырого» обхода) —
+не свой список, а настоящий разбор MIB через `app/mib_names.py`: то же,
+чем пользуются net-snmp/MIB-браузеры, просто с заранее выбранным набором
+модулей (см. там же). Не разбираются только частные ветки производителя —
+для них честно видно «не распознано», а не выдуманное имя.
 
 Версии протокола — все три ходовые: v1, v2c (community-строка, без
 шифрования) и v3 (логин/пароль, опционально с шифрованием). У v3 экран не
@@ -51,6 +57,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import pysnmp.hlapi.v3arch.asyncio as hlapi
+
+from app import mib_names
 
 # Сколько ждать ответа и сколько раз повторить один запрос. Не настраивается
 # с экрана намеренно: большой таймаут на форме — это способ подвесить
@@ -79,61 +87,6 @@ _BULK_MAX_REPETITIONS = 25
 # равно возвращает то, что успели собрать).
 _RAW_WALK_BUDGET_S = 25.0
 
-# Для «сырого» обхода: к какому модулю MIB относится OID — не полноценный
-# разбор через настоящие MIB-файлы (это отдельная тяжёлая зависимость,
-# которую весь модуль сознательно обходит — везде lookupMib=False), а
-# короткая таблица самых ходовых префиксов дерева. Проверяется по самому
-# длинному совпадающему префиксу, поэтому порядок в списке не важен —
-# сортируется один раз при загрузке модуля.
-_MIB_MODULE_PREFIXES: list = [
-    ((1, 3, 6, 1, 2, 1, 1), "SNMPv2-MIB (система)"),
-    ((1, 3, 6, 1, 2, 1, 2, 2, 1), "IF-MIB::ifTable (порты)"),
-    ((1, 3, 6, 1, 2, 1, 2), "IF-MIB (interfaces)"),
-    ((1, 3, 6, 1, 2, 1, 31, 1, 1, 1), "IF-MIB::ifXTable (порты, расширение)"),
-    ((1, 3, 6, 1, 2, 1, 31), "IF-MIB"),
-    ((1, 3, 6, 1, 2, 1, 3), "IP-MIB::at (устарело)"),
-    ((1, 3, 6, 1, 2, 1, 4, 20, 1), "IP-MIB::ipAddrTable (IP-адреса)"),
-    ((1, 3, 6, 1, 2, 1, 4, 22, 1), "IP-MIB::ipNetToMediaTable (ARP)"),
-    ((1, 3, 6, 1, 2, 1, 4), "IP-MIB"),
-    ((1, 3, 6, 1, 2, 1, 5), "ICMP-MIB"),
-    ((1, 3, 6, 1, 2, 1, 6), "TCP-MIB"),
-    ((1, 3, 6, 1, 2, 1, 7), "UDP-MIB"),
-    ((1, 3, 6, 1, 2, 1, 8), "EGP-MIB"),
-    ((1, 3, 6, 1, 2, 1, 10), "TRANSMISSION-MIB"),
-    ((1, 3, 6, 1, 2, 1, 11), "SNMP-MIB (статистика самого агента)"),
-    ((1, 3, 6, 1, 2, 1, 17, 4, 3, 1), "BRIDGE-MIB::dot1dTpFwdTable (MAC-таблица)"),
-    ((1, 3, 6, 1, 2, 1, 17, 1, 4, 1), "BRIDGE-MIB::dot1dBasePortTable"),
-    ((1, 3, 6, 1, 2, 1, 17, 7), "Q-BRIDGE-MIB (VLAN)"),
-    ((1, 3, 6, 1, 2, 1, 17), "BRIDGE-MIB"),
-    ((1, 3, 6, 1, 2, 1, 25), "HOST-RESOURCES-MIB"),
-    ((1, 3, 6, 1, 2, 1, 47), "ENTITY-MIB"),
-    ((1, 3, 6, 1, 2, 1), "MIB-2 (стандартная ветка)"),
-    ((1, 3, 6, 1, 6, 3), "SNMP-FRAMEWORK-MIB (служебное — USM, VACM)"),
-    ((1, 3, 6, 1, 4, 1), "enterprises (частная ветка производителя)"),
-]
-_MIB_MODULE_PREFIXES.sort(key=lambda item: -len(item[0]))
-
-# Самые частые номера производителей в частной ветке (enterprises) — не
-# реестр IANA целиком, только то, что встречается на практике чаще всего.
-_KNOWN_ENTERPRISES = {
-    9: "Cisco", 11: "HP", 311: "Microsoft", 2636: "Juniper",
-    8072: "Net-SNMP", 8691: "Moxa", 2021: "UCD-SNMP/Net-SNMP",
-}
-
-_ENTERPRISES_PREFIX = (1, 3, 6, 1, 4, 1)
-
-
-def _describe_mib_module(oid_parts: tuple) -> str:
-    for prefix, name in _MIB_MODULE_PREFIXES:
-        if oid_parts[:len(prefix)] == prefix:
-            if prefix == _ENTERPRISES_PREFIX and len(oid_parts) > len(prefix):
-                vendor = oid_parts[len(prefix)]
-                vendor_name = _KNOWN_ENTERPRISES.get(vendor)
-                return f"enterprises ({vendor_name})" if vendor_name else f"enterprises (№{vendor})"
-            return name
-    return "неизвестная ветка"
-
-
 _SYSTEM_OIDS = {
     "sys_descr": "1.3.6.1.2.1.1.1.0",
     "sys_object_id": "1.3.6.1.2.1.1.2.0",
@@ -143,10 +96,12 @@ _SYSTEM_OIDS = {
     "sys_location": "1.3.6.1.2.1.1.6.0",
 }
 
-# Официальные имена переменных из SNMPv2-MIB — для диагностического следа:
-# без них строка «получено N из 6» ничего не говорит о том, какие именно
-# N и какие именно 6.
-_SYSTEM_LABELS = {
+# Имена переменных из SNMPv2-MIB — запасной вариант на случай, если
+# настоящий разбор MIB (app/mib_names.py) недоступен; при доступном
+# резолвере в диагностическом следе показывается его результат, точный по
+# определению. Без подписи вообще строка «получено N из 6» ничего не
+# говорит о том, какие именно N и какие именно 6.
+_SYSTEM_LABELS_FALLBACK = {
     "sys_descr": "sysDescr",
     "sys_object_id": "sysObjectID",
     "sys_up_time": "sysUpTime",
@@ -158,7 +113,10 @@ _SYSTEM_LABELS = {
 # IF-MIB::ifTable — префикс, за которым у каждой колонки идёт .<индекс порта>.
 _IF_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 2, 2, 1)
 _IF_COLUMNS = {2: "descr", 3: "type", 4: "mtu", 5: "speed", 6: "mac", 7: "admin_status", 8: "oper_status"}
-_IF_COLUMN_LABELS = {
+# Запасные подписи колонок — как у _SYSTEM_LABELS_FALLBACK выше, тем же
+# поводом. У всех колонок таблиц ниже — тот же принцип, отдельно не
+# повторяется.
+_IF_COLUMN_LABELS_FALLBACK = {
     2: "ifDescr", 3: "ifType", 4: "ifMtu", 5: "ifSpeed",
     6: "ifPhysAddress", 7: "ifAdminStatus", 8: "ifOperStatus",
 }
@@ -168,17 +126,17 @@ _IF_COLUMN_LABELS = {
 # Гбит/с (ifSpeed — 32-битный счётчик и на них «залипает»).
 _IFX_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1)
 _IFX_COLUMNS = {1: "name", 15: "high_speed", 18: "alias"}
-_IFX_COLUMN_LABELS = {1: "ifName", 15: "ifHighSpeed", 18: "ifAlias"}
+_IFX_COLUMN_LABELS_FALLBACK = {1: "ifName", 15: "ifHighSpeed", 18: "ifAlias"}
 
 # IP-MIB::ipAddrTable — индекс строки: сам IP-адрес (4 байта октетами).
 _IP_ADDR_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 4, 20, 1)
 _IP_ADDR_COLUMNS = {2: "if_index", 3: "netmask"}
-_IP_ADDR_COLUMN_LABELS = {2: "ipAdEntIfIndex", 3: "ipAdEntNetMask"}
+_IP_ADDR_COLUMN_LABELS_FALLBACK = {2: "ipAdEntIfIndex", 3: "ipAdEntNetMask"}
 
 # IP-MIB::ipNetToMediaTable (ARP устройства) — индекс: ifIndex + IP (4 байта).
 _ARP_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 4, 22, 1)
 _ARP_COLUMNS = {2: "mac", 4: "type"}
-_ARP_COLUMN_LABELS = {2: "ipNetToMediaPhysAddress", 4: "ipNetToMediaType"}
+_ARP_COLUMN_LABELS_FALLBACK = {2: "ipNetToMediaPhysAddress", 4: "ipNetToMediaType"}
 _ARP_TYPE_LABELS = {1: "прочее", 2: "недействителен", 3: "динамический", 4: "статический"}
 
 # BRIDGE-MIB::dot1dBasePortTable — соответствие номера порта моста и ifIndex:
@@ -186,20 +144,23 @@ _ARP_TYPE_LABELS = {1: "прочее", 2: "недействителен", 3: "д
 # отдельно, а не полагаемся на совпадение молча.
 _BRIDGE_PORT_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 17, 1, 4, 1)
 _BRIDGE_PORT_COLUMNS = {2: "if_index"}
-_BRIDGE_PORT_COLUMN_LABELS = {2: "dot1dBasePortIfIndex"}
+_BRIDGE_PORT_COLUMN_LABELS_FALLBACK = {2: "dot1dBasePortIfIndex"}
 
-# BRIDGE-MIB::dot1dTpFwdTable — MAC-таблица моста, индекс: сам MAC (6 байт).
-_FWD_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 17, 4, 3, 1)
-_FWD_COLUMNS = {2: "port", 3: "status"}
-_FWD_COLUMN_LABELS = {2: "dot1dTpFwdPort", 3: "dot1dTpFwdStatus"}
-_FWD_STATUS_LABELS = {1: "прочее", 2: "недействителен", 3: "изучен", 4: "собственный", 5: "управляемый"}
+# BRIDGE-MIB::dot1dTpFdbTable — MAC-таблица моста (Forwarding Database),
+# индекс: сам MAC (6 байт). Настоящее имя колонки узнали только благодаря
+# переходу на разбор реальных MIB — раньше здесь ошибочно значилось
+# «dot1dTpFwdTable/dot1dTpFwdPort» (Forward вместо Database).
+_FDB_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 17, 4, 3, 1)
+_FDB_COLUMNS = {2: "port", 3: "status"}
+_FDB_COLUMN_LABELS_FALLBACK = {2: "dot1dTpFdbPort", 3: "dot1dTpFdbStatus"}
+_FDB_STATUS_LABELS = {1: "прочее", 2: "недействителен", 3: "изучен", 4: "собственный", 5: "управляемый"}
 
 # Q-BRIDGE-MIB::dot1qPvid — VLAN без метки (access/untagged) на порту моста.
 # Индекс dot1qPortVlanIndex на подавляющем большинстве устройств совпадает с
-# номером порта моста (dot1dBasePort) — тем же, что и в dot1dTpFwdTable.
+# номером порта моста (dot1dBasePort) — тем же, что и в dot1dTpFdbTable.
 _PVID_TABLE_PREFIX = (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 5, 1)
 _PVID_COLUMNS = {1: "pvid"}
-_PVID_COLUMN_LABELS = {1: "dot1qPvid"}
+_PVID_COLUMN_LABELS_FALLBACK = {1: "dot1qPvid"}
 
 _STATUS_LABELS = {
     1: "включён", 2: "выключен", 3: "тест", 4: "неизвестно",
@@ -306,11 +267,16 @@ class ProbeResult:
 
 
 @dataclass
-class RawOid:
+class WalkTreeNode:
+    """Один узел дерева «сырого» обхода — самая длинная цепочка компонентов
+    OID без развилки, подписанная настоящим именем объекта, если разбор
+    MIB это позволяет (см. `app/mib_names.py`), иначе — как есть, числом."""
     oid: str
-    module: str
-    type: str
-    value: str
+    label: str
+    module: Optional[str] = None
+    type: Optional[str] = None
+    value: Optional[str] = None
+    children: list = field(default_factory=list)
 
 
 @dataclass
@@ -319,7 +285,8 @@ class WalkResult:
     elapsed_ms: int
     error: Optional[str] = None
     trace: list = field(default_factory=list)
-    oids: list = field(default_factory=list)
+    tree: list = field(default_factory=list)
+    oid_count: int = 0
     truncated: bool = False
 
 
@@ -492,17 +459,18 @@ async def _run(
         ifx_by_index, _ = await _walk_table(
             engine, auth, target, trace, version,
             label="Расширенные атрибуты портов (ifXTable)",
-            root=_IFX_TABLE_PREFIX, columns=_IFX_COLUMNS, column_labels=_IFX_COLUMN_LABELS,
+            root=_IFX_TABLE_PREFIX, columns=_IFX_COLUMNS, column_labels_fallback=_IFX_COLUMN_LABELS_FALLBACK,
         )
         port_by_bridge, _ = await _walk_table(
             engine, auth, target, trace, version,
             label="Соответствие портов моста (dot1dBasePortTable)",
-            root=_BRIDGE_PORT_TABLE_PREFIX, columns=_BRIDGE_PORT_COLUMNS, column_labels=_BRIDGE_PORT_COLUMN_LABELS,
+            root=_BRIDGE_PORT_TABLE_PREFIX, columns=_BRIDGE_PORT_COLUMNS,
+            column_labels_fallback=_BRIDGE_PORT_COLUMN_LABELS_FALLBACK,
         )
         pvid_by_index, _ = await _walk_table(
             engine, auth, target, trace, version,
             label="VLAN на портах (dot1qPvid)",
-            root=_PVID_TABLE_PREFIX, columns=_PVID_COLUMNS, column_labels=_PVID_COLUMN_LABELS,
+            root=_PVID_TABLE_PREFIX, columns=_PVID_COLUMNS, column_labels_fallback=_PVID_COLUMN_LABELS_FALLBACK,
         )
         _merge_interface_extras(if_by_index, ifx_by_index, port_by_bridge, pvid_by_index)
         result.interfaces = _build_interfaces(if_by_index)
@@ -514,26 +482,27 @@ async def _run(
         ip_by_index, _ = await _walk_table(
             engine, auth, target, trace, version,
             label="IP-адреса (ipAddrTable)",
-            root=_IP_ADDR_TABLE_PREFIX, columns=_IP_ADDR_COLUMNS, column_labels=_IP_ADDR_COLUMN_LABELS,
+            root=_IP_ADDR_TABLE_PREFIX, columns=_IP_ADDR_COLUMNS,
+            column_labels_fallback=_IP_ADDR_COLUMN_LABELS_FALLBACK,
         )
         result.ip_addresses = _build_ip_addresses(ip_by_index, if_descr_by_index)
 
         arp_by_index, _ = await _walk_table(
             engine, auth, target, trace, version,
             label="ARP-таблица (ipNetToMediaTable)",
-            root=_ARP_TABLE_PREFIX, columns=_ARP_COLUMNS, column_labels=_ARP_COLUMN_LABELS,
+            root=_ARP_TABLE_PREFIX, columns=_ARP_COLUMNS, column_labels_fallback=_ARP_COLUMN_LABELS_FALLBACK,
         )
         result.arp_entries = _build_arp_entries(arp_by_index, if_descr_by_index)
 
         # MAC-таблица моста — потенциально самая большая (на активном
         # коммутаторе — сотни выученных адресов), поэтому идёт последней:
         # если общий бюджет времени исчерпается, всё остальное уже собрано.
-        fwd_by_index, _ = await _walk_table(
+        fdb_by_index, _ = await _walk_table(
             engine, auth, target, trace, version,
-            label="MAC-таблица (dot1dTpFwdTable)",
-            root=_FWD_TABLE_PREFIX, columns=_FWD_COLUMNS, column_labels=_FWD_COLUMN_LABELS,
+            label="MAC-таблица (dot1dTpFdbTable)",
+            root=_FDB_TABLE_PREFIX, columns=_FDB_COLUMNS, column_labels_fallback=_FDB_COLUMN_LABELS_FALLBACK,
         )
-        result.mac_table = _build_mac_table(fwd_by_index, port_by_bridge, if_descr_by_index)
+        result.mac_table = _build_mac_table(fdb_by_index, port_by_bridge, if_descr_by_index)
 
         return None
     finally:
@@ -561,7 +530,7 @@ async def _fetch_system(engine, auth, target, trace) -> tuple:
         values[field_name] = v
         got += v is not None
         oid = _SYSTEM_OIDS[field_name]
-        label = _SYSTEM_LABELS[field_name]
+        label = mib_names.resolve_symbol(oid) or _SYSTEM_LABELS_FALLBACK[field_name]
         preview = "пусто" if v is None else _preview_value(v)
         lines.append(f"{label} ({oid}) = {preview}")
     trace.append(_step(
@@ -589,11 +558,11 @@ async def _fetch_system(engine, auth, target, trace) -> tuple:
 
 async def _walk_table(
     engine, auth, target, trace: list, version: str,
-    *, label: str, root: tuple, columns: dict, column_labels: dict,
+    *, label: str, root: tuple, columns: dict, column_labels_fallback: dict,
 ) -> tuple:
     """Общий обход столбцовой SNMP-таблицы — код, который иначе пришлось бы
     повторять для ifTable, ifXTable, ipAddrTable, ipNetToMediaTable,
-    dot1dBasePortTable, dot1dTpFwdTable и dot1qPvid по отдельности.
+    dot1dBasePortTable, dot1dTpFdbTable и dot1qPvid по отдельности.
 
     Возвращает `{индекс_строки: {имя_поля: значение}}`, где индекс_строки —
     кортеж всего, что в OID шло после номера колонки: для таблиц с простым
@@ -663,7 +632,10 @@ async def _walk_table(
         if rows_seen:
             lines.append(f"строк в пакете: {len(rows_seen)}")
         if columns_seen:
-            col_names = ", ".join(column_labels[c] for c in sorted(columns_seen))
+            col_names = ", ".join(
+                mib_names.resolve_symbol(f"{root_oid}.{c}") or column_labels_fallback[c]
+                for c in sorted(columns_seen)
+            )
             lines.append(f"колонки: {col_names}")
         trace.append(_step(step_start, True, f"{label} — пакет {packet_no}", "\n".join(lines)))
         step_start = time.monotonic()
@@ -681,7 +653,7 @@ async def _fetch_interfaces(engine, auth, target, trace, version) -> tuple:
     by_index, error = await _walk_table(
         engine, auth, target, trace, version,
         label="Обход портов (ifTable)", root=_IF_TABLE_PREFIX,
-        columns=_IF_COLUMNS, column_labels=_IF_COLUMN_LABELS,
+        columns=_IF_COLUMNS, column_labels_fallback=_IF_COLUMN_LABELS_FALLBACK,
     )
     # ifTable индексируется одним числом (ifIndex) — распрямляем кортеж (i,)
     # в голый int, дальше по коду это удобнее.
@@ -795,7 +767,7 @@ def _build_mac_table(by_index: dict, port_by_bridge: dict, if_descr_by_index: di
         out.append(MacEntry(
             mac=mac, if_index=if_index,
             if_descr=if_descr_by_index.get(if_index) if if_index is not None else None,
-            status_label=_FWD_STATUS_LABELS.get(status_raw) if status_raw is not None else None,
+            status_label=_FDB_STATUS_LABELS.get(status_raw) if status_raw is not None else None,
         ))
     return out
 
@@ -808,22 +780,29 @@ async def raw_walk(
     priv_protocol: Optional[str] = None, priv_password: Optional[str] = None,
     root_oid: str = "1.3.6.1",
 ) -> WalkResult:
-    """Обход произвольной ветки дерева MIB без разбора по полям — сырые пары
-    OID=значение, как их отдаёт устройство, включая собственные ветки
-    производителя, без ограничения по числу — сколько устройство отдаёт,
-    столько и собирается. Отдельное, осознанно медленное действие: свой,
-    более щедрый предел по времени (`_RAW_WALK_BUDGET_S`) — обычный
-    `probe()` этого не делает специально, чтобы не повторить старую находку
-    про случайный обход всего дерева устройства вместо одной таблицы."""
+    """Обход произвольной ветки дерева MIB — сырые пары OID=значение, как их
+    отдаёт устройство, включая собственные ветки производителя, без
+    ограничения по числу — сколько устройство отдаёт, столько и
+    собирается. Отдельное, осознанно медленное действие: свой, более
+    щедрый предел по времени (`_RAW_WALK_BUDGET_S`) — обычный `probe()`
+    этого не делает специально, чтобы не повторить старую находку про
+    случайный обход всего дерева устройства вместо одной таблицы.
+
+    Результат — не плоский список, а дерево (`WalkResult.tree`): узлы
+    подписаны настоящими именами объектов там, где разбор MIB это
+    позволяет (`app/mib_names.py`), а не голыми числами."""
     started = time.monotonic()
     trace: list = []
-    oids: list = []
+    # (oid, type_name, value) — плоско, по ссылке: при обрыве по общему
+    # таймауту сюда успевает попасть всё, что собрали до этого момента, тем
+    # же способом, что и с trace выше по файлу.
+    raw_pairs: list = []
     try:
-        error, truncated = await asyncio.wait_for(
+        error = await asyncio.wait_for(
             _run_raw_walk(
                 host, port, version, community, username, security_level,
                 auth_protocol, auth_password, priv_protocol, priv_password,
-                root_oid, trace, oids,
+                root_oid, trace, raw_pairs,
             ),
             timeout=_RAW_WALK_BUDGET_S,
         )
@@ -831,11 +810,12 @@ async def raw_walk(
         elapsed_ms = int((time.monotonic() - started) * 1000)
         trace.append(TraceStep(
             label="Общий предел времени", ok=False,
-            detail=f"обход прерван — не уложился в {int(_RAW_WALK_BUDGET_S)} с, собрано OID: {len(oids)}",
+            detail=f"обход прерван — не уложился в {int(_RAW_WALK_BUDGET_S)} с, собрано OID: {len(raw_pairs)}",
             elapsed_ms=elapsed_ms,
         ))
         return WalkResult(
-            ok=False, elapsed_ms=elapsed_ms, trace=trace, oids=oids, truncated=True,
+            ok=False, elapsed_ms=elapsed_ms, trace=trace, truncated=True,
+            tree=_build_walk_tree(raw_pairs), oid_count=len(raw_pairs),
             error=(
                 f"Обход не уложился в {int(_RAW_WALK_BUDGET_S)} секунд — показано то, что "
                 "успели собрать. Можно продолжить с более узкого корня — тот, на котором "
@@ -844,7 +824,10 @@ async def raw_walk(
         )
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
-    return WalkResult(ok=error is None, elapsed_ms=elapsed_ms, error=error, trace=trace, oids=oids, truncated=truncated)
+    return WalkResult(
+        ok=error is None, elapsed_ms=elapsed_ms, error=error, trace=trace,
+        tree=_build_walk_tree(raw_pairs), oid_count=len(raw_pairs),
+    )
 
 
 async def _run_raw_walk(
@@ -852,8 +835,8 @@ async def _run_raw_walk(
     community: Optional[str], username: Optional[str], security_level: str,
     auth_protocol: Optional[str], auth_password: Optional[str],
     priv_protocol: Optional[str], priv_password: Optional[str],
-    root_oid: str, trace: list, oids: list,
-) -> tuple:
+    root_oid: str, trace: list, raw_pairs: list,
+) -> Optional[str]:
     engine = hlapi.SnmpEngine()
     try:
         t0 = time.monotonic()
@@ -862,7 +845,7 @@ async def _run_raw_walk(
         except Exception as exc:
             msg = f"Не удалось обратиться по адресу «{host}:{port}»: {exc}"
             trace.append(_step(t0, False, f"Адрес {host}:{port}", msg))
-            return msg, False
+            return msg
         trace.append(_step(
             t0, True, f"Адрес {host}:{port}",
             f"транспорт создан, до {_RETRIES + 1} попыт{'ки' if _RETRIES == 0 else 'ок'} по {_TIMEOUT_S:g} с",
@@ -878,7 +861,7 @@ async def _run_raw_walk(
         except Exception as exc:
             msg = f"Не удалось разобрать OID «{root_oid}»: {exc}"
             trace.append(_step(t0, False, "Начальный OID", msg))
-            return msg, False
+            return msg
 
         if version == "v1":
             method = "GETNEXT — по одному значению за запрос"
@@ -912,23 +895,73 @@ async def _run_raw_walk(
             for name, value in var_binds:
                 if _is_missing(value) or isinstance(value, hlapi.EndOfMibView):
                     continue
-                oid_parts = tuple(int(p) for p in str(name).split("."))
-                oids.append(RawOid(
-                    oid=str(name), module=_describe_mib_module(oid_parts),
-                    type=type(value).__name__, value=_preview_value(value, limit=200),
-                ))
+                raw_pairs.append((str(name), type(value).__name__, _preview_value(value, limit=200)))
             trace.append(_step(
                 step_start, True, f"Пакет {packet_no}",
-                f"+{len(var_binds)} значений в ответе, всего собрано: {len(oids)}",
+                f"+{len(var_binds)} значений в ответе, всего собрано: {len(raw_pairs)}",
             ))
             step_start = time.monotonic()
 
         if error is None:
             trace.append(TraceStep(
                 label="Конец дерева MIB", ok=True,
-                detail=f"пакетов: {packet_no}, всего OID собрано: {len(oids)}", elapsed_ms=0,
+                detail=f"пакетов: {packet_no}, всего OID собрано: {len(raw_pairs)}", elapsed_ms=0,
             ))
 
-        return error, False
+        return error
     finally:
         engine.close_dispatcher()
+
+
+def _build_walk_tree(raw_pairs: list) -> list:
+    """Складывает плоский список `(oid, type_name, value)` в дерево —
+    каждый узел это самая длинная цепочка компонентов OID без развилки,
+    подписанная настоящим именем объекта (`app/mib_names.py`), если разбор
+    MIB довёл до конца именно этой цепочки, иначе — числом, как он есть.
+    Без свёртки на глубину OID в 10-11 компонентов пришлось бы разворачивать
+    столько же вложенных уровней ради одного значения; останавливает
+    цепочку либо настоящее значение (лист), либо точка ветвления (больше
+    одного продолжения)."""
+
+    class _RawNode:
+        __slots__ = ("children", "leaf")
+
+        def __init__(self):
+            self.children: dict = {}
+            self.leaf: Optional[tuple] = None  # (type_name, value)
+
+    root = _RawNode()
+    for oid, type_name, value in raw_pairs:
+        node = root
+        for part in oid.split("."):
+            node = node.children.setdefault(part, _RawNode())
+        node.leaf = (type_name, value)
+
+    def compress(node: "_RawNode", prefix: list) -> list:
+        result = []
+        for key, child in node.children.items():
+            seg_parts = [key]
+            cur = child
+            while cur.leaf is None and len(cur.children) == 1:
+                ((only_key, only_child),) = cur.children.items()
+                seg_parts.append(only_key)
+                cur = only_child
+            full_oid = ".".join(prefix + seg_parts)
+
+            resolved = mib_names.resolve(full_oid)
+            if resolved:
+                mod_name, sym_name, suffix = resolved
+                label = f"{sym_name}.{suffix}" if suffix else sym_name
+                module = mod_name
+            else:
+                label = ".".join(seg_parts)
+                module = mib_names.resolve_module(full_oid)
+
+            type_name, value = cur.leaf if cur.leaf else (None, None)
+            result.append(WalkTreeNode(
+                oid=full_oid, label=label, module=module, type=type_name, value=value,
+                children=compress(cur, prefix + seg_parts),
+            ))
+        return result
+
+    return compress(root, [])

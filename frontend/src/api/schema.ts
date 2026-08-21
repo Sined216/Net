@@ -2358,17 +2358,6 @@ export interface components {
              */
             trace: components["schemas"]["SnmpTraceStep"][];
         };
-        /** SnmpRawOid */
-        SnmpRawOid: {
-            /** Module */
-            module: string;
-            /** Oid */
-            oid: string;
-            /** Type */
-            type: string;
-            /** Value */
-            value: string;
-        };
         /** SnmpSystemInfo */
         SnmpSystemInfo: {
             /** Sys Contact */
@@ -2450,10 +2439,10 @@ export interface components {
             /** Error */
             error?: string | null;
             /**
-             * Oids
-             * @default []
+             * Oid Count
+             * @default 0
              */
-            oids: components["schemas"]["SnmpRawOid"][];
+            oid_count: number;
             /** Ok */
             ok: boolean;
             /**
@@ -2462,10 +2451,38 @@ export interface components {
              */
             trace: components["schemas"]["SnmpTraceStep"][];
             /**
+             * Tree
+             * @default []
+             */
+            tree: components["schemas"]["SnmpWalkTreeNode"][];
+            /**
              * Truncated
              * @default false
              */
             truncated: boolean;
+        };
+        /**
+         * SnmpWalkTreeNode
+         * @description Один узел дерева «сырого» обхода — самая длинная цепочка компонентов
+         *     OID без развилки, подписанная настоящим именем объекта, если разбор
+         *     MIB это позволяет (app/mib_names.py), иначе — числом, как он есть.
+         */
+        SnmpWalkTreeNode: {
+            /**
+             * Children
+             * @default []
+             */
+            children: components["schemas"]["SnmpWalkTreeNode"][];
+            /** Label */
+            label: string;
+            /** Module */
+            module?: string | null;
+            /** Oid */
+            oid: string;
+            /** Type */
+            type?: string | null;
+            /** Value */
+            value?: string | null;
         };
         /** TagCreate */
         TagCreate: {

@@ -16,3 +16,8 @@ openpyxl==3.1.5
 # hazmat.decrepit.ciphers, куда переехал DES.
 pysnmp==7.1.28
 cryptography>=43
+# Настоящие имена SNMP-объектов (IF-MIB::ifSpeed и т. п.) вместо своего
+# короткого справочника — см. app/mib_names.py. Компилированные MIB-модули
+# в формате, который понимает MibBuilder самого pysnmp; отдельный пакет,
+# не входит в pysnmp с версии 7.
+pysnmp-mibs==0.1.6

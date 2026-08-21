@@ -3550,34 +3550,6 @@
         "title": "SnmpProbeResult",
         "type": "object"
       },
-      "SnmpRawOid": {
-        "properties": {
-          "module": {
-            "title": "Module",
-            "type": "string"
-          },
-          "oid": {
-            "title": "Oid",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          },
-          "value": {
-            "title": "Value",
-            "type": "string"
-          }
-        },
-        "required": [
-          "oid",
-          "module",
-          "type",
-          "value"
-        ],
-        "title": "SnmpRawOid",
-        "type": "object"
-      },
       "SnmpSystemInfo": {
         "properties": {
           "sys_contact": {
@@ -3842,13 +3814,10 @@
             ],
             "title": "Error"
           },
-          "oids": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SnmpRawOid"
-            },
-            "title": "Oids",
-            "type": "array"
+          "oid_count": {
+            "default": 0,
+            "title": "Oid Count",
+            "type": "integer"
           },
           "ok": {
             "title": "Ok",
@@ -3862,6 +3831,14 @@
             "title": "Trace",
             "type": "array"
           },
+          "tree": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpWalkTreeNode"
+            },
+            "title": "Tree",
+            "type": "array"
+          },
           "truncated": {
             "default": false,
             "title": "Truncated",
@@ -3873,6 +3850,66 @@
           "elapsed_ms"
         ],
         "title": "SnmpWalkResult",
+        "type": "object"
+      },
+      "SnmpWalkTreeNode": {
+        "description": "Один узел дерева «сырого» обхода — самая длинная цепочка компонентов\nOID без развилки, подписанная настоящим именем объекта, если разбор\nMIB это позволяет (app/mib_names.py), иначе — числом, как он есть.",
+        "properties": {
+          "children": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SnmpWalkTreeNode"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "module": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module"
+          },
+          "oid": {
+            "title": "Oid",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "oid",
+          "label"
+        ],
+        "title": "SnmpWalkTreeNode",
         "type": "object"
       },
       "TagCreate": {
