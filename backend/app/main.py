@@ -11,7 +11,7 @@ from app.database import SessionLocal
 from app import codegen, models, auth
 from app.routers import (
     auth_router, tags, catalog, templates, devices, interfaces, links, link_templates,
-    topology, topology_groups, schema, imports, sites, audit, snmp,
+    topology, topology_groups, schema, imports, sites, audit, snmp, sync,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -61,7 +61,7 @@ app.include_router(auth_router.router)
 # которая эту же проверку несёт сама.
 app.include_router(sites.router, dependencies=[Depends(auth.get_current_user)])
 for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
-               topology, topology_groups, schema, imports, audit, snmp):
+               topology, topology_groups, schema, imports, audit, snmp, sync):
     app.include_router(module.router, dependencies=authenticated)
 
 

@@ -569,8 +569,19 @@ class ImportRow(Base):
     id = Column(Integer, primary_key=True)
     # Файл загружают, работая на конкретной площадке, — туда строки и уедут.
     site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
-    source_file = Column(Text, nullable=False)
-    row_number = Column(Integer, nullable=False)  # номер строки в файле, для сверки с оригиналом
+    # Откуда строка: 'file' — из загруженного файла, 'mobile' — из обхода с
+    # телефоном. Разбирают их одинаково и на одном экране, отличается только
+    # происхождение — и то, что у обхода нет файла.
+    source = Column(Text, nullable=False, server_default="file")
+    # Ключ идемпотентности выгрузки с телефона (только у source='mobile').
+    # Выдаётся самим телефоном ещё оффлайн: связь по дороге рвётся, телефон
+    # шлёт пакет заново, и без ключа повтор задваивал бы записи.
+    # Уникальность — частичным индексом (миграция 0023, только там, где
+    # ключ не пуст): у строк из файла его нет, и обычный UNIQUE на пустых
+    # значениях смысла не имеет.
+    client_uuid = Column(Text)
+    source_file = Column(Text)
+    row_number = Column(Integer)  # номер строки в файле, для сверки с оригиналом
 
     name = Column(Text)
     template_name = Column(Text)
@@ -590,9 +601,63 @@ class ImportRow(Base):
     imported_at = Column(DateTime(timezone=True), server_default=func.now())
     imported_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
 
-    __table_args__ = (CheckConstraint("status IN ('new','moved')"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('new','moved')"),
+        CheckConstraint("source IN ('file','mobile')"),
+    )
 
     device = relationship("Device")
+
+
+class ImportLinkRow(Base):
+    """Связь, замеченная в цеху, — до того, как стала связью в базе.
+
+    То же, что `ImportRow`, но про кабели: телефон уносит снимок площадки,
+    человек ходит и отмечает, что куда воткнуто на самом деле, а обратно
+    приезжают записи — сюда, а не сразу в спецификацию. Причина та же,
+    что у файла: в поле пишут «свитч у окна, третий порт», и превратить
+    это в настоящую связь может только человек, глядя на то, что уже
+    заведено.
+
+    Концы хранятся текстом как есть. Если телефон точно знал, о каком
+    заведённом устройстве речь (взял его из снимка, а не завёл на месте),
+    номер сохраняется в `a_device_id`/`b_device_id` — тогда при переносе
+    не надо искать заново. Ссылки мягкие: устройство могли удалить в
+    офисе, пока шёл обход, и терять из-за этого саму запись незачем.
+    """
+    __tablename__ = "import_link_rows"
+    id = Column(Integer, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
+    source = Column(Text, nullable=False, server_default="mobile")
+    # Ключ идемпотентности — как у ImportRow.client_uuid, той же причины и
+    # тем же частичным индексом из миграции 0023.
+    client_uuid = Column(Text)
+
+    a_device_text = Column(Text)
+    a_port_text = Column(Text)
+    b_device_text = Column(Text)
+    b_port_text = Column(Text)
+    a_device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"))
+    b_device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"))
+
+    medium = Column(Text)
+    notes = Column(Text)
+    extra = Column(JSON)
+
+    # 'new' — ждёт переноса, 'moved' — стала связью.
+    status = Column(Text, nullable=False, server_default="new", index=True)
+    link_id = Column(Integer, ForeignKey("links.id", ondelete="SET NULL"))
+    imported_at = Column(DateTime(timezone=True), server_default=func.now())
+    imported_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (
+        CheckConstraint("status IN ('new','moved')"),
+        CheckConstraint("source IN ('file','mobile')"),
+    )
+
+    link = relationship("Link")
+    a_device = relationship("Device", foreign_keys=[a_device_id])
+    b_device = relationship("Device", foreign_keys=[b_device_id])
 
 
 class AuditLog(Base):

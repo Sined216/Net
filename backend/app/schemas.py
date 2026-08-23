@@ -901,6 +901,91 @@ class SearchResult(BaseModel):
     mac: Optional[str] = None
 
 
+# ---------- Обход с телефона (см. app/routers/sync.py) ----------
+class SyncSnapshot(BaseModel):
+    """Всё, что телефон уносит в цех, — одним ответом.
+
+    Собирается из тех же схем, что отдают обычные ручки: телефон показывает
+    ту же спецификацию, что и веб, и заводить ему параллельный набор полей
+    незачем. Справочники нужны затем, что оффлайн подставлять их неоткуда:
+    человек в цеху выбирает модель устройства из списка, а не печатает
+    название по памяти.
+    """
+    site_id: int
+    site_name: str
+    # По этой метке видно, насколько устарел снимок в руках. Сравнение со
+    # свежей не автоматическое: решает человек, идти с этим в цех или
+    # сначала обновиться.
+    taken_at: datetime
+
+    devices: List[DeviceOut] = []
+    links: List[LinkOut] = []
+
+    templates: List[DeviceTemplateOut] = []
+    device_types: List[DeviceTypeOut] = []
+    connector_types: List[ConnectorTypeOut] = []
+    vlans: List[VlanOut] = []
+    tags: List[TagOut] = []
+    groups: List[TopologyGroupOut] = []
+
+
+class SyncDeviceIn(BaseModel):
+    """Устройство, замеченное в цеху. Значения текстовые и непроверенные —
+    ровно как строка из файла: опознаёт их человек при переносе."""
+    # Выдаётся телефоном ещё оффлайн — ключ идемпотентности выгрузки.
+    client_uuid: str = Field(min_length=1, max_length=64)
+    name: Optional[str] = Field(default=None, max_length=255)
+    template_name: Optional[str] = Field(default=None, max_length=255)
+    type_name: Optional[str] = Field(default=None, max_length=255)
+    management_ip: Optional[str] = Field(default=None, max_length=64)
+    mac: Optional[str] = Field(default=None, max_length=64)
+    notes: Optional[str] = Field(default=None, max_length=4000)
+    group_name: Optional[str] = Field(default=None, max_length=255)
+    tags_text: Optional[str] = Field(default=None, max_length=1000)
+    extra: Optional[dict] = None
+
+
+class SyncLinkIn(BaseModel):
+    """Связь, замеченная в цеху. Концы — как их видел человек: подпись на
+    железке и номер гнезда."""
+    client_uuid: str = Field(min_length=1, max_length=64)
+    a_device_text: Optional[str] = Field(default=None, max_length=255)
+    a_port_text: Optional[str] = Field(default=None, max_length=255)
+    b_device_text: Optional[str] = Field(default=None, max_length=255)
+    b_port_text: Optional[str] = Field(default=None, max_length=255)
+    # Заполнено, если конец — уже заведённое устройство из снимка, а не
+    # заведённое тут же в цеху.
+    a_device_id: Optional[int] = None
+    b_device_id: Optional[int] = None
+    medium: Optional[str] = Field(default=None, max_length=64)
+    notes: Optional[str] = Field(default=None, max_length=4000)
+    extra: Optional[dict] = None
+
+
+class SyncUploadRequest(BaseModel):
+    """Пакет из обхода. Пустой пакет — не ошибка: телефон мог сходить и
+    ничего не найти, и «ничего не найдено» тоже результат."""
+    devices: List[SyncDeviceIn] = Field(default_factory=list, max_length=500)
+    links: List[SyncLinkIn] = Field(default_factory=list, max_length=500)
+
+
+class SyncUploadResult(BaseModel):
+    """Что вышло из выгрузки.
+
+    `*_duplicate` — записи, чей ключ уже был принят раньше. Это не ошибка,
+    а нормальный исход повторной выгрузки: связь оборвалась, телефон не
+    дождался ответа и прислал пакет заново. Он должен видеть, что записи
+    на месте, и очистить их у себя.
+    """
+    devices_added: int
+    devices_duplicate: int
+    links_added: int
+    links_duplicate: int
+    # Ключи, принятые сервером (и в этот раз, и раньше) — телефон по ним
+    # понимает, что можно убирать из своей очереди.
+    accepted_uuids: List[str] = []
+
+
 # ---------- SNMP (отдельная страница, см. app/snmp_probe.py) ----------
 SnmpVersion = Literal["v1", "v2c", "v3"]
 SnmpSecurityLevel = Literal["noAuthNoPriv", "authNoPriv", "authPriv"]

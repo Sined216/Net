@@ -3912,6 +3912,399 @@
         "title": "SnmpWalkTreeNode",
         "type": "object"
       },
+      "SyncDeviceIn": {
+        "description": "Устройство, замеченное в цеху. Значения текстовые и непроверенные —\nровно как строка из файла: опознаёт их человек при переносе.",
+        "properties": {
+          "client_uuid": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Client Uuid",
+            "type": "string"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
+          "management_ip": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Management Ip"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "tags_text": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags Text"
+          },
+          "template_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Name"
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          }
+        },
+        "required": [
+          "client_uuid"
+        ],
+        "title": "SyncDeviceIn",
+        "type": "object"
+      },
+      "SyncLinkIn": {
+        "description": "Связь, замеченная в цеху. Концы — как их видел человек: подпись на\nжелезке и номер гнезда.",
+        "properties": {
+          "a_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Device Id"
+          },
+          "a_device_text": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Device Text"
+          },
+          "a_port_text": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Port Text"
+          },
+          "b_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Device Id"
+          },
+          "b_device_text": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Device Text"
+          },
+          "b_port_text": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Port Text"
+          },
+          "client_uuid": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Client Uuid",
+            "type": "string"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "medium": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medium"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "client_uuid"
+        ],
+        "title": "SyncLinkIn",
+        "type": "object"
+      },
+      "SyncSnapshot": {
+        "description": "Всё, что телефон уносит в цех, — одним ответом.\n\nСобирается из тех же схем, что отдают обычные ручки: телефон показывает\nту же спецификацию, что и веб, и заводить ему параллельный набор полей\nнезачем. Справочники нужны затем, что оффлайн подставлять их неоткуда:\nчеловек в цеху выбирает модель устройства из списка, а не печатает\nназвание по памяти.",
+        "properties": {
+          "connector_types": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTypeOut"
+            },
+            "title": "Connector Types",
+            "type": "array"
+          },
+          "device_types": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DeviceTypeOut"
+            },
+            "title": "Device Types",
+            "type": "array"
+          },
+          "devices": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "title": "Devices",
+            "type": "array"
+          },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TopologyGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "links": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LinkOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "site_id": {
+            "title": "Site Id",
+            "type": "integer"
+          },
+          "site_name": {
+            "title": "Site Name",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TagOut"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "taken_at": {
+            "format": "date-time",
+            "title": "Taken At",
+            "type": "string"
+          },
+          "templates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DeviceTemplateOut"
+            },
+            "title": "Templates",
+            "type": "array"
+          },
+          "vlans": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VlanOut"
+            },
+            "title": "Vlans",
+            "type": "array"
+          }
+        },
+        "required": [
+          "site_id",
+          "site_name",
+          "taken_at"
+        ],
+        "title": "SyncSnapshot",
+        "type": "object"
+      },
+      "SyncUploadRequest": {
+        "description": "Пакет из обхода. Пустой пакет — не ошибка: телефон мог сходить и\nничего не найти, и «ничего не найдено» тоже результат.",
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/SyncDeviceIn"
+            },
+            "maxItems": 500,
+            "title": "Devices",
+            "type": "array"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/SyncLinkIn"
+            },
+            "maxItems": 500,
+            "title": "Links",
+            "type": "array"
+          }
+        },
+        "title": "SyncUploadRequest",
+        "type": "object"
+      },
+      "SyncUploadResult": {
+        "description": "Что вышло из выгрузки.\n\n`*_duplicate` — записи, чей ключ уже был принят раньше. Это не ошибка,\nа нормальный исход повторной выгрузки: связь оборвалась, телефон не\nдождался ответа и прислал пакет заново. Он должен видеть, что записи\nна месте, и очистить их у себя.",
+        "properties": {
+          "accepted_uuids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Uuids",
+            "type": "array"
+          },
+          "devices_added": {
+            "title": "Devices Added",
+            "type": "integer"
+          },
+          "devices_duplicate": {
+            "title": "Devices Duplicate",
+            "type": "integer"
+          },
+          "links_added": {
+            "title": "Links Added",
+            "type": "integer"
+          },
+          "links_duplicate": {
+            "title": "Links Duplicate",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "devices_added",
+          "devices_duplicate",
+          "links_added",
+          "links_duplicate"
+        ],
+        "title": "SyncUploadResult",
+        "type": "object"
+      },
       "TagCreate": {
         "properties": {
           "color": {
@@ -9530,6 +9923,126 @@
         "summary": "Walk",
         "tags": [
           "snmp"
+        ]
+      }
+    },
+    "/sync/snapshot": {
+      "get": {
+        "description": "Снимок площадки для оффлайна.\n\nДоступ — как у чтения: унести спецификацию с собой может любая роль,\nэто то же самое, что открыть её в браузере. Правки требуют `can_edit`,\nно они и приезжают отдельной ручкой ниже.",
+        "operationId": "snapshot_sync_snapshot_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Snapshot",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/sync/upload": {
+      "post": {
+        "description": "Записи из обхода — в промежуточные таблицы, не в спецификацию.\n\nИдемпотентно: запись с уже принятым `client_uuid` не заводится второй\nраз, но и ошибкой не считается — телефон узнаёт её в `accepted_uuids`\nи убирает у себя из очереди.",
+        "operationId": "upload_sync_upload_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncUploadResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Upload",
+        "tags": [
+          "sync"
         ]
       }
     },
