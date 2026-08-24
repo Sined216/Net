@@ -1,0 +1,200 @@
+import { useEffect, useState } from 'react';
+import {
+  Anchor, Badge, Button, Card, Group, NumberInput, Paper, Stack, Table, Text, Title,
+} from '@mantine/core';
+import { IconArrowLeft, IconEdit, IconPlus, IconTopologyStar, IconTrash } from '@tabler/icons-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDevice, useDeviceTemplates, useDeviceTypes, useVlans,
+} from '../api/hooks';
+import { RowAction } from '../components/RowAction';
+import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
+import { deviceRoleLabel } from '../lib/enumLabels';
+import { InterfaceRow } from './devices/InterfaceRow';
+import { DeviceFormModal } from './devices/DeviceFormModal';
+import { useCan } from '../auth/permissions';
+import { DeviceHistory } from '../history/DeviceHistory';
+
+const EMPTY: never[] = [];
+
+/** Отдельная страница устройства — на неё можно дать ссылку.
+ *
+ * Раньше всё жило в одном списке с раскрывающимися карточками: показать
+ * коллеге конкретный коммутатор можно было только словами «пролистай до
+ * SW-0007». */
+export function DevicePage() {
+  const canEdit = useCan('edit');
+  const { deviceId } = useParams();
+  const navigate = useNavigate();
+  const id = Number(deviceId);
+  const { data: device, isLoading } = useDevice(id);
+  const { data: templates = EMPTY } = useDeviceTemplates();
+  const { data: types = EMPTY } = useDeviceTypes();
+  const { data: vlans = EMPTY } = useVlans();
+  const addInterface = useAddInterface();
+  const addPortsBulk = useAddInterfacesBulk();
+  const deleteDevice = useDeleteDevice();
+  const [bulkCount, setBulkCount] = useState<number | ''>(24);
+  const [editing, setEditing] = useState(false);
+
+  // AppLayout уже поставил заголовок «Устройство — WireMap» как запасной —
+  // здесь он уточняется до кода конкретной железки, только когда она
+  // известна: несколько открытых карточек иначе было не различить по
+  // вкладкам (находка 8 проверки удобства).
+  useEffect(() => {
+    if (device) document.title = `${device.code} — WireMap`;
+  }, [device]);
+
+  const template = templates.find((t) => t.id === device?.template_id);
+  const typeName = template ? types.find((t) => t.id === template.device_type_id)?.name ?? '—' : '—';
+
+  if (isLoading) return <Text c="dimmed">Загрузка…</Text>;
+  if (!device) {
+    return (
+      <Stack>
+        <Title order={2}>Устройство не найдено</Title>
+        <Text c="dimmed">Возможно, оно удалено или ссылка неверна.</Text>
+        <Anchor component={Link} to="/devices">К списку устройств</Anchor>
+      </Stack>
+    );
+  }
+
+  // Состав портов задаётся моделью; править у железки можно только там, где
+  // это отражает жизнь — ПК со съёмной сетевой картой.
+  const portsEditable = template?.ports_editable_on_device ?? false;
+
+  const interfaces = [...device.interfaces].sort((a, b) => a.port_number - b.port_number);
+  // Занят и тот порт, у которого второй конец кабеля повис.
+  const busyCount = interfaces.filter((i) => i.link_id).length;
+
+  function addPort() {
+    const n = device!.interfaces.length + 1;
+    addInterface.mutate({ deviceId: device!.id, body: { label: `Порт ${n}` } }, { onError: notifyError });
+  }
+
+  async function generatePorts() {
+    const n = typeof bulkCount === 'number' ? bulkCount : 0;
+    if (n <= 0) return;
+    if (!(await confirmAction(`Создать ${n} портов?`))) return;
+    // Одним запросом: параллельные добавления читают один и тот же
+    // «следующий номер» и мешают друг другу.
+    addPortsBulk.mutate({ deviceId: device!.id, body: { count: n } }, { onError: notifyError });
+  }
+
+  async function handleDelete() {
+    if (!(await confirmAction(`Удалить устройство «${device!.code}» вместе со всеми его портами и связями?`))) return;
+    deleteDevice.mutate(device!.id, {
+      onSuccess: () => { notifySuccess('Устройство удалено'); navigate('/devices'); },
+      onError: notifyError,
+    });
+  }
+
+  return (
+    <Stack>
+      <Group justify="space-between" wrap="wrap">
+        <Group gap="xs">
+          <RowAction label="К списку устройств" icon={<IconArrowLeft size={18} />} size="md" component={Link} to="/devices" />
+          <Title order={2}>{device.code}</Title>
+          <Text c="dimmed" size="lg">{device.name || template?.name || '—'}</Text>
+        </Group>
+        <Group>
+          <Button
+            variant="light" leftSection={<IconTopologyStar size={16} />}
+            component={Link} to={`/topology?device=${device.id}`}
+          >
+            Показать на схеме
+          </Button>
+          {canEdit && (
+            <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => setEditing(true)}>
+              Редактировать
+            </Button>
+          )}
+          {canEdit && (
+            <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={handleDelete}>
+              Удалить
+            </Button>
+          )}
+        </Group>
+      </Group>
+
+      <Card withBorder padding="sm">
+        <Group gap="xl" wrap="wrap">
+          <Field label="Тип">{typeName}</Field>
+          <Field label="Модель">
+            {template?.color && <span className="tag-badge-dot" style={{ background: template.color }} />}
+            {template?.name ?? '—'}
+          </Field>
+          <Field label="Производитель">{template?.manufacturer || '—'}</Field>
+          <Field label="IP управления">{device.management_ip || '—'}</Field>
+          <Field label="MAC">{device.mac || '—'}</Field>
+          <Field label="Роль">{device.role ? deviceRoleLabel(device.role) : '—'}</Field>
+          <Field label="Установлено">{device.install_date || '—'}</Field>
+          <Field label="Порты">{busyCount} из {interfaces.length} занято</Field>
+        </Group>
+        {device.tags.length > 0 && (
+          <Group gap={6} mt="sm">
+            {device.tags.map((t) => (
+              <Badge key={t.id} variant="outline" color={t.color ?? 'gray'}>{t.name}</Badge>
+            ))}
+          </Group>
+        )}
+        {device.notes && <Text size="sm" c="dimmed" mt="sm">{device.notes}</Text>}
+      </Card>
+
+      <Title order={3} mt="sm">Порты</Title>
+      <Paper withBorder>
+        <Table verticalSpacing={4}>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w={50}>№</Table.Th><Table.Th>Название</Table.Th><Table.Th>Разъём</Table.Th>
+                <Table.Th>Режим</Table.Th><Table.Th>VLAN</Table.Th>
+              <Table.Th>IP</Table.Th><Table.Th>MAC</Table.Th><Table.Th>Заметка</Table.Th>
+              <Table.Th>Подключение</Table.Th><Table.Th />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {interfaces.map((i) => (
+              // Ключ с номером правки — см. комментарий у того же места в
+              // devices/DeviceRow.tsx.
+              <InterfaceRow key={`${i.id}-${i.version}`} iface={i} vlans={vlans} portsEditable={portsEditable} />
+            ))}
+            {interfaces.length === 0 && (
+              <Table.Tr><Table.Td colSpan={10}><Text c="dimmed" size="sm">Портов ещё нет</Text></Table.Td></Table.Tr>
+            )}
+          </Table.Tbody>
+        </Table>
+      </Paper>
+
+      {portsEditable && canEdit ? (
+        <Group>
+          <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addPort}>Порт</Button>
+          <NumberInput size="xs" value={bulkCount} onChange={(v) => setBulkCount(v === '' ? '' : Number(v))} min={1} max={96} w={80} />
+          <Button size="xs" variant="light" onClick={generatePorts}>Сгенерировать N портов</Button>
+          <Text size="xs" c="dimmed">
+            У этой модели состав портов меняется по факту, поэтому порты правятся прямо здесь.
+          </Text>
+        </Group>
+      ) : (
+        <Text size="sm" c="dimmed">
+          Состав портов задаётся моделью. Чтобы добавить или убрать порт, откройте
+          {' '}<Anchor component={Link} to="/templates">шаблон «{template?.name}»</Anchor>{' '}
+          — изменение применится ко всем устройствам этой модели.
+        </Text>
+      )}
+
+      <DeviceHistory deviceId={device.id} />
+
+      {editing && <DeviceFormModal device={device} onClose={() => setEditing(false)} />}
+    </Stack>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <Text size="xs" c="dimmed">{label}</Text>
+      <Text size="sm">{children}</Text>
+    </div>
+  );
+}

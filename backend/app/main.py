@@ -1,39 +1,99 @@
-import os
 import logging
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError, IntegrityError
 
-from app.database import Base, engine, SessionLocal
-from app import models, auth
+from app.config import settings
+from app.database import SessionLocal
+from app import codegen, models, auth
 from app.routers import (
     auth_router, tags, catalog, templates, devices, interfaces, links, link_templates,
-    topology, topology_groups,
+    topology, topology_groups, schema, imports, sites, audit, snmp, sync,
 )
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("netdoc")
 
-app = FastAPI(title="Network Documentation API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Наполнение справочников при старте. Пришло на смену `on_event`:
+    тот объявлен устаревшим и в новых версиях FastAPI перестанет работать."""
+    prepare_reference_data()
+    yield
+
+
+app = FastAPI(title="Network Documentation API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
-    allow_credentials=True,
+    allow_origins=settings.cors_origin_list,
+    # Авторизация идёт заголовком Authorization, а не куками, поэтому
+    # credentials браузеру пересылать не нужно. Заодно снимается конфликт:
+    # allow_credentials вместе со звёздочкой в origins всё равно не работает.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Все прикладные роутеры подключаются с обязательной авторизацией на уровне
+# роутера, а не хендлера: иначе новый GET-эндпоинт легко забыть защитить —
+# именно так и получилось, что вся карта сети с IP и MAC отдавалась без
+# токена. Исключения ровно два и они осознанные: вход (/auth/login, внутри
+# auth_router) и /health для проб контейнера.
+#
+# `require_password_changed`, а не голый `get_current_user`: пароль,
+# назначенный не самим человеком, до смены не должен пускать никуда, кроме
+# неё самой. Раньше это проверял только браузер, и токен, выданный по
+# временному паролю, был полноценным — auth_router подключается отдельно и
+# без этой проверки, иначе сменить временный пароль стало бы нечем.
+authenticated = [Depends(auth.require_password_changed)]
+
 app.include_router(auth_router.router)
-app.include_router(tags.router)
-app.include_router(catalog.router)
-app.include_router(templates.router)
-app.include_router(devices.router)
-app.include_router(interfaces.router)
-app.include_router(links.router)
-app.include_router(link_templates.router)
-app.include_router(topology.router)
-app.include_router(topology_groups.router)
+# У sites та же оговорка, что у auth_router: список площадок собирает
+# переключатель в шапке и загружается раньше самого интерфейса, ещё до
+# формы смены пароля — запереть его вместе с остальными значило бы, что
+# человеку с временным паролем нечем даже открыть эту форму (сайт решает,
+# что площадок нет, и застревает на «нет доступа», а не на смене пароля).
+# Пишущие маршруты внутри `sites` защищены отдельно, через `can_admin`,
+# которая эту же проверку несёт сама.
+app.include_router(sites.router, dependencies=[Depends(auth.get_current_user)])
+for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
+               topology, topology_groups, schema, imports, audit, snmp, sync):
+    app.include_router(module.router, dependencies=authenticated)
+
+
+@app.exception_handler(IntegrityError)
+def on_integrity_error(request: Request, exc: IntegrityError):
+    """Страховка от пятисоток на нарушении целостности.
+
+    Ссылка на несуществующую запись или повтор уникального значения — это
+    ошибка запроса, а не поломка сервера: клиенту нужен внятный отказ, а не
+    «Internal Server Error». Места, где понятно, о чём именно речь, отвечают
+    сами и подробнее; сюда доезжает всё остальное.
+    """
+    log.warning("нарушение целостности на %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Запись ссылается на то, чего нет, либо нарушает уникальность. "
+                           "Обновите страницу — данные могли измениться в другой вкладке."},
+    )
+
+
+@app.exception_handler(DataError)
+def on_data_error(request: Request, exc: DataError):
+    """Значение не влезло в колонку — это тоже ошибка запроса.
+
+    Слишком длинное число или строка не должны выглядеть как поломка
+    сервера: клиенту нужно понять, что именно он прислал не так.
+    """
+    log.warning("значение не принято базой на %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Значение не подходит по типу или размеру — проверьте введённые числа и строки."},
+    )
 
 
 # (название, префикс кода устройства — SW-0001, SRV-0002...)
@@ -45,27 +105,50 @@ DEFAULT_DEVICE_TYPES = [
 ]
 
 
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
+def prepare_reference_data():
+    """Наполнение справочников. Схему создаёт не приложение, а миграции
+    (`python -m app.db_upgrade` перед стартом uvicorn) — create_all умел
+    только досоздавать таблицы и не замечал изменений в существующих."""
     db = SessionLocal()
     try:
-        # справочник типов устройств
-        existing = {dt.name for dt in db.query(models.DeviceType).all()}
+        # Справочник типов устройств. Сверяемся и по названию, и по префиксу:
+        # тип можно переименовать, и тогда «Коммутатор» по имени не найдётся,
+        # а вставка нового с префиксом SW упрётся в уникальный индекс — до
+        # этой проверки приложение просто не поднималось после переименования.
+        rows = db.query(models.DeviceType).all()
+        taken_names = {dt.name for dt in rows}
+        taken_prefixes = {dt.code_prefix for dt in rows}
         for name, prefix in DEFAULT_DEVICE_TYPES:
-            if name not in existing:
-                db.add(models.DeviceType(name=name, code_prefix=prefix))
+            if name in taken_names or prefix in taken_prefixes:
+                continue
+            db.add(models.DeviceType(name=name, code_prefix=prefix))
+            taken_names.add(name)
+            taken_prefixes.add(prefix)
         db.commit()
+
+        # Хотя бы одна площадка нужна всегда: без неё приложению не с чем
+        # работать. Обычно её заводит миграция 0012; здесь — страховка на
+        # случай, когда единственную площадку удалили руками из базы.
+        if db.query(models.Site).count() == 0:
+            db.add(models.Site(name="Основная площадка"))
+            db.commit()
+
+        # Счётчик кодов не должен отставать от фактических кодов: иначе
+        # первое же заведение устройства упрётся в занятый код.
+        codegen.sync_sequences(db)
 
         # первый администратор, если пользователей ещё нет
         if db.query(models.User).count() == 0:
-            admin_username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "admin")
-            admin_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "change-me-please")
+            admin_username = settings.bootstrap_admin_username
+            admin_password = settings.bootstrap_admin_password
             db.add(models.User(
                 full_name="Administrator",
                 username=admin_username,
                 password_hash=auth.hash_password(admin_password),
                 role="admin",
+                # Пароль лежит в .env и виден всем, у кого есть доступ к
+                # серверу, — интерфейс потребует сменить его при первом входе.
+                must_change_password=True,
             ))
             db.commit()
             log.warning(

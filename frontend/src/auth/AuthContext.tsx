@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/endpoints';
 import { getBaseUrl, getToken, setBaseUrl, setToken } from '../api/client';
@@ -10,6 +10,8 @@ interface AuthState {
   loginError: string | null;
   signIn: (baseUrl: string, username: string, password: string) => Promise<void>;
   signOut: () => void;
+  /** Перечитать себя с сервера — после смены пароля или роли. */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -42,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  async function signIn(baseUrl: string, username: string, password: string) {
+  const signIn = useCallback(async (baseUrl: string, username: string, password: string) => {
     setLoginError(null);
     setBaseUrl(baseUrl);
     try {
@@ -53,16 +55,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoginError((e as Error).message);
       throw e;
     }
-  }
+  }, []);
 
-  function signOut() {
+  const refreshUser = useCallback(async () => {
+    setUser(await api.me());
+    // Пока стоял must_change_password, сервер отбивал 403 на всех списках,
+    // и TanStack Query запомнил эти отказы. Роль и права могли смениться
+    // тоже — сбрасываем кэш целиком, а не только «пока был запрет», чтобы
+    // не гадать, что именно изменилось.
+    await queryClient.invalidateQueries();
+  }, [queryClient]);
+
+  const signOut = useCallback(() => {
     setToken(null);
     setUser(null);
     queryClient.clear();
-  }
+  }, [queryClient]);
+
+  // Мемоизировано, а не собирается заново на каждый рендер: без этого
+  // любой компонент, подписанный на useAuth(), перерисовывался бы вместе с
+  // провайдером — даже когда сам auth-статус не менялся ни на йоту.
+  const value = useMemo(
+    () => ({ user, loading, loginError, signIn, signOut, refreshUser }),
+    [user, loading, loginError, signIn, signOut, refreshUser],
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginError, signIn, signOut }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

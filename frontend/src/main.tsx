@@ -6,10 +6,11 @@ import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
-import '@xyflow/react/dist/style.css';
 import './index.css';
+import { theme } from './theme';
 import { AuthProvider } from './auth/AuthContext';
 import { App } from './App';
+import { ConfirmHost } from './lib/ConfirmHost';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,8 +20,9 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MantineProvider defaultColorScheme="auto">
+    <MantineProvider theme={theme} defaultColorScheme="auto">
       <Notifications />
+      <ConfirmHost />
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AuthProvider>

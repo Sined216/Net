@@ -1,20 +1,24 @@
 import { useState } from 'react';
-import { ActionIcon, Alert, Button, ColorInput, Group, Modal, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
+import { Alert, Button, ColorInput, Group, Modal, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
+import { DeleteAction, EditAction } from '../components/RowAction';
 import { useCreateTag, useDeleteTag, useTags, useUpdateTag } from '../api/hooks';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
 import type { TagOut } from '../api/types';
+import { useCan } from '../auth/permissions';
 
 export function TagsPage() {
+  const canEdit = useCan('edit');
   const { data: tags = [], isLoading, error } = useTags();
   const [editing, setEditing] = useState<TagOut | 'new' | null>(null);
   const deleteTag = useDeleteTag();
 
   const ordered = flattenTagsOrdered(tags);
 
-  function handleDelete(tag: TagOut) {
-    if (!confirm(`Удалить тег «${tag.name}»? Дочерние теги удалятся вместе с ним, у устройств он просто снимется.`)) return;
+  async function handleDelete(tag: TagOut) {
+    if (!(await confirmAction(`Удалить тег «${tag.name}»? Дочерние теги удалятся вместе с ним, у устройств он просто снимется.`))) return;
     deleteTag.mutate(tag.id, { onSuccess: () => notifySuccess('Тег удалён'), onError: notifyError });
   }
 
@@ -22,9 +26,11 @@ export function TagsPage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Теги</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>
-          Тег
-        </Button>
+        {canEdit && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>
+            Тег
+          </Button>
+        )}
       </Group>
       <Text c="dimmed" size="sm">
         Вложенность — только для организации списка (напр. «Завод → Цех 1 → Шкаф А»). Устройство может нести сразу
@@ -52,12 +58,12 @@ export function TagsPage() {
               </Table.Td>
               <Table.Td>
                 <Group gap={4} justify="flex-end">
-                  <ActionIcon variant="subtle" onClick={() => setEditing(tag)}>
-                    <IconEdit size={16} />
-                  </ActionIcon>
-                  <ActionIcon variant="subtle" color="red" onClick={() => handleDelete(tag)}>
-                    <IconTrash size={16} />
-                  </ActionIcon>
+                  {canEdit && (
+                    <>
+                      <EditAction label={`Изменить тег «${tag.name}»`} onClick={() => setEditing(tag)} />
+                      <DeleteAction label={`Удалить тег «${tag.name}»`} onClick={() => handleDelete(tag)} />
+                    </>
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>
@@ -77,9 +83,15 @@ export function TagsPage() {
   );
 }
 
-function TagFormModal({ tag, tags, onClose }: { tag: TagOut | null; tags: TagOut[]; onClose: () => void }) {
+export function TagFormModal({ tag, tags, draftName, onClose }: {
+  tag: TagOut | null;
+  tags: TagOut[];
+  /** Название для нового тега — например взятое из строки файла импорта. */
+  draftName?: string;
+  onClose: () => void;
+}) {
   const isEdit = !!tag;
-  const [name, setName] = useState(tag?.name ?? '');
+  const [name, setName] = useState(tag?.name ?? draftName ?? '');
   const [parentId, setParentId] = useState<string | null>(tag?.parent_id ? String(tag.parent_id) : null);
   const [color, setColor] = useState(tag?.color ?? '#94a3b8');
   const createTag = useCreateTag();
@@ -99,7 +111,8 @@ function TagFormModal({ tag, tags, onClose }: { tag: TagOut | null; tags: TagOut
       notifySuccess(isEdit ? 'Тег обновлён' : 'Тег создан');
       onClose();
     };
-    if (isEdit) updateTag.mutate({ id: tag!.id, body }, { onSuccess, onError: notifyError });
+    // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
+    if (isEdit) updateTag.mutate({ id: tag!.id, body: { ...body, version: tag!.version } }, { onSuccess, onError: notifyError });
     else createTag.mutate(body, { onSuccess, onError: notifyError });
   }
 

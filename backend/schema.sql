@@ -1,4 +1,9 @@
 -- =========================================================
+-- СПРАВОЧНОЕ ОПИСАНИЕ схемы БД с комментариями.
+-- Источник истины — миграции Alembic (alembic/versions/); этот файл
+-- поддерживается вручную и нужен, чтобы модель данных можно было прочитать
+-- целиком в одном месте. При расхождении верить миграциям.
+--
 -- Схема БД: документация физической сети завода (v4)
 -- Модель: шаблон устройства (справочник моделей с портами)
 --         -> устройство в спецификации оборудования (экземпляр)
@@ -73,15 +78,38 @@ CREATE TABLE device_templates (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Разъём порта: то, что физически торчит из железки. SFP и подобные — не
+-- разъём, а клетка (is_cage): разъём у них появляется вместе с модулем.
+CREATE TABLE connector_types (
+    id      SERIAL PRIMARY KEY,
+    name    TEXT UNIQUE NOT NULL,            -- RJ45, SFP+, LC, M12...
+    media   TEXT NOT NULL DEFAULT 'copper' CHECK (media IN ('copper','fiber','other')),
+    is_cage BOOLEAN NOT NULL DEFAULT false
+);
+
+-- Модуль (трансивер), вставляемый в клетку. connector_id — разъём, который
+-- он даёт наружу: LC у оптики, RJ45 у медного SFP.
+CREATE TABLE transceiver_modules (
+    id                SERIAL PRIMARY KEY,
+    name              TEXT UNIQUE NOT NULL,
+    cage_connector_id INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
+    connector_id      INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
+    notes             TEXT
+);
+
 -- Порты, которые есть у этой модели устройства. При добавлении устройства
 -- в спецификацию оборудования эти строки копируются в interfaces.
 CREATE TABLE device_template_interfaces (
     id           SERIAL PRIMARY KEY,
     template_id  INTEGER NOT NULL REFERENCES device_templates(id) ON DELETE CASCADE,
+    -- Номер — место порта в ряду гнёзд: 1..N подряд, без пропусков. Им порт
+    -- и опознаётся, он напечатан на корпусе. Раздаёт номера приложение.
+    port_number  INTEGER NOT NULL,
     label        TEXT NOT NULL,               -- "Порт 1", "Gi0/1", "SFP1"...
-    port_number  INTEGER,
-    port_type    TEXT CHECK (port_type IN ('access','trunk','uplink')),
-    UNIQUE (template_id, label)
+    -- Разъём — свойство модели техники. Режима (доступ/транк) тут нет: он
+    -- настраивается на конкретной железке.
+    connector_id INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
+    UNIQUE (template_id, port_number)
 );
 
 -- Группа устройств на топологии — отдельный от тегов параметр: ровно одна
@@ -89,10 +117,21 @@ CREATE TABLE device_template_interfaces (
 -- и для жёсткой визуальной кластеризации не годятся (неясно, в какую рамку
 -- класть устройство с двумя тегами) — это узкое поле только под схему.
 CREATE TABLE topology_groups (
-    id     SERIAL PRIMARY KEY,
-    name   TEXT UNIQUE NOT NULL,
-    color  TEXT
+    id        SERIAL PRIMARY KEY,
+    name      TEXT UNIQUE NOT NULL,
+    color     TEXT,
+    -- Группа внутри группы: цех — участок — линия. SET NULL, а не CASCADE:
+    -- удаление цеха не уносит с собой участки вместе с их устройствами.
+    parent_id INTEGER REFERENCES topology_groups(id) ON DELETE SET NULL,
+    -- Рамка на схеме: своё положение и размер, а не подгонка под содержимое.
+    -- Пусто, пока рамку ни разу не двигали, — тогда она считается по
+    -- содержимому и запоминается при первой же правке.
+    x         DOUBLE PRECISION,
+    y         DOUBLE PRECISION,
+    width     DOUBLE PRECISION,
+    height    DOUBLE PRECISION
 );
+CREATE INDEX ix_topology_groups_parent_id ON topology_groups(parent_id);
 
 -- Устройство в спецификации оборудования — экземпляр конкретного шаблона.
 -- code генерируется автоматически (см. code_sequences), не вводится руками.
@@ -129,15 +168,26 @@ CREATE TABLE device_tags (
 CREATE TABLE interfaces (
     id             SERIAL PRIMARY KEY,
     device_id      INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    -- Номер уникален, название — просто подпись: два порта могут называться
+    -- одинаково, но занимать разные гнёзда. Связь указывает на гнездо.
+    port_number    INTEGER NOT NULL,
     label          TEXT NOT NULL,
-    port_number    INTEGER,
-    port_type      TEXT CHECK (port_type IN ('access','trunk','uplink')),
+    -- Из какого порта модели скопирован. Пусто — порт заведён руками на
+    -- устройстве со съёмными картами. По номеру их сопоставлять нельзя:
+    -- сняли карту, номера сомкнулись — и правка модели попадала в соседний порт.
+    template_interface_id INTEGER REFERENCES device_template_interfaces(id) ON DELETE SET NULL,
+    -- Разъём приходит из модели; модуль вставляется в клетку (SFP и т.п.) и
+    -- определяет, какой разъём торчит из порта на самом деле.
+    connector_id   INTEGER REFERENCES connector_types(id) ON DELETE SET NULL,
+    module_id      INTEGER REFERENCES transceiver_modules(id) ON DELETE SET NULL,
+    -- Режим порта — настройка конкретной железки.
+    mode           TEXT CHECK (mode IN ('access','trunk','uplink')),
     vlan_id        INTEGER REFERENCES vlans(id) ON DELETE SET NULL,
     trunk_vlan_ids INTEGER[],
     ip             INET,
     mac            MACADDR,
     notes          TEXT,
-    UNIQUE (device_id, label)
+    UNIQUE (device_id, port_number)
 );
 
 -- Шаблон/пресет связи: тип среды передачи + категория кабеля (для меди:

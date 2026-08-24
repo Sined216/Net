@@ -1,9 +1,23 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 sqlalchemy==2.0.35
+alembic==1.13.3
 psycopg2-binary==2.9.9
 pydantic==2.9.2
 pydantic-settings==2.5.2
-python-jose[cryptography]==3.3.0
+PyJWT==2.13.0
 argon2-cffi==23.1.0
 python-multipart==0.0.9
+# Чтение .xlsx при импорте устройств из файла.
+openpyxl==3.1.5
+# Опрос устройств по SNMP (страница «SNMP», отдельно от остального
+# функционала — см. app/snmp_probe.py). cryptography нужна для
+# шифрования в SNMPv3 (privacy); версия не ниже 43 — там появился
+# hazmat.decrepit.ciphers, куда переехал DES.
+pysnmp==7.1.28
+cryptography>=43
+# Настоящие имена SNMP-объектов (IF-MIB::ifSpeed и т. п.) вместо своего
+# короткого справочника — см. app/mib_names.py. Компилированные MIB-модули
+# в формате, который понимает MibBuilder самого pysnmp; отдельный пакет,
+# не входит в pysnmp с версии 7.
+pysnmp-mibs==0.1.6

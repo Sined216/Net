@@ -1,3 +1,29 @@
+/** Русское склонение существительного по числу — «1 шаблон», «2 шаблона»,
+ * «5 шаблонов», а не заглушка вида «шаблон(ов)» (находка 7 проверки
+ * удобства). Порядок форм — как в счёте: один, два, пять. */
+export function pluralRu(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+/** Число вместе со склонённым словом — самый частый случай использования
+ * `pluralRu`, чтобы не собирать шаблонную строку в каждом месте заново. */
+export function withCountRu(n: number, one: string, few: string, many: string): string {
+  return `${n} ${pluralRu(n, one, few, many)}`;
+}
+
+/** Подпись устройства в выпадающих списках: код — то, что напечатано на
+ * наклейке, и всегда есть; модель — чтобы отличить одинаковый на вид узел от
+ * соседнего, когда кодов на схеме много и они друг на друга похожи; имя —
+ * то, как его называют люди, бывает пустым, и потому идёт последним. */
+export function deviceLabel(code: string, name?: string | null, templateName?: string | null): string {
+  const base = templateName ? `${code} — ${templateName}` : code;
+  return name ? `${base} · ${name}` : base;
+}
+
 /** Пустая строка из формы -> null, чтобы не ловить ошибки INET/MACADDR на бэкенде. */
 export function nn(v: string | null | undefined): string | null {
   const t = (v ?? '').trim();
@@ -17,7 +43,9 @@ export function nnFloat(v: string | number | null | undefined): number | null {
 export interface TagLike {
   id: number;
   name: string;
-  parent_id: number | null;
+  /** Может отсутствовать вовсе: в описании API поле необязательное, и
+   * сервер его не присылает у тега верхнего уровня. */
+  parent_id?: number | null;
   color?: string | null;
 }
 

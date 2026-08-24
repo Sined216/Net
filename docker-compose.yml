@@ -1,0 +1,67 @@
+# Весь стек NetDoc одной командой. Значения берутся из .env в этой же папке —
+# создать его можно скриптом: scripts/start.ps1 (Windows) или scripts/start.sh.
+name: netdoc
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netdoc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?не задан POSTGRES_PASSWORD — запустите scripts/start.ps1 или scripts/start.sh}
+      POSTGRES_DB: netdoc
+    volumes:
+      - netdoc_pgdata:/var/lib/postgresql/data
+    # Порт наружу не публикуется: база нужна только бэкенду. Чтобы
+    # подключиться psql'ом, раскомментируйте.
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netdoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_URL: postgresql://netdoc:${POSTGRES_PASSWORD}@db:5432/netdoc
+      SECRET_KEY: ${SECRET_KEY:?не задан SECRET_KEY — запустите scripts/start.ps1 или scripts/start.sh}
+      # Интерфейс ходит в API через nginx на том же origin, поэтому CORS
+      # в обычной работе не задействован. Список нужен, только если API
+      # дёргают со стороны (внешние скрипты, другой фронтенд).
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:${WEB_PORT:-8080}}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?не задан BOOTSTRAP_ADMIN_PASSWORD — запустите scripts/start.ps1 или scripts/start.sh}
+    # Прямой доступ к API и Swagger UI (http://localhost:8000/docs) — для
+    # работы интерфейса не требуется, он ходит через nginx. Порт слушает
+    # только на этой же машине (127.0.0.1): без этого он был бы открыт на
+    # всех интерфейсах вместе со Swagger UI — лишняя мишень для перебора
+    # паролей извне. Нужен доступ с другой машины (например, для CI) —
+    # смените на "0.0.0.0:${API_PORT:-8000}:8000" осознанно.
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      # В образе нет curl, поэтому пробуем питоном — он там точно есть.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  netdoc_pgdata:

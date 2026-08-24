@@ -1,17 +1,22 @@
 import { apiFetch, setToken } from './client';
 import type {
-  Token, UserOut, UserCreate,
+  Token, UserOut, UserCreate, UserUpdate, PasswordChange, PasswordReset,
   TagOut, TagCreate, TagUpdate,
-  DeviceTypeOut, DeviceTypeCreate,
-  VlanOut, VlanCreate,
+  DeviceTypeOut, DeviceTypeCreate, DeviceTypeUpdate,
+  ConnectorTypeOut, ConnectorTypeCreate, ConnectorTypeUpdate,
+  TransceiverModuleOut, TransceiverModuleCreate, TransceiverModuleUpdate,
+  VlanOut, VlanCreate, VlanUpdate,
   DeviceTemplateOut, DeviceTemplateCreate, DeviceTemplateUpdate,
-  InterfaceTemplateOut, InterfaceTemplateCreate,
-  DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate,
+  InterfaceTemplateOut, InterfaceTemplateCreate, InterfaceTemplateUpdate, PortsBulkCreate,
+  DeviceOut, DeviceCreate, DeviceUpdate, DeviceTagsUpdate, DevicePositionUpdate, DevicePositionsUpdate,
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
-  LinkOut, LinkCreate, LinkUpdate,
-  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate,
-  SearchResult,
+  LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
+  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyOut,
+  SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
+  SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
+  DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
+  SnmpProbeRequest, SnmpProbeResult, SnmpWalkRequest, SnmpWalkResult,
 } from './types';
 
 // ---------- Auth ----------
@@ -26,6 +31,12 @@ export async function login(username: string, password: string): Promise<Token> 
 export const me = () => apiFetch<UserOut>('/auth/me');
 export const listUsers = () => apiFetch<UserOut[]>('/auth/users');
 export const createUser = (body: UserCreate) => apiFetch<UserOut>('/auth/users', { method: 'POST', body });
+export const updateUser = (id: number, body: UserUpdate) => apiFetch<UserOut>(`/auth/users/${id}`, { method: 'PATCH', body });
+export const deactivateUser = (id: number) => apiFetch<UserOut>(`/auth/users/${id}`, { method: 'DELETE' });
+export const resetUserPassword = (id: number, body: PasswordReset) =>
+  apiFetch<UserOut>(`/auth/users/${id}/password`, { method: 'POST', body });
+export const changeOwnPassword = (body: PasswordChange) =>
+  apiFetch<UserOut>('/auth/me/password', { method: 'POST', body });
 
 // ---------- Tags ----------
 export const listTags = () => apiFetch<TagOut[]>('/tags');
@@ -39,8 +50,42 @@ export const createDeviceType = (body: DeviceTypeCreate) => apiFetch<DeviceTypeO
 export const deleteDeviceType = (id: number) => apiFetch<void>(`/device-types/${id}`, { method: 'DELETE' });
 
 // ---------- VLANs ----------
+export const listConnectorTypes = () => apiFetch<ConnectorTypeOut[]>('/connector-types');
+export const createConnectorType = (body: ConnectorTypeCreate) => apiFetch<ConnectorTypeOut>('/connector-types', { method: 'POST', body });
+export const updateConnectorType = (id: number, body: ConnectorTypeUpdate) => apiFetch<ConnectorTypeOut>(`/connector-types/${id}`, { method: 'PATCH', body });
+export const deleteConnectorType = (id: number) => apiFetch<void>(`/connector-types/${id}`, { method: 'DELETE' });
+
+export const listModules = () => apiFetch<TransceiverModuleOut[]>('/modules');
+export const createModule = (body: TransceiverModuleCreate) => apiFetch<TransceiverModuleOut>('/modules', { method: 'POST', body });
+export const updateModule = (id: number, body: TransceiverModuleUpdate) => apiFetch<TransceiverModuleOut>(`/modules/${id}`, { method: 'PATCH', body });
+export const deleteModule = (id: number) => apiFetch<void>(`/modules/${id}`, { method: 'DELETE' });
+
+export const updateDeviceType = (id: number, body: DeviceTypeUpdate) => apiFetch<DeviceTypeOut>(`/device-types/${id}`, { method: 'PATCH', body });
+
+export const updateTemplateInterface = (templateId: number, ifaceId: number, body: InterfaceTemplateUpdate) =>
+  apiFetch<InterfaceTemplateOut>(`/device-templates/${templateId}/interfaces/${ifaceId}`, { method: 'PATCH', body });
+export const addTemplateInterfacesBulk = (templateId: number, body: PortsBulkCreate) =>
+  apiFetch<InterfaceTemplateOut[]>(`/device-templates/${templateId}/interfaces/bulk`, { method: 'POST', body });
+export const addInterfacesBulk = (deviceId: number, body: PortsBulkCreate) =>
+  apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces/bulk`, { method: 'POST', body });
+export const copyDeviceTemplate = (id: number) => apiFetch<DeviceTemplateOut>(`/device-templates/${id}/copy`, { method: 'POST' });
+
+// ---------- Импорт ----------
+export const uploadImportFile = (file: File) => {
+  const upload = new FormData();
+  upload.append('file', file);
+  return apiFetch<ImportSummary>('/import/devices', { method: 'POST', upload });
+};
+export const listImportRows = () => apiFetch<ImportRowOut[]>('/import/rows');
+export const moveImportRow = (rowId: number, body: DeviceCreate) =>
+  apiFetch<DeviceOut>(`/import/rows/${rowId}/move`, { method: 'POST', body });
+export const deleteImportRow = (rowId: number) => apiFetch<void>(`/import/rows/${rowId}`, { method: 'DELETE' });
+export const clearImportRows = (status?: 'new' | 'moved') =>
+  apiFetch<void>('/import/rows', { method: 'DELETE', query: { status } });
+
 export const listVlans = () => apiFetch<VlanOut[]>('/vlans');
 export const createVlan = (body: VlanCreate) => apiFetch<VlanOut>('/vlans', { method: 'POST', body });
+export const updateVlan = (id: number, body: VlanUpdate) => apiFetch<VlanOut>(`/vlans/${id}`, { method: 'PATCH', body });
 export const deleteVlan = (id: number) => apiFetch<void>(`/vlans/${id}`, { method: 'DELETE' });
 
 // ---------- Device templates ----------
@@ -54,8 +99,13 @@ export const deleteTemplateInterface = (templateId: number, ifaceId: number) =>
   apiFetch<void>(`/device-templates/${templateId}/interfaces/${ifaceId}`, { method: 'DELETE' });
 
 // ---------- Devices ----------
-export const listDevices = () => apiFetch<DeviceOut[]>('/devices');
+export const listDevices = (query: DeviceQuery = {}) =>
+  apiFetch<DevicePage>('/devices', { query: query as Record<string, string | number | undefined> });
+export const listFreePorts = (query: FreePortQuery = {}) =>
+  apiFetch<FreePortOut[]>('/interfaces/free', { query: query as Record<string, string | number | undefined> });
 export const getDevice = (id: number) => apiFetch<DeviceOut>(`/devices/${id}`);
+export const listInterfaces = (deviceId: number) =>
+  apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces`);
 export const createDevice = (body: DeviceCreate) => apiFetch<DeviceOut>('/devices', { method: 'POST', body });
 export const updateDevice = (id: number, body: DeviceUpdate) => apiFetch<DeviceOut>(`/devices/${id}`, { method: 'PATCH', body });
 export const deleteDevice = (id: number) => apiFetch<void>(`/devices/${id}`, { method: 'DELETE' });
@@ -66,11 +116,21 @@ export const updateInterface = (id: number, body: InterfaceUpdate) => apiFetch<I
 export const deleteInterface = (id: number) => apiFetch<void>(`/interfaces/${id}`, { method: 'DELETE' });
 export const updateDevicePosition = (id: number, body: DevicePositionUpdate) =>
   apiFetch<DeviceOut>(`/devices/${id}/position`, { method: 'PATCH', body });
+/** Расположение сразу нескольких узлов: автоматическая раскладка двигает всю
+ * схему, и отдельный запрос на каждую железку — это сотня запросов на одно
+ * нажатие кнопки. */
+export const updateDevicePositions = (body: DevicePositionsUpdate) =>
+  apiFetch<void>('/devices/positions', { method: 'PATCH', body });
 
 // ---------- Topology groups ----------
 export const listTopologyGroups = () => apiFetch<TopologyGroupOut[]>('/topology-groups');
+/** Схема связей целиком — узлы и линии, собранные сервером. Отбор по тегу
+ * тоже его: спрятать устройство значит спрятать и его кабели. */
+export const getTopology = (tagId: number | null) =>
+  apiFetch<TopologyOut>('/topology', { query: { tag_id: tagId ?? undefined } });
 export const createTopologyGroup = (body: TopologyGroupCreate) => apiFetch<TopologyGroupOut>('/topology-groups', { method: 'POST', body });
 export const updateTopologyGroup = (id: number, body: TopologyGroupUpdate) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}`, { method: 'PATCH', body });
+export const setTopologyGroupBox = (id: number, body: TopologyGroupBox) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}/box`, { method: 'PATCH', body });
 export const deleteTopologyGroup = (id: number) => apiFetch<void>(`/topology-groups/${id}`, { method: 'DELETE' });
 
 // ---------- Link templates ----------
@@ -80,10 +140,45 @@ export const updateLinkTemplate = (id: number, body: LinkTemplateUpdate) => apiF
 export const deleteLinkTemplate = (id: number) => apiFetch<void>(`/link-templates/${id}`, { method: 'DELETE' });
 
 // ---------- Links ----------
-export const listLinks = () => apiFetch<LinkOut[]>('/links');
+export const listLinks = (query: LinkQuery = {}) =>
+  apiFetch<LinkPage>('/links', { query: query as Record<string, string | number | undefined> });
+/** Один кабель — для окна его правки: схема открывает его по одному, а не
+ * ищет в привезённой странице всех связей. */
+export const getLink = (id: number) => apiFetch<LinkOut>(`/links/${id}`);
 export const createLink = (body: LinkCreate) => apiFetch<LinkOut>('/links', { method: 'POST', body });
 export const updateLink = (id: number, body: LinkUpdate) => apiFetch<LinkOut>(`/links/${id}`, { method: 'PATCH', body });
 export const deleteLink = (id: number) => apiFetch<void>(`/links/${id}`, { method: 'DELETE' });
+export const attachLinkEnd = (id: number, interfaceId: number) =>
+  apiFetch<LinkOut>(`/links/${id}/attach`, { method: 'POST', body: { interface_id: interfaceId } });
+/** Переставить конец кабеля в другой порт: связь та же, переезжает конец. */
+export const reconnectLinkEnd = (id: number, fromInterfaceId: number, toInterfaceId: number) =>
+  apiFetch<LinkOut>(`/links/${id}/reconnect`, {
+    method: 'POST',
+    body: { from_interface_id: fromInterfaceId, to_interface_id: toInterfaceId },
+  });
+export const templateImpact = (id: number) => apiFetch<TemplateImpact>(`/device-templates/${id}/impact`);
 
 // ---------- Search ----------
 export const search = (query: string) => apiFetch<SearchResult[]>('/search', { query: { query } });
+
+// ---------- Структура БД ----------
+export const getDatabaseSchema = () => apiFetch<DatabaseSchema>('/schema');
+
+// ---------- Площадки ----------
+export const listSites = () => apiFetch<SiteOut[]>('/sites');
+export const createSite = (body: SiteCreate) => apiFetch<SiteOut>('/sites', { method: 'POST', body });
+export const updateSite = (id: number, body: SiteUpdate) => apiFetch<SiteOut>(`/sites/${id}`, { method: 'PATCH', body });
+export const deleteSite = (id: number) => apiFetch<void>(`/sites/${id}`, { method: 'DELETE' });
+export const listSiteAccess = (id: number) => apiFetch<number[]>(`/sites/${id}/access`);
+export const setSiteAccess = (id: number, userIds: number[]) =>
+  apiFetch<number[]>(`/sites/${id}/access`, { method: 'PUT', body: { user_ids: userIds } });
+
+// ---------- Журнал изменений ----------
+export const listAudit = (query: AuditQuery) =>
+  apiFetch<AuditPage>('/audit', { query: query as Record<string, string | number | undefined> });
+
+// ---------- SNMP (отдельная страница, ничем не связана с остальным) ----------
+export const snmpProbe = (body: SnmpProbeRequest) =>
+  apiFetch<SnmpProbeResult>('/snmp/probe', { method: 'POST', body });
+export const snmpWalk = (body: SnmpWalkRequest) =>
+  apiFetch<SnmpWalkResult>('/snmp/walk', { method: 'POST', body });

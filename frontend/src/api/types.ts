@@ -1,283 +1,185 @@
 /**
- * Типы запросов/ответов API — зеркалят backend/app/schemas.py.
- * Если меняется схема на бэкенде, эти типы надо обновить вручную (типы
- * не генерируются автоматически из OpenAPI — для проекта такого размера
- * это осознанный компромисс, не стоит подключать генератор).
+ * Типы запросов и ответов API.
+ *
+ * Тела запросов и ответов не описываются здесь руками, а выводятся из
+ * `schema.ts` — файла, который генерируется из описания API самого бэкенда
+ * (`npm run codegen`). Раньше это было ручное зеркало `schemas.py`: каждое
+ * новое поле приходилось дописывать в двух местах, а расхождение ничем не
+ * ловилось — только глазами и уже на работающем интерфейсе.
+ *
+ * Руками остаются только те типы, которых в описании нет: параметры строки
+ * запроса (`?limit=50&sort=code`) — они в OpenAPI лежат не схемами, а
+ * списками параметров у каждого маршрута.
  */
 
+import type { components } from './schema';
+
+type S = components['schemas'];
+
 // ---------- Auth ----------
-export interface Token {
-  access_token: string;
-  token_type: string;
-}
+export type Token = S['Token'];
+export type UserCreate = S['UserCreate'];
+export type UserUpdate = S['UserUpdate'];
+export type PasswordChange = S['PasswordChange'];
+export type PasswordReset = S['PasswordReset'];
+export type UserOut = S['UserOut'];
+/** Роль вытаскивается из поля, а не переписывается: перечисление живёт в
+ * `schemas.py`, и здесь оно должно совпадать с ним само. */
+export type UserRole = UserOut['role'];
 
-export interface UserCreate {
-  full_name: string;
-  username: string;
-  password: string;
-  role: string;
-}
+// ---------- Журнал изменений ----------
+export type AuditChange = S['AuditChange'];
+export type AuditEntryOut = S['AuditEntryOut'];
+export type AuditPage = S['AuditPage'];
 
-export interface UserOut {
-  id: number;
-  full_name: string;
-  username: string;
-  role: 'admin' | 'editor' | 'viewer';
-  created_at: string;
-}
+// ---------- Площадки ----------
+export type SiteOut = S['SiteOut'];
+export type SiteCreate = S['SiteCreate'];
+export type SiteUpdate = S['SiteUpdate'];
 
-// ---------- Tag ----------
-export interface TagCreate {
-  name: string;
-  parent_id: number | null;
-  color: string | null;
-}
-export type TagUpdate = Partial<TagCreate>;
+// ---------- Теги ----------
+export type TagCreate = S['TagCreate'];
+export type TagUpdate = S['TagUpdate'];
+export type TagOut = S['TagOut'];
 
-export interface TagOut {
-  id: number;
-  name: string;
-  parent_id: number | null;
-  color: string | null;
-}
+// ---------- Группы на топологии ----------
+export type TopologyGroupCreate = S['TopologyGroupCreate'];
+export type TopologyGroupUpdate = S['TopologyGroupUpdate'];
+export type TopologyGroupOut = S['TopologyGroupOut'];
+export type TopologyGroupBox = S['TopologyGroupBox'];
+/** Схема связей, собранная сервером. */
+export type TopologyOut = S['TopologyOut'];
+export type TopologyNode = S['TopologyNode'];
+export type TopologyEdge = S['TopologyEdge'];
 
-// ---------- Topology group (отдельный от тегов параметр: одна группа на
-// устройство, без вложенности — только для визуальной кластеризации) ----------
-export interface TopologyGroupCreate {
-  name: string;
-  color?: string | null;
-}
-export type TopologyGroupUpdate = Partial<TopologyGroupCreate>;
+// ---------- Импорт устройств из файла ----------
+export type ImportRowOut = S['ImportRowOut'];
+export type ImportSummary = S['ImportSummary'];
 
-export interface TopologyGroupOut {
-  id: number;
-  name: string;
-  color: string | null;
-}
+// ---------- Разъёмы и модули ----------
+export type ConnectorTypeCreate = S['ConnectorTypeCreate'];
+export type ConnectorTypeUpdate = S['ConnectorTypeUpdate'];
+export type ConnectorTypeOut = S['ConnectorTypeOut'];
+export type ConnectorMedia = ConnectorTypeOut['media'];
+export type TransceiverModuleCreate = S['TransceiverModuleCreate'];
+export type TransceiverModuleUpdate = S['TransceiverModuleUpdate'];
+export type TransceiverModuleOut = S['TransceiverModuleOut'];
 
-// ---------- Device type ----------
-export interface DeviceTypeCreate {
-  name: string;
-  code_prefix: string;
-}
-
-export interface DeviceTypeOut {
-  id: number;
-  name: string;
-  code_prefix: string;
-}
+// ---------- Типы устройств ----------
+export type DeviceTypeCreate = S['DeviceTypeCreate'];
+export type DeviceTypeUpdate = S['DeviceTypeUpdate'];
+export type DeviceTypeOut = S['DeviceTypeOut'];
 
 // ---------- VLAN ----------
-export interface VlanCreate {
-  vlan_number: number;
-  name?: string | null;
-  subnet?: string | null;
-  gateway?: string | null;
-  dhcp_range?: string | null;
-  notes?: string | null;
+export type VlanCreate = S['VlanCreate'];
+export type VlanUpdate = S['VlanUpdate'];
+export type VlanOut = S['VlanOut'];
+
+// ---------- Шаблоны устройств и их порты ----------
+export type InterfaceTemplateCreate = S['InterfaceTemplateCreate'];
+export type InterfaceTemplateUpdate = S['InterfaceTemplateUpdate'];
+export type InterfaceTemplateOut = S['InterfaceTemplateOut'];
+export type PortsBulkCreate = S['PortsBulkCreate'];
+export type DeviceTemplateCreate = S['DeviceTemplateCreate'];
+export type DeviceTemplateUpdate = S['DeviceTemplateUpdate'];
+export type DeviceTemplateOut = S['DeviceTemplateOut'];
+export type TemplateImpact = S['TemplateImpact'];
+
+// ---------- Порты устройства ----------
+export type InterfaceCreate = S['InterfaceCreate'];
+export type InterfaceUpdate = S['InterfaceUpdate'];
+export type InterfaceOut = S['InterfaceOut'];
+export type ConnectedTo = S['ConnectedTo'];
+/** Режим порта — настройка конкретной железки, в модели его нет. */
+export type PortMode = NonNullable<InterfaceUpdate['mode']>;
+
+// ---------- Устройства ----------
+export type DeviceCreate = S['DeviceCreate'];
+export type DeviceUpdate = S['DeviceUpdate'];
+export type DeviceTagsUpdate = S['DeviceTagsUpdate'];
+export type DevicePositionUpdate = S['DevicePositionUpdate'];
+export type DevicePositionsUpdate = S['DevicePositionsUpdate'];
+export type DeviceOut = S['DeviceOut'];
+export type DeviceListItem = S['DeviceListItem'];
+export type DevicePage = S['DevicePage'];
+export type DeviceRole = NonNullable<DeviceOut['role']>;
+
+// ---------- Связи ----------
+export type LinkTemplateCreate = S['LinkTemplateCreate'];
+export type LinkTemplateUpdate = S['LinkTemplateUpdate'];
+export type LinkTemplateOut = S['LinkTemplateOut'];
+export type MediaType = LinkTemplateOut['media_type'];
+export type LineStyle = LinkTemplateOut['line_style'];
+export type LinkCreate = S['LinkCreate'];
+export type LinkUpdate = S['LinkUpdate'];
+export type LinkOut = S['LinkOut'];
+export type LinkEndOut = S['LinkEndOut'];
+export type LinkPage = S['LinkPage'];
+
+// ---------- Поиск и структура базы ----------
+export type SearchResult = S['SearchResult'];
+export type SchemaColumn = S['SchemaColumn'];
+export type SchemaTable = S['SchemaTable'];
+export type DatabaseSchema = S['DatabaseSchema'];
+export type FreePortOut = S['FreePortOut'];
+
+// ---------- Параметры строки запроса ----------
+// В OpenAPI они описаны не схемами, а списком параметров у каждого
+// маршрута, поэтому остаются здесь руками. Полей немного, и меняются они
+// реже, чем тела ответов.
+export interface AuditQuery {
+  entity_type?: string;
+  entity_id?: number;
+  user_id?: number;
+  since?: string;
+  limit?: number;
+  offset?: number;
 }
 
-export interface VlanOut extends VlanCreate {
-  id: number;
-}
-
-// ---------- Interface template (порт шаблона) ----------
-export type PortType = 'access' | 'trunk' | 'uplink';
-
-export interface InterfaceTemplateCreate {
-  label: string;
-  port_number?: number | null;
-  port_type?: PortType | null;
-}
-
-export interface InterfaceTemplateOut extends InterfaceTemplateCreate {
-  id: number;
-}
-
-// ---------- Device template ----------
-export interface DeviceTemplateCreate {
-  name: string;
-  device_type_id: number;
-  manufacturer?: string | null;
-  notes?: string | null;
-  interfaces: InterfaceTemplateCreate[];
-}
-
-export interface DeviceTemplateUpdate {
+export interface DeviceQuery {
+  q?: string;
+  /** Отбор по отдельной колонке таблицы — по куску текста, без учёта регистра. */
+  code?: string;
   name?: string;
+  management_ip?: string;
+  mac?: string;
+  tag_id?: number;
   device_type_id?: number;
-  manufacturer?: string | null;
-  notes?: string | null;
+  template_id?: number;
+  topology_group_id?: number;
+  sort?: string;
+  desc?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
-export interface DeviceTemplateOut {
-  id: number;
-  name: string;
-  device_type_id: number;
-  manufacturer: string | null;
-  notes: string | null;
-  interfaces: InterfaceTemplateOut[];
+export interface LinkQuery {
+  device_id?: number;
+  dangling?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
-// ---------- Interface ----------
-export interface InterfaceUpdate {
-  label?: string;
-  port_number?: number | null;
-  port_type?: PortType | null;
-  vlan_id?: number | null;
-  trunk_vlan_ids?: number[] | null;
-  ip?: string | null;
-  mac?: string | null;
-  notes?: string | null;
+export interface FreePortQuery {
+  q?: string;
+  exclude_device_id?: number;
+  device_id?: number;
+  limit?: number;
 }
 
-export interface InterfaceCreate {
-  label: string;
-  port_number?: number | null;
-  port_type?: PortType | null;
-  vlan_id?: number | null;
-  trunk_vlan_ids?: number[] | null;
-  ip?: string | null;
-  mac?: string | null;
-  notes?: string | null;
-}
-
-export interface ConnectedTo {
-  link_id: number;
-  device_id: number;
-  device_code: string;
-  device_name: string | null;
-  interface_id: number;
-  interface_label: string;
-}
-
-export interface InterfaceOut {
-  id: number;
-  device_id: number;
-  label: string;
-  port_number: number | null;
-  port_type: PortType | null;
-  vlan_id: number | null;
-  trunk_vlan_ids: number[] | null;
-  ip: string | null;
-  mac: string | null;
-  notes: string | null;
-  connected_to: ConnectedTo | null;
-}
-
-// ---------- Device ----------
-export type DeviceRole = 'core' | 'distribution' | 'access';
-
-export interface DeviceCreate {
-  template_id: number;
-  name?: string | null;
-  management_ip?: string | null;
-  location?: string | null;
-  role?: DeviceRole | null;
-  install_date?: string | null;
-  notes?: string | null;
-  topology_group_id?: number | null;
-  tag_ids: number[];
-}
-
-export interface DeviceUpdate {
-  name?: string | null;
-  management_ip?: string | null;
-  location?: string | null;
-  role?: DeviceRole | null;
-  install_date?: string | null;
-  notes?: string | null;
-  topology_group_id?: number | null;
-}
-
-export interface DeviceTagsUpdate {
-  tag_ids: number[];
-}
-
-export interface DevicePositionUpdate {
-  x: number;
-  y: number;
-}
-
-export interface DeviceOut {
-  id: number;
-  template_id: number;
-  code: string;
-  name: string | null;
-  management_ip: string | null;
-  location: string | null;
-  role: DeviceRole | null;
-  install_date: string | null;
-  notes: string | null;
-  topology_group_id: number | null;
-  topology_x: number | null;
-  topology_y: number | null;
-  created_at: string;
-  updated_at: string;
-  interfaces: InterfaceOut[];
-  tags: TagOut[];
-}
-
-// ---------- Link template ----------
-export type MediaType = 'copper' | 'fiber' | 'wireless' | 'dac' | 'other';
-export type LineStyle = 'solid' | 'dashed' | 'dotted';
-
-export interface LinkTemplateCreate {
-  name: string;
-  media_type: MediaType;
-  cable_category?: string | null;
-  color: string;
-  line_style: LineStyle;
-}
-export type LinkTemplateUpdate = Partial<LinkTemplateCreate>;
-
-export interface LinkTemplateOut extends LinkTemplateCreate {
-  id: number;
-}
-
-// ---------- Link ----------
-export interface LinkCreate {
-  interface_a_id: number;
-  interface_b_id: number;
-  template_id?: number | null;
-  connector_type?: string | null;
-  length_m?: number | null;
-  speed_mbps?: number | null;
-  source?: string;
-  confirmed?: boolean;
-  notes?: string | null;
-}
-
-export interface LinkUpdate {
-  template_id?: number | null;
-  connector_type?: string | null;
-  length_m?: number | null;
-  speed_mbps?: number | null;
-  confirmed?: boolean;
-  notes?: string | null;
-}
-
-export interface LinkOut {
-  id: number;
-  interface_a_id: number;
-  interface_b_id: number;
-  template_id: number | null;
-  connector_type: string | null;
-  length_m: number | null;
-  speed_mbps: number | null;
-  source: string;
-  confirmed: boolean;
-  notes: string | null;
-  updated_at: string;
-}
-
-// ---------- Search ----------
-export interface SearchResult {
-  device_id: number;
-  device_code: string;
-  device_name: string | null;
-  interface_id: number;
-  interface_label: string;
-  ip: string | null;
-  mac: string | null;
-}
+// ---------- SNMP (отдельная страница, ничем не связана с остальным) ----------
+export type SnmpProbeRequest = S['SnmpProbeRequest'];
+export type SnmpProbeResult = S['SnmpProbeResult'];
+export type SnmpSystemInfo = S['SnmpSystemInfo'];
+export type SnmpInterfaceInfo = S['SnmpInterfaceInfo'];
+export type SnmpIpAddress = S['SnmpIpAddress'];
+export type SnmpArpEntry = S['SnmpArpEntry'];
+export type SnmpMacEntry = S['SnmpMacEntry'];
+export type SnmpTraceStep = S['SnmpTraceStep'];
+export type SnmpVersion = SnmpProbeRequest['version'];
+export type SnmpSecurityLevel = NonNullable<SnmpProbeRequest['security_level']>;
+export type SnmpAuthProtocol = NonNullable<SnmpProbeRequest['auth_protocol']>;
+export type SnmpPrivProtocol = NonNullable<SnmpProbeRequest['priv_protocol']>;
+export type SnmpWalkRequest = S['SnmpWalkRequest'];
+export type SnmpWalkResult = S['SnmpWalkResult'];
+export type SnmpWalkTreeNode = S['SnmpWalkTreeNode'];

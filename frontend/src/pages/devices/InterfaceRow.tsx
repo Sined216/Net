@@ -1,52 +1,107 @@
 import { useState } from 'react';
-import { ActionIcon, Group, Select, Table, Text, TextInput } from '@mantine/core';
-import { IconCheck, IconTrash } from '@tabler/icons-react';
-import { useCreateLink, useDeleteInterface, useDeleteLink, useUpdateInterface } from '../../api/hooks';
+import { Badge, Group, Select, Table, Text, TextInput } from '@mantine/core';
+import { IconCheck, IconPlugConnected } from '@tabler/icons-react';
+import { DeleteAction, RowAction } from '../../components/RowAction';
+import {
+  useAttachLinkEnd, useCreateLink, useDeleteInterface, useDeleteLink, useFreePorts, useModules,
+  useUpdateInterface,
+} from '../../api/hooks';
 import { nn, nnInt } from '../../lib/utils';
 import { notifyError, notifySuccess } from '../../lib/notify';
-import type { DeviceOut, InterfaceOut, PortType, VlanOut } from '../../api/types';
+import { confirmAction } from '../../lib/confirm';
+import { portModeLabel } from '../../lib/enumLabels';
+import type { FreePortOut, InterfaceOut, PortMode, VlanOut } from '../../api/types';
+import { useCan } from '../../auth/permissions';
 
-const PORT_TYPES: PortType[] = ['access', 'trunk', 'uplink'];
-
-export interface FreeEntry {
-  device: DeviceOut;
-  iface: InterfaceOut;
-}
+// Режим — настройка конкретной железки; в модели техники его нет.
+const PORT_MODES: { value: PortMode; label: string }[] = (['access', 'trunk', 'uplink'] as const)
+  .map((value) => ({ value, label: portModeLabel(value) }));
 
 export function InterfaceRow({
-  iface, vlans, freeEntries,
+  iface, vlans, portsEditable = false,
 }: {
   iface: InterfaceOut;
   vlans: VlanOut[];
-  freeEntries: FreeEntry[];
+  /** Разрешает удалять порт — только у моделей со съёмными картами. */
+  portsEditable?: boolean;
 }) {
-  const [label, setLabel] = useState(iface.label);
-  const [portNumber, setPortNumber] = useState<string>(iface.port_number != null ? String(iface.port_number) : '');
-  const [portType, setPortType] = useState<string | null>(iface.port_type);
+  // Смотрящему поля показываются, но не правятся: пустая строка вместо
+  // данных сбивала бы с толку, а кнопка, за которой стоит 403, — обманывает.
+  const canEdit = useCan('edit');
+  // Версия захватывается вместе со снимком полей, а не читается из живого
+  // пропа: иначе после чужой правки другого порта на этом же устройстве
+  // рефетч подвозит новый iface.version, а поля формы — те, что человек
+  // ввёл раньше, — расходятся. Сохранение тогда уходит со свежей версией и
+  // устаревшими значениями, сервер сверяет версии, они совпадают, и чужая
+  // правка молча затирается — ровно то, ради чего блокировку и заводили.
+  // Захват версии вместе с полями чинит это: сохранение с устаревшим
+  // снимком уйдёт с устаревшей же версией, и сервер честно отобьёт 409.
+  const [version, setVersion] = useState(iface.version);
+  const [mode, setMode] = useState<string | null>(iface.mode ?? null);
+  const [moduleId, setModuleId] = useState<string | null>(
+    iface.module ? String(iface.module.id) : null,
+  );
   const [vlanId, setVlanId] = useState<string | null>(iface.vlan_id != null ? String(iface.vlan_id) : null);
   const [ip, setIp] = useState(iface.ip ?? '');
   const [mac, setMac] = useState(iface.mac ?? '');
   const [notes, setNotes] = useState(iface.notes ?? '');
   const [connectTarget, setConnectTarget] = useState<string | null>(null);
 
+  const { data: modules = [] } = useModules();
+  // Свободные порты ищет база. Раньше этот список собирался в браузере из
+  // всех устройств со всеми портами: чтобы предложить десяток вариантов,
+  // приходилось привезти двадцать четыре тысячи.
+  const { data: freePorts = [] } = useFreePorts(
+    { exclude_device_id: iface.device_id, limit: 100 },
+    canEdit,
+  );
   const updateInterface = useUpdateInterface();
   const deleteInterface = useDeleteInterface();
   const createLink = useCreateLink();
   const deleteLink = useDeleteLink();
+  const attachEnd = useAttachLinkEnd();
 
   function save() {
     updateInterface.mutate(
       {
         id: iface.id,
-        body: { label: label.trim(), port_number: nnInt(portNumber), port_type: (portType as PortType) || null, vlan_id: nnInt(vlanId), ip: nn(ip), mac: nn(mac), notes: nn(notes) },
+        // Ни номера, ни названия: они описывают модель техники и правятся в
+        // шаблоне. Здесь — только то, что у каждого экземпляра своё.
+        body: {
+          // Версия — из снимка, а не из живого пропа: см. комментарий у
+          // объявления version выше.
+          version,
+          mode: (mode as PortMode) || null,
+          // Модуль вставляется только в клетку; у обычного разъёма поля нет,
+          // и его значение не отправляется.
+          ...(isCage ? { module_id: nnInt(moduleId) } : {}),
+          vlan_id: nnInt(vlanId), ip: nn(ip), mac: nn(mac), notes: nn(notes),
+        },
       },
-      { onSuccess: () => notifySuccess('Порт сохранён'), onError: notifyError },
+      {
+        // Сервер вернул новую версию — обновляем снимок, иначе следующее же
+        // сохранение этой строки отобьётся собственной устаревшей версией.
+        onSuccess: (saved) => { setVersion(saved.version); notifySuccess('Порт сохранён'); },
+        onError: notifyError,
+      },
     );
   }
 
-  function remove() {
-    if (!confirm('Удалить порт? Связанная связь (если есть) тоже будет удалена.')) return;
+  async function remove() {
+    const warning = iface.link_id
+      ? 'Убрать порт? Кабель останется задокументированным, но его конец повиснет — подключить заново можно к другому порту.'
+      : 'Убрать порт?';
+    if (!(await confirmAction(warning))) return;
     deleteInterface.mutate(iface.id, { onError: notifyError });
+  }
+
+  /** Второй конец кабеля повис (там сняли порт) — втыкаем его в выбранный. */
+  function attach() {
+    if (!connectTarget || !iface.link_id) return;
+    attachEnd.mutate(
+      { id: iface.link_id, interfaceId: parseInt(connectTarget, 10) },
+      { onSuccess: () => notifySuccess('Кабель подключён'), onError: notifyError },
+    );
   }
 
   function connect() {
@@ -57,66 +112,131 @@ export function InterfaceRow({
     );
   }
 
-  function disconnect() {
-    if (!iface.connected_to) return;
-    if (!confirm('Удалить связь?')) return;
-    deleteLink.mutate(iface.connected_to.link_id, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
+  async function disconnect() {
+    const linkId = iface.connected_to?.link_id ?? iface.link_id;
+    if (!linkId) return;
+    if (!(await confirmAction('Удалить связь?'))) return;
+    deleteLink.mutate(linkId, { onSuccess: () => notifySuccess('Связь удалена'), onError: notifyError });
   }
 
-  const connectData = groupFreeEntries(freeEntries, iface.id);
+  const connectData = groupFreePorts(freePorts);
+  const isCage = !!iface.connector?.is_cage;
+  // Клетка без модуля: гнездо есть, а воткнуть в него физически нечего.
+  const emptyCage = iface.empty_cage;
+  // Модули для этой клетки: остальные сюда не вставляются.
+  const moduleOptions = modules
+    .filter((m) => m.cage_connector_id == null || m.cage_connector_id === iface.connector?.id)
+    .map((m) => ({ value: String(m.id), label: m.name }));
+  // Кабель воткнут, но на том конце порта уже нет. Порт занят, а подключение
+  // недоделано — тем же оранжевым, что и заглушка на схеме, чтобы такие
+  // порты было видно, не вчитываясь в столбец подключения.
+  const dangling = !!iface.link_id && !iface.connected_to;
 
   return (
     <Table.Tr>
-      <Table.Td><TextInput size="xs" value={label} onChange={(e) => setLabel(e.currentTarget.value)} w={80} /></Table.Td>
-      <Table.Td><TextInput size="xs" value={portNumber} onChange={(e) => setPortNumber(e.currentTarget.value)} w={55} /></Table.Td>
+      {/* Номер и название приходят из шаблона модели и здесь только
+          показываются: правка на устройстве разводила бы одинаковые железки
+          по названиям портов. */}
+      <Table.Td><Text size="xs" fw={600} c={dangling ? 'orange' : undefined}>{iface.port_number}</Text></Table.Td>
+      <Table.Td><Text size="xs" c={dangling ? 'orange' : undefined}>{iface.label}</Text></Table.Td>
       <Table.Td>
-        <Select size="xs" data={PORT_TYPES} value={portType} onChange={setPortType} clearable w={100} />
+        {/* Разъём приходит из модели и правится там же. У клетки показываем,
+            что в неё вставлено: пустая клетка — это не свободный порт. */}
+        {isCage ? (
+          <Group gap={4} wrap="nowrap">
+            <Select
+              size="xs" w={140} clearable searchable allowDeselect={false} disabled={!canEdit}
+              placeholder={`${iface.connector?.name ?? 'клетка'} — пусто`}
+              data={moduleOptions} value={moduleId} onChange={setModuleId}
+            />
+            {emptyCage && <Badge size="xs" variant="light" color="orange">нет модуля</Badge>}
+          </Group>
+        ) : (
+          <Text size="xs" c="dimmed">{iface.connector?.name ?? '—'}</Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        <Select size="xs" data={PORT_MODES} value={mode} onChange={setMode} clearable w={100} disabled={!canEdit} />
       </Table.Td>
       <Table.Td>
         <Select
-          size="xs" w={130} clearable
+          size="xs" w={130} clearable disabled={!canEdit}
           data={vlans.map((v) => ({ value: String(v.id), label: `${v.vlan_number} ${v.name ?? ''}`.trim() }))}
           value={vlanId} onChange={setVlanId}
         />
       </Table.Td>
-      <Table.Td><TextInput size="xs" placeholder="IP" value={ip} onChange={(e) => setIp(e.currentTarget.value)} w={100} /></Table.Td>
-      <Table.Td><TextInput size="xs" placeholder="MAC" value={mac} onChange={(e) => setMac(e.currentTarget.value)} w={110} /></Table.Td>
-      <Table.Td><TextInput size="xs" placeholder="заметка" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} w={90} /></Table.Td>
+      <Table.Td><TextInput size="xs" placeholder="IP" value={ip} onChange={(e) => setIp(e.currentTarget.value)} w={100} disabled={!canEdit} /></Table.Td>
+      <Table.Td><TextInput size="xs" placeholder="MAC" value={mac} onChange={(e) => setMac(e.currentTarget.value)} w={110} disabled={!canEdit} /></Table.Td>
+      <Table.Td><TextInput size="xs" placeholder="заметка" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} w={90} disabled={!canEdit} /></Table.Td>
       <Table.Td>
         {iface.connected_to ? (
           <Group gap={4} wrap="nowrap">
             <Text size="xs" c="teal">→ {iface.connected_to.device_code} · {iface.connected_to.interface_label}</Text>
-            <ActionIcon size="sm" variant="subtle" color="red" onClick={disconnect}><IconTrash size={14} /></ActionIcon>
+            {canEdit && (
+              <DeleteAction label={`Убрать связь у порта №${iface.port_number}`} size={14} onClick={disconnect} />
+            )}
+          </Group>
+        ) : !canEdit ? (
+          <Text size="xs" c={iface.link_id ? 'orange' : 'dimmed'}>
+            {iface.link_id ? 'повис' : '— свободен —'}
+          </Text>
+        ) : iface.link_id ? (
+          // Кабель воткнут, но на том конце порт удалили — предлагаем
+          // подключить его заново, а не заводить связь с нуля: длина,
+          // разъём и заметки останутся при ней.
+          <Group gap={4} wrap="nowrap">
+            <Select
+              size="xs" w={150} placeholder="повис — куда воткнуть?" data={connectData}
+              value={connectTarget} onChange={setConnectTarget} searchable
+            />
+            <RowAction
+              label={`Подключить второй конец кабеля к порту №${iface.port_number}`}
+              icon={<IconPlugConnected size={14} />}
+              color="orange" onClick={attach}
+            />
+            <DeleteAction label={`Убрать кабель у порта №${iface.port_number}`} size={14} onClick={disconnect} />
           </Group>
         ) : (
           <Group gap={4} wrap="nowrap">
             <Select size="xs" w={150} placeholder="— свободен —" data={connectData} value={connectTarget} onChange={setConnectTarget} searchable />
-            <ActionIcon size="sm" variant="subtle" onClick={connect}>
-              <IconCheck size={14} />
-            </ActionIcon>
+            <RowAction
+              label={`Подключить порт №${iface.port_number}`}
+              icon={<IconCheck size={14} />}
+              onClick={connect}
+            />
           </Group>
         )}
       </Table.Td>
       <Table.Td>
         <Group gap={4} wrap="nowrap">
-          <ActionIcon size="sm" variant="subtle" onClick={save}><IconCheck size={14} /></ActionIcon>
-          <ActionIcon size="sm" variant="subtle" color="red" onClick={remove}><IconTrash size={14} /></ActionIcon>
+          {canEdit && (
+            <RowAction label={`Сохранить порт №${iface.port_number}`} icon={<IconCheck size={14} />} onClick={save} />
+          )}
+          {portsEditable && canEdit && (
+            <DeleteAction label={`Убрать порт №${iface.port_number}`} size={14} onClick={remove} />
+          )}
         </Group>
       </Table.Td>
     </Table.Tr>
   );
 }
 
-/** Группирует свободные порты по устройству (устройство -> порт), уже
- * подключённые порты сюда не попадают вовсе. */
-function groupFreeEntries(entries: FreeEntry[], excludeIfaceId: number) {
-  const byDevice = new Map<number, { device: DeviceOut; items: { value: string; label: string }[] }>();
-  for (const e of entries) {
-    if (e.iface.id === excludeIfaceId) continue;
-    if (!byDevice.has(e.device.id)) byDevice.set(e.device.id, { device: e.device, items: [] });
-    byDevice.get(e.device.id)!.items.push({ value: String(e.iface.id), label: e.iface.label });
+/** Группирует свободные порты по устройству — так список читается, когда в
+ * нём порты десятка железок. Разъём в подписи не показывается: сервер отдаёт
+ * только то, что нужно для выбора, а разъём виден в самой строке порта. */
+function groupFreePorts(ports: FreePortOut[]) {
+  const byDevice = new Map<number, { title: string; items: { value: string; label: string }[] }>();
+  for (const port of ports) {
+    if (!byDevice.has(port.device_id)) {
+      byDevice.set(port.device_id, {
+        title: port.device_name ? `${port.device_code} — ${port.device_name}` : port.device_code,
+        items: [],
+      });
+    }
+    byDevice.get(port.device_id)!.items.push({
+      value: String(port.interface_id),
+      label: `№${port.port_number} · ${port.label}`,
+    });
   }
-  return [...byDevice.values()]
-    .sort((a, b) => a.device.code.localeCompare(b.device.code))
-    .map(({ device, items }) => ({ group: device.name ? `${device.code} — ${device.name}` : device.code, items }));
+  return [...byDevice.values()].map(({ title, items }) => ({ group: title, items }));
 }

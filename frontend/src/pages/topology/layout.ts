@@ -1,16 +1,22 @@
+import { layoutLayered, type ElkAlgorithm } from '../../lib/elk';
+import type { Box, Point } from './joint/buildGraph';
+import { GROUP_MIN } from './joint/shapes';
+
 /** Простая force-directed раскладка: отталкивание между всеми узлами,
- * пружина вдоль рёбер (и вдоль "пар одной группы" — см. ниже), лёгкое
- * центрирование. Тот же алгоритм, что и в прежней ванильной версии — даёт
- * органичную (не круговую) раскладку по связям.
+ * пружина вдоль рёбер, лёгкое центрирование. Тот же алгоритм, что и в
+ * прежней ванильной версии — даёт органичную (не круговую) картинку по
+ * связям.
  *
  * Узлы с сохранённой позицией (fixed: true) не двигаются симуляцией — они
  * приехали из БД (устройство перетащили руками в прошлый раз) — но
  * по-прежнему отталкивают остальные узлы, чтобы новые не легли поверх них.
- * Группировка не считается отдельным проходом в своих координатах — это
- * усложнило бы персистентность позиций (сохранённая позиция всегда
- * абсолютная, вне зависимости от группы). Вместо этого устройства одной
- * группы просто мягко притягиваются друг к другу в общей симуляции, а
- * рамка группы рисуется постфактум вокруг уже сложившегося кластера. */
+ * Ради этого свойства симуляция и осталась в системе: разложить пару новых
+ * железок, не тронув всё остальное, слоями нельзя.
+ *
+ * Группировка отдельным проходом в своих координатах не считается — это
+ * усложнило бы хранение позиций (сохранённая позиция всегда абсолютная, вне
+ * зависимости от группы). Рамка группы рисуется постфактум вокруг уже
+ * сложившегося кластера. */
 export interface LayoutNode {
   id: string;
   x: number;
@@ -73,3 +79,85 @@ export function computeForceLayout(nodes: LayoutNode[], springs: Spring[], width
     }
   }
 }
+
+/** Карточка глазами раскладки: свой размер, своя группа. */
+export interface AutoCard {
+  id: number;
+  width: number;
+  height: number;
+  group: number | null;
+}
+
+/** Отступ от карточек до рамки группы. Сверху больше: там подпись. */
+const FRAME_PADDING = { top: 46, side: 26 };
+
+/** Автоматическая раскладка всей схемы по связям.
+ *
+ * Кабель — это и есть та связь, по которой сеть читают: ядро, за ним
+ * цеховые коммутаторы, за ними железки. Раньше здесь работала только
+ * пружинная симуляция, и картинка выходила круглой — ядро в середине,
+ * остальное венком вокруг, уровней не видно. Ряды сверху вниз — то, как эту
+ * же схему рисуют от руки.
+ *
+ * Группы участвуют раскладкой, а не заливкой поверх: цех — настоящая рамка,
+ * его содержимое раскладывается внутри неё, подцех внутри цеха, а размер
+ * рамок считается по тому, что в них поместилось. Поэтому наружу отдаются и
+ * рамки тоже: оставить их на прежних местах значит увезти карточки из своих
+ * же рамок.
+ */
+export async function computeAutoLayout(
+  cards: AutoCard[],
+  groups: { id: number; parent_id?: number | null }[],
+  links: { a: number; b: number }[],
+  /** Расстояние между рядами и между узлами в ряду — настройка вида, чтобы
+   * можно было раздвинуть тесную схему без правки кода. */
+  gaps: { row: number; node: number },
+  /** Каким алгоритмом ELK раскладывать — тоже настройка вида. */
+  algorithm: ElkAlgorithm,
+): Promise<{ positions: Map<number, Point>; boxes: Map<number, Box> }> {
+  const busy = new Set<number>();
+  for (const card of cards) {
+    // Пустая рамка раскладке не нужна: ELK считает размер по содержимому, а
+    // у неё его нет. Она остаётся там, где стояла.
+    for (let at = card.group; at != null; at = groups.find((g) => g.id === at)?.parent_id ?? null) {
+      busy.add(at);
+    }
+  }
+  const laid = await layoutLayered(
+    [
+      ...groups
+        .filter((group) => busy.has(group.id))
+        .map((group) => ({
+          id: `g${group.id}`,
+          parent: group.parent_id != null && busy.has(group.parent_id) ? `g${group.parent_id}` : null,
+        })),
+      ...cards.map((card) => ({
+        id: `d${card.id}`,
+        width: card.width,
+        height: card.height,
+        parent: card.group != null ? `g${card.group}` : null,
+      })),
+    ],
+    links.map((link) => ({ from: `d${link.a}`, to: `d${link.b}` })),
+    { algorithm, direction: 'RIGHT', layerGap: gaps.row, nodeGap: gaps.node, padding: FRAME_PADDING },
+  );
+
+  const positions = new Map<number, Point>();
+  for (const card of cards) {
+    const at = laid.get(`d${card.id}`);
+    // Схема хранит середину карточки, ELK отдаёт левый верхний угол.
+    if (at) positions.set(card.id, { x: at.x + at.width / 2, y: at.y + at.height / 2 });
+  }
+  const boxes = new Map<number, Box>();
+  for (const group of groups) {
+    const at = laid.get(`g${group.id}`);
+    if (!at) continue;
+    boxes.set(group.id, {
+      x: at.x, y: at.y,
+      width: Math.max(at.width, GROUP_MIN.width),
+      height: Math.max(at.height, GROUP_MIN.height),
+    });
+  }
+  return { positions, boxes };
+}
+
