@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app import auth, importer, models, provisioning, schemas, serialize, sites
+from app.routers import links
 from app.audit import log_change
 from app.database import get_db
 
@@ -189,8 +190,10 @@ def move_row(row_id: int, payload: schemas.DeviceCreate, db: Session = Depends(g
     row.device_id = device.id
     # Идентификатор устройства обязателен: история самой железки отбирается
     # по нему, и без него её появление в спецификации нигде не показывалось.
+    origin = ({"из импорта": row.source_file, "строка": row.row_number}
+              if row.source == "file" else {"из обхода": row.client_uuid or "—"})
     log_change(db, user.id, "create", "device", device.id, old=None,
-               new={"из импорта": row.source_file, "строка": row.row_number, "site_id": site_id})
+               new={**origin, "site_id": site_id})
     db.commit()
     db.refresh(device)
     return serialize.serialize_device(device, db=db)
@@ -220,6 +223,155 @@ def clear_rows(status: str | None = None, db: Session = Depends(get_db),
         q = q.filter(models.ImportRow.status == status)
     q.delete(synchronize_session=False)
     db.commit()
+
+
+@router.get("/link-rows", response_model=list[schemas.ImportLinkRowOut])
+def list_link_rows(status: str | None = None, db: Session = Depends(get_db),
+                   site_id: int = Depends(sites.current_site_id)):
+    """Связи из обхода вместе с попыткой опознать их концы.
+
+    Строка приезжает текстом («свитч у окна», «порт 3») — здесь по этому
+    тексту ищутся уже заведённые устройство и гнездо. Найденное только
+    подставляется: решает человек при переносе.
+    """
+    q = db.query(models.ImportLinkRow).filter(models.ImportLinkRow.site_id == site_id)
+    if status:
+        q = q.filter(models.ImportLinkRow.status == status)
+    rows = q.order_by(models.ImportLinkRow.id).all()
+    if not rows:
+        return []
+
+    # Справочник устройств площадки — один раз на весь список, как и в
+    # list_rows выше: сотня строк обхода не должна давать сотню запросов.
+    devices = db.query(models.Device.id, models.Device.code, models.Device.name).filter(
+        models.Device.site_id == site_id,
+    ).all()
+    by_code = {_key(code): (device_id, code) for device_id, code, _ in devices}
+    by_name = {}
+    for device_id, code, name in devices:
+        if name:
+            by_name.setdefault(_key(name), (device_id, code))
+
+    interfaces = db.query(
+        models.Interface.id, models.Interface.device_id,
+        models.Interface.label, models.Interface.port_number,
+    ).filter(models.Interface.site_id == site_id).all()
+    ports_by_device: dict[int, list] = {}
+    for iface_id, device_id, label, number in interfaces:
+        ports_by_device.setdefault(device_id, []).append((iface_id, label, number))
+
+    busy_ids = set()
+    for a_id, b_id in db.query(models.Link.interface_a_id, models.Link.interface_b_id).filter(
+        models.Link.site_id == site_id,
+    ):
+        busy_ids.update(x for x in (a_id, b_id) if x is not None)
+
+    result = []
+    for row in rows:
+        out = schemas.ImportLinkRowOut.model_validate(row)
+        for side in ("a", "b"):
+            # Номер, принесённый телефоном, вернее любого угадывания по
+            # тексту: телефон брал устройство из снимка, а не с чужих слов.
+            known_id = getattr(row, f"{side}_device_id")
+            device_text = getattr(row, f"{side}_device_text")
+            found = None
+            if known_id is not None:
+                match = next((d for d in devices if d[0] == known_id), None)
+                if match:
+                    found = (match[0], match[1])
+            if found is None and device_text:
+                key = _key(device_text)
+                found = by_code.get(key) or by_name.get(key)
+            if not found:
+                continue
+            device_id, code = found
+            setattr(out, f"suggested_{side}_device_id", device_id)
+            setattr(out, f"suggested_{side}_device_code", code)
+
+            iface = _match_port(ports_by_device.get(device_id, []), getattr(row, f"{side}_port_text"))
+            if iface:
+                setattr(out, f"suggested_{side}_interface_id", iface[0])
+                setattr(out, f"suggested_{side}_interface_label", iface[1])
+                setattr(out, f"{side}_interface_busy", iface[0] in busy_ids)
+        result.append(out)
+    return result
+
+
+@router.post("/link-rows/{row_id}/move", response_model=schemas.LinkOut, status_code=201)
+def move_link_row(row_id: int, payload: schemas.LinkCreate, db: Session = Depends(get_db),
+                  user: models.User = Depends(auth.can_edit),
+                  site_id: int = Depends(sites.current_site_id)):
+    """Перенести строку обхода в спецификацию: завести связь и пометить строку.
+
+    Как и у устройств, данные приходят из окна связи, а не из строки:
+    человек мог поправить, и правда — то, что он видел на экране.
+    """
+    row = db.query(models.ImportLinkRow).filter(
+        models.ImportLinkRow.id == row_id, models.ImportLinkRow.site_id == site_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Строка обхода не найдена")
+    if row.status == "moved":
+        raise HTTPException(status_code=409, detail="Эта строка уже перенесена в спецификацию")
+
+    # Заведение связи — теми же проверками, что и обычное: чужая площадка,
+    # занятое гнездо, блокировка портов на время записи. Дублировать их
+    # здесь значило бы разойтись с ними при первой же правке.
+    link_out = links.create_link(payload, db=db, user=user, site_id=site_id)
+
+    row.status = "moved"
+    row.link_id = link_out.id
+    log_change(db, user.id, "create", "link", link_out.id, old=None,
+               new={"из обхода": row.client_uuid or "—", "site_id": site_id})
+    db.commit()
+    return link_out
+
+
+@router.delete("/link-rows/{row_id}", status_code=204)
+def delete_link_row(row_id: int, db: Session = Depends(get_db),
+                    _: models.User = Depends(auth.can_edit),
+                    site_id: int = Depends(sites.current_site_id)):
+    """Убрать строку обхода. Заведённая по ней связь остаётся: это уже
+    спецификация."""
+    row = db.query(models.ImportLinkRow).filter(
+        models.ImportLinkRow.id == row_id, models.ImportLinkRow.site_id == site_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Строка обхода не найдена")
+    db.delete(row)
+    db.commit()
+
+
+@router.delete("/link-rows", status_code=204)
+def clear_link_rows(status: str | None = None, db: Session = Depends(get_db),
+                    _: models.User = Depends(auth.can_edit),
+                    site_id: int = Depends(sites.current_site_id)):
+    """Очистить строки обхода целиком или только разобранные."""
+    q = db.query(models.ImportLinkRow).filter(models.ImportLinkRow.site_id == site_id)
+    if status:
+        q = q.filter(models.ImportLinkRow.status == status)
+    q.delete(synchronize_session=False)
+    db.commit()
+
+
+def _match_port(ports: list, text: str | None):
+    """Найти гнездо по тому, как его записали в цеху.
+
+    Сначала точное совпадение с подписью («Gi0/1»), потом — номер гнезда:
+    в поле чаще пишут просто «3», чем полную подпись порта.
+    """
+    if not text:
+        return None
+    key = _key(text)
+    for iface_id, label, number in ports:
+        if _key(label) == key:
+            return (iface_id, label)
+    digits = "".join(ch for ch in key if ch.isdigit())
+    if digits:
+        for iface_id, label, number in ports:
+            if number == int(digits):
+                return (iface_id, label)
+    return None
 
 
 def _key(value: str | None) -> str:

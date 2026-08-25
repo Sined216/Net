@@ -238,8 +238,12 @@ class ImportRowOut(BaseModel):
     устройства и правит, если файл врёт."""
     model_config = ConfigDict(from_attributes=True)
     id: int
-    source_file: str
-    row_number: int
+    # 'file' — строка из загруженного файла, 'mobile' — запись из обхода с
+    # телефоном. Разбирают их одинаково и на одном экране; у обхода нет
+    # файла, поэтому две колонки ниже у него пусты.
+    source: str = "file"
+    source_file: Optional[str] = None
+    row_number: Optional[int] = None
     name: Optional[str] = None
     template_name: Optional[str] = None
     type_name: Optional[str] = None
@@ -263,6 +267,48 @@ class ImportRowOut(BaseModel):
     same_name_device_id: Optional[int] = None
     same_ip_device_id: Optional[int] = None
     same_mac_device_id: Optional[int] = None
+
+
+class ImportLinkRowOut(BaseModel):
+    """Связь из обхода и то, что удалось по ней опознать.
+
+    Подсказки (`suggested_*`) — попытка узнать в тексте («свитч у окна»,
+    «порт 3») уже заведённые устройство и гнездо. Ничего не решают: человек
+    видит их подставленными в окне связи и правит, если не угадали.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    source: str = "mobile"
+    a_device_text: Optional[str] = None
+    a_port_text: Optional[str] = None
+    b_device_text: Optional[str] = None
+    b_port_text: Optional[str] = None
+    a_device_id: Optional[int] = None
+    b_device_id: Optional[int] = None
+    medium: Optional[str] = None
+    notes: Optional[str] = None
+    extra: Optional[dict] = None
+    status: str
+    link_id: Optional[int] = None
+    imported_at: Optional[datetime] = None
+
+    # Опознанные концы. Устройство ищется по коду и названию, гнездо —
+    # внутри найденного устройства по подписи и номеру.
+    suggested_a_device_id: Optional[int] = None
+    suggested_b_device_id: Optional[int] = None
+    suggested_a_interface_id: Optional[int] = None
+    suggested_b_interface_id: Optional[int] = None
+    # Подписи опознанного — чтобы в таблице было видно, во что метится
+    # строка, не открывая окно.
+    suggested_a_device_code: Optional[str] = None
+    suggested_b_device_code: Optional[str] = None
+    suggested_a_interface_label: Optional[str] = None
+    suggested_b_interface_label: Optional[str] = None
+    # Гнездо уже занято другой связью — переносить строку, скорее всего, не
+    # нужно. Не запрет: в цеху могли переткнуть кабель, и тогда сначала
+    # правят старую связь.
+    a_interface_busy: bool = False
+    b_interface_busy: bool = False
 
 
 class ImportSummary(BaseModel):

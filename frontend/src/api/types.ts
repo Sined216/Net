@@ -54,6 +54,7 @@ export type TopologyEdge = S['TopologyEdge'];
 
 // ---------- Импорт устройств из файла ----------
 export type ImportRowOut = S['ImportRowOut'];
+export type ImportLinkRowOut = S['ImportLinkRowOut'];
 export type ImportSummary = S['ImportSummary'];
 
 // ---------- Разъёмы и модули ----------

@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Table, Text, Title, Tooltip, UnstyledButton,
+  ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Table, Tabs, Text, Title, Tooltip, UnstyledButton,
 } from '@mantine/core';
 import {
-  IconArrowsSort, IconChevronDown, IconChevronUp, IconDotsVertical, IconPlus, IconUpload,
+  IconArrowsSort, IconChevronDown, IconChevronUp, IconDeviceDesktop, IconDotsVertical,
+  IconPlugConnected, IconPlus, IconUpload,
 } from '@tabler/icons-react';
 import { DeleteAction, RowAction } from '../components/RowAction';
 import { Link } from 'react-router-dom';
@@ -14,6 +15,7 @@ import { notifyError, notifySuccess } from '../lib/notify';
 import { confirmAction } from '../lib/confirm';
 import { DeviceFormModal } from './devices/DeviceFormModal';
 import { MissingRefs } from './import/MissingRefs';
+import { LinkRowsPanel } from './import/LinkRowsPanel';
 import type { ImportRowOut } from '../api/types';
 import { useCan } from '../auth/permissions';
 
@@ -34,6 +36,7 @@ export function ImportPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [adding, setAdding] = useState<ImportRowOut | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'row_number', desc: false });
+  const [tab, setTab] = useState<string>('devices');
   const canEdit = useCan('edit');
 
   const waiting = rows.filter((r) => r.status === 'new');
@@ -58,7 +61,7 @@ export function ImportPage() {
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={2}>Импорт устройств</Title>
+        <Title order={2}>Импорт и обход</Title>
         <Group>
           {canEdit && rows.length > 0 && (
             <Menu>
@@ -105,12 +108,32 @@ export function ImportPage() {
       />
 
       <Text c="dimmed" size="sm">
-        Строки из файла попадают сюда, а не сразу в спецификацию оборудования. «Добавить» открывает обычное окно
-        устройства с тем, что удалось разобрать: шаблон, IP, группа. Чего в файле нет — заполняется руками.
-        Связи из файла не заводятся: кабель соединяет порты, а портов до заведения устройства ещё нет.
-        Зелёным подсвечены название и адрес, которые в спецификации уже есть, — такую строку, скорее всего,
-        переносить не нужно. Кроме таблиц принимается выгрузка Siemens Automation Tool (.xml): из неё
-        читаются станции с их адресами, моделями, артикулами и составом стоек.
+        Ни файл, ни обход не заводят записи сами: и то и другое ложится в промежуточную таблицу, а человек
+        переносит строки по одной. Так опечатка не превращается в сотню кривых записей, а неполная строка не
+        мешает — чего не хватает, дозаполняется при переносе.
+      </Text>
+
+      <Tabs value={tab} onChange={(value) => setTab(value ?? 'devices')} keepMounted={false}>
+        <Tabs.List>
+          <Tabs.Tab value="devices" leftSection={<IconDeviceDesktop size={16} />}>
+            Устройства{rows.length > 0 ? ` (${rows.length})` : ''}
+          </Tabs.Tab>
+          <Tabs.Tab value="links" leftSection={<IconPlugConnected size={16} />}>
+            Связи из обхода
+          </Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="links"><LinkRowsPanel /></Tabs.Panel>
+
+        <Tabs.Panel value="devices">
+          <Stack mt="md">
+      <Text c="dimmed" size="sm">
+        «Добавить» открывает обычное окно устройства с тем, что удалось разобрать: шаблон, IP, группа.
+        Связи из файла не заводятся: кабель соединяет порты, а портов до заведения устройства ещё нет
+        (связи, привезённые из цеха, — на соседней вкладке). Зелёным подсвечены название и адрес, которые
+        в спецификации уже есть, — такую строку, скорее всего, переносить не нужно. Кроме таблиц принимается
+        выгрузка Siemens Automation Tool (.xml): из неё читаются станции с их адресами, моделями, артикулами
+        и составом стоек.
       </Text>
 
       {templates.length === 0 && (
@@ -154,9 +177,15 @@ export function ImportPage() {
               {sorted.map((row) => (
                 <Table.Tr key={row.id}>
                   <Table.Td>
-                    <Tooltip label={row.source_file}>
-                      <Text size="sm" c="dimmed">№{row.row_number}</Text>
-                    </Tooltip>
+                    {row.source === 'mobile' ? (
+                      <Tooltip label="Запись привезена из цеха мобильным приложением — файла у неё нет">
+                        <Badge size="xs" variant="light" color="grape">обход</Badge>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip label={row.source_file}>
+                        <Text size="sm" c="dimmed">№{row.row_number}</Text>
+                      </Tooltip>
+                    )}
                   </Table.Td>
                   <SameAsExisting value={row.name} deviceId={row.same_name_device_id} what="названием" />
                   <Table.Td>
@@ -211,13 +240,13 @@ export function ImportPage() {
                       <Group gap={2} justify="flex-end" wrap="nowrap">
                         {row.status === 'new' && (
                           <RowAction
-                            label={`Завести устройство по строке №${row.row_number}`}
+                            label={rowLabel(row, "Завести устройство по")}
                             icon={<IconPlus size={16} />}
                             onClick={() => setAdding(row)}
                           />
                         )}
                         <DeleteAction
-                          label={`Убрать строку №${row.row_number} из импорта`}
+                          label={rowLabel(row, "Убрать из импорта")}
                           onClick={async () => {
                             if (!(await confirmAction('Убрать строку из импорта? Устройство это не тронет, но саму строку'
                               + ' придётся заново читать из файла.'))) return;
@@ -233,6 +262,9 @@ export function ImportPage() {
           </Table>
         </>
       )}
+          </Stack>
+        </Tabs.Panel>
+      </Tabs>
 
       {adding && (
         <DeviceFormModal
@@ -300,16 +332,32 @@ function sortRows(rows: ImportRowOut[], sort: { key: SortKey; desc: boolean }): 
     const right = b[sort.key];
     const emptyLeft = left == null || left === '';
     const emptyRight = right == null || right === '';
-    if (emptyLeft || emptyRight) return emptyLeft && emptyRight ? a.row_number - b.row_number : (emptyLeft ? 1 : -1);
+    // Записи из обхода без номера строки сравниваются по id: номера файла у
+    // них нет, и вычитание давало бы NaN — порядок «прыгал» бы при каждом
+    // пересчёте.
+    if (emptyLeft || emptyRight) return emptyLeft && emptyRight ? byOrigin(a, b) : (emptyLeft ? 1 : -1);
     const compared = typeof left === 'number' && typeof right === 'number'
       ? left - right
       // Числа внутри текста сравниваются как числа: иначе «Цех 10» встаёт
       // между «Цех 1» и «Цех 2».
       : String(left).localeCompare(String(right), 'ru', { numeric: true });
-    // Одинаковые значения — по номеру строки в файле: иначе при каждом
-    // пересчёте они меняются местами.
-    return compared * direction || a.row_number - b.row_number;
+    // Одинаковые значения — по номеру строки в файле (а у обхода по id):
+    // иначе при каждом пересчёте они меняются местами.
+    return compared * direction || byOrigin(a, b);
   });
+}
+
+/** Подпись действия: у строки из файла есть номер, у записи обхода — нет. */
+function rowLabel(row: ImportRowOut, action: string): string {
+  return row.source === 'mobile'
+    ? `${action}: запись обхода${row.name ? ` «${row.name}»` : ''}`
+    : `${action} строку №${row.row_number}`;
+}
+
+/** Устойчивый порядок для строк с одинаковым значением: у файла это номер
+ * строки, у обхода его нет — тогда id. */
+function byOrigin(a: ImportRowOut, b: ImportRowOut): number {
+  return (a.row_number ?? 0) - (b.row_number ?? 0) || a.id - b.id;
 }
 
 /** Ячейка, которая подсвечивается, если такое же значение в спецификации

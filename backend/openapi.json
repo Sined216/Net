@@ -1414,6 +1414,250 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImportLinkRowOut": {
+        "description": "Связь из обхода и то, что удалось по ней опознать.\n\nПодсказки (`suggested_*`) — попытка узнать в тексте («свитч у окна»,\n«порт 3») уже заведённые устройство и гнездо. Ничего не решают: человек\nвидит их подставленными в окне связи и правит, если не угадали.",
+        "properties": {
+          "a_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Device Id"
+          },
+          "a_device_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Device Text"
+          },
+          "a_interface_busy": {
+            "default": false,
+            "title": "A Interface Busy",
+            "type": "boolean"
+          },
+          "a_port_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Port Text"
+          },
+          "b_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Device Id"
+          },
+          "b_device_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Device Text"
+          },
+          "b_interface_busy": {
+            "default": false,
+            "title": "B Interface Busy",
+            "type": "boolean"
+          },
+          "b_port_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Port Text"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "imported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imported At"
+          },
+          "link_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Id"
+          },
+          "medium": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medium"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "source": {
+            "default": "mobile",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_a_device_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested A Device Code"
+          },
+          "suggested_a_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested A Device Id"
+          },
+          "suggested_a_interface_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested A Interface Id"
+          },
+          "suggested_a_interface_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested A Interface Label"
+          },
+          "suggested_b_device_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested B Device Code"
+          },
+          "suggested_b_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested B Device Id"
+          },
+          "suggested_b_interface_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested B Interface Id"
+          },
+          "suggested_b_interface_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested B Interface Label"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "ImportLinkRowOut",
+        "type": "object"
+      },
       "ImportRowOut": {
         "description": "Строка из файла и то, что удалось по ней опознать.\n\nПодсказки (`suggested_*`) — это найденные по названию записи\nсправочников. Ничего не решают: человек видит их подставленными в окне\nустройства и правит, если файл врёт.",
         "properties": {
@@ -1511,8 +1755,15 @@
             "title": "Notes"
           },
           "row_number": {
-            "title": "Row Number",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Number"
           },
           "same_ip_device_id": {
             "anyOf": [
@@ -1547,9 +1798,21 @@
             ],
             "title": "Same Name Device Id"
           },
-          "source_file": {
-            "title": "Source File",
+          "source": {
+            "default": "file",
+            "title": "Source",
             "type": "string"
+          },
+          "source_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source File"
           },
           "status": {
             "title": "Status",
@@ -1621,8 +1884,6 @@
         },
         "required": [
           "id",
-          "source_file",
-          "row_number",
           "status"
         ],
         "title": "ImportRowOut",
@@ -8089,6 +8350,274 @@
           }
         ],
         "summary": "Upload Devices",
+        "tags": [
+          "import"
+        ]
+      }
+    },
+    "/import/link-rows": {
+      "delete": {
+        "description": "Очистить строки обхода целиком или только разобранные.",
+        "operationId": "clear_link_rows_import_link_rows_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Clear Link Rows",
+        "tags": [
+          "import"
+        ]
+      },
+      "get": {
+        "description": "Связи из обхода вместе с попыткой опознать их концы.\n\nСтрока приезжает текстом («свитч у окна», «порт 3») — здесь по этому\nтексту ищутся уже заведённые устройство и гнездо. Найденное только\nподставляется: решает человек при переносе.",
+        "operationId": "list_link_rows_import_link_rows_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportLinkRowOut"
+                  },
+                  "title": "Response List Link Rows Import Link Rows Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Link Rows",
+        "tags": [
+          "import"
+        ]
+      }
+    },
+    "/import/link-rows/{row_id}": {
+      "delete": {
+        "description": "Убрать строку обхода. Заведённая по ней связь остаётся: это уже\nспецификация.",
+        "operationId": "delete_link_row_import_link_rows__row_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "row_id",
+            "required": true,
+            "schema": {
+              "title": "Row Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Link Row",
+        "tags": [
+          "import"
+        ]
+      }
+    },
+    "/import/link-rows/{row_id}/move": {
+      "post": {
+        "description": "Перенести строку обхода в спецификацию: завести связь и пометить строку.\n\nКак и у устройств, данные приходят из окна связи, а не из строки:\nчеловек мог поправить, и правда — то, что он видел на экране.",
+        "operationId": "move_link_row_import_link_rows__row_id__move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "row_id",
+            "required": true,
+            "schema": {
+              "title": "Row Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Move Link Row",
         "tags": [
           "import"
         ]

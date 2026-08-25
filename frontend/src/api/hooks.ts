@@ -220,6 +220,34 @@ export function useClearImportRows() {
   });
 }
 
+// Связи из обхода — вторая половина той же промежуточной таблицы.
+export const useImportLinkRows = () =>
+  useQuery({ queryKey: ['importLinkRows'], queryFn: api.listImportLinkRows });
+export function useMoveImportLinkRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, body }: { rowId: number; body: LinkCreate }) =>
+      api.moveImportLinkRow(rowId, body),
+    // Появилась связь — устарели списки связей, топология и сама строка;
+    // ещё и порты: они стали занятыми.
+    onSuccess: () => invalidateAll(qc, ['importLinkRows', 'links', 'devices', 'topology']),
+  });
+}
+export function useDeleteImportLinkRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rowId: number) => api.deleteImportLinkRow(rowId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importLinkRows'] }),
+  });
+}
+export function useClearImportLinkRows() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (status?: 'new' | 'moved') => api.clearImportLinkRows(status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importLinkRows'] }),
+  });
+}
+
 // ---------- VLANs ----------
 export function useCreateVlan() {
   const qc = useQueryClient();

@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 
-from app import auth, models, schemas, sites
+from app import auth, models, schemas, serialize, sites
 from app.database import get_db
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -71,8 +71,11 @@ def snapshot(db: Session = Depends(get_db),
         site_id=site_id,
         site_name=site.name,
         taken_at=datetime.now(timezone.utc),
-        devices=[schemas.DeviceOut.model_validate(d) for d in devices],
-        links=[schemas.LinkOut.model_validate(link) for link in links],
+        # Через те же сериализаторы, что и обычные ручки: DeviceOut/LinkOut
+        # собираются не прямо из модели — у них есть вычисляемые поля вроде
+        # «к чему подключён порт», которых в самой записи нет.
+        devices=serialize.serialize_devices(db, devices),
+        links=serialize.serialize_links(db, links),
         # Справочники — общие для всех площадок, кроме тех, у кого своя
         # площадка есть (VLAN, теги, группы): их фильтруем, остальные нет.
         templates=[schemas.DeviceTemplateOut.model_validate(t) for t in templates],

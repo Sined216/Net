@@ -13,7 +13,7 @@ import type {
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
   TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyOut,
-  SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
+  SearchResult, DatabaseSchema, ImportRowOut, ImportLinkRowOut, ImportSummary,
   SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
   DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
   SnmpProbeRequest, SnmpProbeResult, SnmpWalkRequest, SnmpWalkResult,
@@ -82,6 +82,16 @@ export const moveImportRow = (rowId: number, body: DeviceCreate) =>
 export const deleteImportRow = (rowId: number) => apiFetch<void>(`/import/rows/${rowId}`, { method: 'DELETE' });
 export const clearImportRows = (status?: 'new' | 'moved') =>
   apiFetch<void>('/import/rows', { method: 'DELETE', query: { status } });
+
+// Связи из обхода с телефоном — вторая половина той же промежуточной
+// таблицы: устройства ложатся в /import/rows, кабели сюда.
+export const listImportLinkRows = () => apiFetch<ImportLinkRowOut[]>('/import/link-rows');
+export const moveImportLinkRow = (rowId: number, body: LinkCreate) =>
+  apiFetch<LinkOut>(`/import/link-rows/${rowId}/move`, { method: 'POST', body });
+export const deleteImportLinkRow = (rowId: number) =>
+  apiFetch<void>(`/import/link-rows/${rowId}`, { method: 'DELETE' });
+export const clearImportLinkRows = (status?: 'new' | 'moved') =>
+  apiFetch<void>('/import/link-rows', { method: 'DELETE', query: { status } });
 
 export const listVlans = () => apiFetch<VlanOut[]>('/vlans');
 export const createVlan = (body: VlanCreate) => apiFetch<VlanOut>('/vlans', { method: 'POST', body });
