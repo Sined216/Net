@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
     "bundle": "expo export --platform android --no-bytecode --output-dir /tmp/wiremap-bundle",
-    "codegen": "openapi-typescript ../backend/openapi.json -o src/api/schema.ts"
+    "codegen": "npx --yes openapi-typescript@^7.13.0 ../backend/openapi.json -o src/api/schema.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.13",
@@ -27,7 +27,6 @@
   "devDependencies": {
     "@types/react": "^19.2.18",
     "babel-preset-expo": "^57.0.8",
-    "openapi-typescript": "^7.13.0",
     "typescript": "~6.0.2"
   }
 }
