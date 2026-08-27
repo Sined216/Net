@@ -2,6 +2,7 @@
   "expo": {
     "name": "WireMap Обход",
     "slug": "wiremap-mobile",
+    "owner": "sined216s-team",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -19,6 +20,11 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1110e1b3-3322-4565-be76-34fcc993588c"
+      }
+    }
   }
 }
