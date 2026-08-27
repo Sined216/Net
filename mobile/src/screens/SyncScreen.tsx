@@ -36,22 +36,29 @@ export function SyncScreen({ navigation }: Props) {
   const hasQueue = pending.devices + pending.links > 0;
 
   /** Вход нужен обоим действиям, поэтому он общий и делается по месту:
-   * токен живёт в памяти и пропадает при перезапуске. */
-  async function ensureToken(): Promise<string> {
-    if (token) return token;
+   * токен живёт в памяти и пропадает при перезапуске.
+   *
+   * Возвращает и адрес: при входе он мог уточниться (см. `login` — API
+   * бывает на `/api`), а состояние обновится только к следующему кадру.
+   */
+  async function ensureLink(): Promise<{ token: string; url: string }> {
+    const url = baseUrl.trim();
+    if (token) return { token, url };
     if (!username.trim() || !password) {
       throw new ApiError(0, 'Введите логин и пароль — без входа сервер не ответит.');
     }
-    const fresh = await login(baseUrl.trim(), username.trim(), password);
-    setToken(fresh);
-    return fresh;
+    const session = await login(url, username.trim(), password);
+    setToken(session.token);
+    // Показываем уточнённый адрес в поле: человек должен видеть, куда
+    // телефон ходит на самом деле.
+    if (session.baseUrl !== url) setBaseUrl(session.baseUrl);
+    return { token: session.token, url: session.baseUrl };
   }
 
   async function handleDownload() {
     setBusy('download'); setError(null); setDone(null);
     try {
-      const url = baseUrl.trim();
-      const fresh = await ensureToken();
+      const { token: fresh, url } = await ensureLink();
       const snapshot = await fetchSnapshot({ baseUrl: url, token: fresh, siteId: null });
       await saveSnapshot(snapshot, url);
       await refresh();
@@ -66,8 +73,8 @@ export function SyncScreen({ navigation }: Props) {
   async function handleUpload() {
     setBusy('upload'); setError(null); setDone(null);
     try {
-      const fresh = await ensureToken();
-      const link = connection(baseUrl.trim());
+      const { token: fresh, url } = await ensureLink();
+      const link = connection(url);
       if (!link) throw new ApiError(0, 'Сначала загрузите снимок — без него неизвестно, на какую площадку выгружать.');
 
       const payload = await collectUnsent();
@@ -137,9 +144,9 @@ export function SyncScreen({ navigation }: Props) {
           <Title>Связь с WireMap</Title>
           <Field
             label="Адрес сервера"
-            hint="Тот же, что открываете в браузере в офисе"
+            hint="Тот же, что открываете в браузере в офисе — до первой косой черты"
             value={baseUrl} onChangeText={setBaseUrl}
-            placeholder="http://10.10.1.5:8000"
+            placeholder="http://10.10.1.5:8080"
             autoCapitalize="none" keyboardType="url"
           />
           {token ? (

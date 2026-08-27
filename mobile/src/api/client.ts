@@ -103,14 +103,45 @@ async function readError(response: Response): Promise<string> {
   return `Сервер ответил ошибкой ${response.status}.`;
 }
 
-export async function login(baseUrl: string, username: string, password: string): Promise<string> {
+export interface Session {
+  token: string;
+  /** Адрес, по которому API в самом деле нашлось, — его и запоминаем. */
+  baseUrl: string;
+}
+
+/** Вход. Заодно выясняет, где на этом сервере живёт API.
+ *
+ * В обычной установке WireMap стоит за nginx: интерфейс отдаётся с `/`, а
+ * API проксируется с `/api/`. Человек знает адрес из браузера — без `/api`;
+ * запрос на `/auth/login` попадает тогда в статику интерфейса, и та на POST
+ * отвечает `405`. По такому сообщению догадаться дописать `/api` нельзя,
+ * поэтому спрашиваем оба адреса сами.
+ *
+ * Перебор прекращается на первом же настоящем ответе API: `401` значит, что
+ * API найдено, а не подошёл пароль, — искать дальше нечего.
+ */
+export async function login(baseUrl: string, username: string, password: string): Promise<Session> {
   const form = new URLSearchParams();
   form.set('username', username);
   form.set('password', password);
-  const token = await request<Token>({ baseUrl, token: null, siteId: null }, '/auth/login', {
-    method: 'POST', form,
-  });
-  return token.access_token;
+
+  const base = baseUrl.trim().replace(/\/+$/, '');
+  const candidates = base.endsWith('/api') ? [base] : [base, `${base}/api`];
+
+  for (const candidate of candidates) {
+    try {
+      const token = await request<Token>({ baseUrl: candidate, token: null, siteId: null }, '/auth/login', {
+        method: 'POST', form,
+      });
+      return { token: token.access_token, baseUrl: candidate };
+    } catch (error) {
+      const notApiHere = error instanceof ApiError && (error.status === 404 || error.status === 405);
+      if (!notApiHere) throw error;
+    }
+  }
+
+  throw new ApiError(404, `По адресу ${base} отвечает не WireMap, а что-то другое.`
+    + ' Проверьте адрес — обычно это тот же, что открываете в браузере.');
 }
 
 export const fetchSnapshot = (connection: Connection) =>
