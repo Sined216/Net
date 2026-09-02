@@ -3,15 +3,22 @@ import { Alert, Button, Group, Modal, PasswordInput, Stack, Text } from '@mantin
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import * as api from '../api/endpoints';
+import { usePasswordPolicy } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { useAuth } from './AuthContext';
 
-/** Столько же требует бэкенд (schemas.MIN_PASSWORD_LENGTH) — проверяем и
- * здесь, чтобы не гонять заведомо короткий пароль на сервер. */
-const MIN_LENGTH = 12;
+/** Пока политика не подгрузилась — прежнее значение по умолчанию: сервер
+ * всё равно проверит настоящее требование, это только подсказка заранее. */
+const FALLBACK_MIN_LENGTH = 12;
 
-export function ChangePasswordModal({ forced, onClose }: { forced?: boolean; onClose: () => void }) {
+type ForcedReason = 'assigned' | 'expired';
+
+export function ChangePasswordModal({ forced, reason = 'assigned', onClose }: {
+  forced?: boolean; reason?: ForcedReason; onClose: () => void;
+}) {
   const { refreshUser } = useAuth();
+  const { data: policy } = usePasswordPolicy();
+  const minLength = policy?.min_length ?? FALLBACK_MIN_LENGTH;
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
@@ -26,9 +33,9 @@ export function ChangePasswordModal({ forced, onClose }: { forced?: boolean; onC
     onError: notifyError,
   });
 
-  const tooShort = next.length > 0 && next.length < MIN_LENGTH;
+  const tooShort = next.length > 0 && next.length < minLength;
   const mismatch = repeat.length > 0 && next !== repeat;
-  const canSubmit = current.length > 0 && next.length >= MIN_LENGTH && next === repeat;
+  const canSubmit = current.length > 0 && next.length >= minLength && next === repeat;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,8 +58,10 @@ export function ChangePasswordModal({ forced, onClose }: { forced?: boolean; onC
         <Stack>
           {forced && (
             <Alert color="yellow" icon={<IconAlertTriangle size={18} />}>
-              Пароль вашей учётной записи задавал не вы, поэтому его знает кто-то ещё. Задайте свой,
-              чтобы продолжить работу.
+              {reason === 'expired'
+                ? 'Пароль не менялся дольше срока, который задал администратор. Задайте новый, чтобы продолжить работу.'
+                : 'Пароль вашей учётной записи задавал не вы, поэтому его знает кто-то ещё. Задайте свой, '
+                  + 'чтобы продолжить работу.'}
             </Alert>
           )}
           <PasswordInput
@@ -64,10 +73,10 @@ export function ChangePasswordModal({ forced, onClose }: { forced?: boolean; onC
           />
           <PasswordInput
             label="Новый пароль"
-            description={`Не короче ${MIN_LENGTH} символов`}
+            description={`Не короче ${minLength} символов`}
             value={next}
             onChange={(e) => setNext(e.currentTarget.value)}
-            error={tooShort ? `Слишком короткий — нужно не меньше ${MIN_LENGTH} символов` : null}
+            error={tooShort ? `Слишком короткий — нужно не меньше ${minLength} символов` : null}
             required
           />
           <PasswordInput

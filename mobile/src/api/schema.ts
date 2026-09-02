@@ -3176,6 +3176,8 @@ export interface components {
             is_active: boolean;
             /** Must Change Password */
             must_change_password: boolean;
+            /** Password Expired */
+            password_expired?: boolean | null;
             /**
              * Role
              * @enum {string}

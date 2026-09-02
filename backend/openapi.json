@@ -5581,6 +5581,17 @@
             "title": "Must Change Password",
             "type": "boolean"
           },
+          "password_expired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Expired"
+          },
           "role": {
             "enum": [
               "admin",

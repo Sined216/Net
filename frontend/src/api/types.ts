@@ -26,6 +26,8 @@ export type UserOut = S['UserOut'];
 /** Роль вытаскивается из поля, а не переписывается: перечисление живёт в
  * `schemas.py`, и здесь оно должно совпадать с ним само. */
 export type UserRole = UserOut['role'];
+export type PasswordPolicyOut = S['PasswordPolicyOut'];
+export type PasswordPolicyUpdate = S['PasswordPolicyUpdate'];
 
 // ---------- Журнал изменений ----------
 export type AuditChange = S['AuditChange'];

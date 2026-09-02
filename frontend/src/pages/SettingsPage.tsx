@@ -1,0 +1,96 @@
+import { useState } from 'react';
+import {
+  Alert, Button, Card, Checkbox, Group, NumberInput, Stack, Text, Title,
+} from '@mantine/core';
+import { usePasswordPolicy, useUpdatePasswordPolicy } from '../api/hooks';
+import { notifyError, notifySuccess } from '../lib/notify';
+import type { PasswordPolicyOut } from '../api/types';
+
+/** Настройки, которые меняет администратор на ходу — в отличие от
+ * переменных окружения (`.env`), эти правятся без перезапуска.
+ *
+ * Пока единственный раздел — политика паролей. Ниже появятся другие
+ * такие же настройки (например, принтера этикеток), и им сюда же.
+ */
+export function SettingsPage() {
+  const { data: policy, isLoading, error } = usePasswordPolicy();
+
+  return (
+    <Stack>
+      <Title order={2}>Настройки</Title>
+      <Text c="dimmed" size="sm">
+        Меняются здесь, а не в конфигурации сервера, — правки применяются сразу, без перезапуска.
+      </Text>
+
+      {error && <Alert color="red">{(error as Error).message}</Alert>}
+      {isLoading && <Text c="dimmed">Загрузка…</Text>}
+      {/* key на версии: после сохранения хук перечитает политику под новым
+          номером правки, и форма пересоздастся с уже сохранёнными
+          значениями — без ручной синхронизации состояния с ответом сервера. */}
+      {policy && <PasswordPolicyForm key={policy.version} policy={policy} />}
+    </Stack>
+  );
+}
+
+function PasswordPolicyForm({ policy }: { policy: PasswordPolicyOut }) {
+  const [minLength, setMinLength] = useState(policy.min_length);
+  const [expires, setExpires] = useState(policy.max_age_days != null);
+  const [maxAgeDays, setMaxAgeDays] = useState(policy.max_age_days ?? 90);
+  const update = useUpdatePasswordPolicy();
+
+  const invalidLength = typeof minLength !== 'number' || minLength < 8 || minLength > 128;
+  const invalidAge = expires && (typeof maxAgeDays !== 'number' || maxAgeDays < 1);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (invalidLength || invalidAge) return;
+    update.mutate(
+      {
+        version: policy.version,
+        min_length: minLength as number,
+        max_age_days: expires ? (maxAgeDays as number) : null,
+      },
+      { onSuccess: () => notifySuccess('Политика паролей сохранена'), onError: notifyError },
+    );
+  }
+
+  return (
+    <Card withBorder padding="md" maw={480} component="form" onSubmit={handleSubmit}>
+      <Stack>
+        <Title order={4}>Политика паролей</Title>
+        <NumberInput
+          label="Минимальная длина"
+          description="Действует при создании учётной записи, смене и сбросе пароля"
+          value={minLength}
+          onChange={(v) => setMinLength(v === '' ? ('' as unknown as number) : Number(v))}
+          min={8} max={128} required
+          error={invalidLength ? 'От 8 до 128 символов' : null}
+        />
+        <Checkbox
+          label="Требовать смену пароля по сроку"
+          checked={expires}
+          onChange={(e) => setExpires(e.currentTarget.checked)}
+        />
+        {expires && (
+          <NumberInput
+            label="Через сколько дней"
+            description="Считается от последней смены пароля"
+            value={maxAgeDays}
+            onChange={(v) => setMaxAgeDays(v === '' ? ('' as unknown as number) : Number(v))}
+            min={1} required
+            error={invalidAge ? 'Не меньше 1 дня' : null}
+          />
+        )}
+        <Text size="xs" c="dimmed">
+          Кто не сменит пароль вовремя — при следующем действии в системе увидит форму смены
+          пароля вместо обычной работы.
+        </Text>
+        <Group justify="flex-end">
+          <Button type="submit" loading={update.isPending} disabled={invalidLength || invalidAge}>
+            Сохранить
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
+  );
+}

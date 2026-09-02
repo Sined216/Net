@@ -15,6 +15,7 @@ import { SchemaPage } from './pages/SchemaPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { ImportPage } from './pages/ImportPage';
 import { SitesPage } from './pages/SitesPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SnmpProbePage } from './pages/SnmpProbePage';
 import { SiteProvider } from './sites/SiteContext';
@@ -61,6 +62,14 @@ export function App() {
           element={
             <RequireAdmin>
               <SitesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireAdmin>
+              <SettingsPage />
             </RequireAdmin>
           }
         />

@@ -13,7 +13,7 @@ import type {
   LinkTemplateCreate, LinkTemplateUpdate,
   LinkCreate, LinkUpdate,
   TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
-  UserCreate, UserUpdate, PasswordReset,
+  UserCreate, UserUpdate, PasswordReset, PasswordPolicyUpdate,
   SiteCreate, SiteUpdate, AuditQuery, DeviceQuery, LinkQuery, FreePortQuery,
   SnmpProbeRequest, SnmpWalkRequest,
 } from './types';
@@ -555,6 +555,20 @@ export function useResetUserPassword() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: PasswordReset }) => api.resetUserPassword(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+// ---------- Настройки ----------
+// Свежая всегда: без длинного staleTime — форма входа/смены пароля должна
+// увидеть новое требование сразу после того, как админ его поправил, а не
+// в следующей вкладке.
+export const usePasswordPolicy = () =>
+  useQuery({ queryKey: ['passwordPolicy'], queryFn: api.getPasswordPolicy });
+export function useUpdatePasswordPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PasswordPolicyUpdate) => api.updatePasswordPolicy(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['passwordPolicy'] }),
   });
 }
 

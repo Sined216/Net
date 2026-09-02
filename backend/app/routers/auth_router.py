@@ -87,7 +87,12 @@ def _human(seconds: int) -> str:
 
 
 @router.get("/me", response_model=schemas.UserOut)
-def read_me(current_user: models.User = Depends(auth.get_current_user)):
+def read_me(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # Обычный атрибут, не колонка — в базу не пишется. `/auth/me` не несёт
+    # `require_password_not_expired` (см. main.py), поэтому это единственное
+    # место, где интерфейс может узнать про устаревший пароль заранее, не
+    # дожидаясь 403 на первом же обычном запросе.
+    current_user.password_expired = password_policy.is_expired(db, current_user)
     return current_user
 
 

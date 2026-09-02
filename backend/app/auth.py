@@ -146,16 +146,13 @@ def require_password_not_expired(
     него, а не рядом, — так `must_change_password` проверяется первым и не
     даёт двух разных 403 за один запрос.
     """
-    from app.password_policy import get_policy  # локальный импорт: без цикла auth ↔ password_policy
+    from app import password_policy  # локальный импорт: без цикла auth ↔ password_policy
 
-    policy = get_policy(db)
-    if policy.max_age_days is not None and user.password_changed_at is not None:
-        age_days = (datetime.now(timezone.utc) - user.password_changed_at).days
-        if age_days >= policy.max_age_days:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Пароль устарел — смените его: POST /auth/me/password",
-            )
+    if password_policy.is_expired(db, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пароль устарел — смените его: POST /auth/me/password",
+        )
     return user
 
 

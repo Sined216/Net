@@ -6,7 +6,7 @@ import {
 import { IconKey, IconLock, IconLockOpen, IconPlus } from '@tabler/icons-react';
 import { EditAction, RowAction } from '../components/RowAction';
 import {
-  useCreateUser, useDeactivateUser, useResetUserPassword, useUpdateUser, useUsers,
+  useCreateUser, useDeactivateUser, usePasswordPolicy, useResetUserPassword, useUpdateUser, useUsers,
 } from '../api/hooks';
 import { useAuth } from '../auth/AuthContext';
 import { notifyError, notifySuccess } from '../lib/notify';
@@ -15,8 +15,10 @@ import type { UserOut, UserRole } from '../api/types';
 
 const ROLE_COLOR: Record<string, string> = { admin: 'red', editor: 'blue', viewer: 'gray' };
 const ROLES: UserRole[] = ['viewer', 'editor', 'admin'];
-/** Столько же требует бэкенд (schemas.MIN_PASSWORD_LENGTH). */
-const MIN_LENGTH = 12;
+/** Пока политика не загрузилась — прежнее значение по умолчанию, а не
+ * пустая форма без ограничения: сервер проверит настоящее требование в
+ * любом случае, это только подсказка человеку до отправки. */
+const FALLBACK_MIN_LENGTH = 12;
 
 export function UsersPage() {
   const { data: users = [], isLoading, error } = useUsers();
@@ -133,8 +135,10 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('viewer');
   const createUser = useCreateUser();
+  const { data: policy } = usePasswordPolicy();
+  const minLength = policy?.min_length ?? FALLBACK_MIN_LENGTH;
 
-  const tooShort = password.length > 0 && password.length < MIN_LENGTH;
+  const tooShort = password.length > 0 && password.length < minLength;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -158,15 +162,15 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
           <TextInput label="Логин" value={username} onChange={(e) => setUsername(e.currentTarget.value)} required />
           <PasswordInput
             label="Временный пароль"
-            description={`Не короче ${MIN_LENGTH} символов. Пользователь сменит его при первом входе.`}
+            description={`Не короче ${minLength} символов. Пользователь сменит его при первом входе.`}
             value={password}
             onChange={(e) => setPassword(e.currentTarget.value)}
-            error={tooShort ? `Слишком короткий — нужно не меньше ${MIN_LENGTH} символов` : null}
+            error={tooShort ? `Слишком короткий — нужно не меньше ${minLength} символов` : null}
             required
           />
           <Select label="Роль" data={ROLES} value={role} onChange={(v) => setRole((v as UserRole) ?? 'viewer')} />
           <Group justify="flex-end">
-            <Button type="submit" loading={createUser.isPending} disabled={password.length < MIN_LENGTH}>
+            <Button type="submit" loading={createUser.isPending} disabled={password.length < minLength}>
               Создать
             </Button>
           </Group>
@@ -212,8 +216,10 @@ function EditUserModal({ user, onClose }: { user: UserOut; onClose: () => void }
 function ResetPasswordModal({ user, onClose }: { user: UserOut; onClose: () => void }) {
   const [password, setPassword] = useState('');
   const resetPassword = useResetUserPassword();
+  const { data: policy } = usePasswordPolicy();
+  const minLength = policy?.min_length ?? FALLBACK_MIN_LENGTH;
 
-  const tooShort = password.length > 0 && password.length < MIN_LENGTH;
+  const tooShort = password.length > 0 && password.length < minLength;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -235,10 +241,10 @@ function ResetPasswordModal({ user, onClose }: { user: UserOut; onClose: () => v
         <Stack>
           <PasswordInput
             label="Временный пароль"
-            description={`Не короче ${MIN_LENGTH} символов`}
+            description={`Не короче ${minLength} символов`}
             value={password}
             onChange={(e) => setPassword(e.currentTarget.value)}
-            error={tooShort ? `Слишком короткий — нужно не меньше ${MIN_LENGTH} символов` : null}
+            error={tooShort ? `Слишком короткий — нужно не меньше ${minLength} символов` : null}
             required
             autoFocus
           />
@@ -246,7 +252,7 @@ function ResetPasswordModal({ user, onClose }: { user: UserOut; onClose: () => v
             Передайте пароль пользователю лично. При входе система потребует заменить его на свой.
           </Text>
           <Group justify="flex-end">
-            <Button type="submit" loading={resetPassword.isPending} disabled={password.length < MIN_LENGTH}>
+            <Button type="submit" loading={resetPassword.isPending} disabled={password.length < minLength}>
               Задать пароль
             </Button>
           </Group>

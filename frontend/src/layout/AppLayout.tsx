@@ -5,7 +5,7 @@ import {
 import {
   IconDeviceDesktop, IconPlugConnected, IconTopologyStar,
   IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
-  IconFileImport, IconBuildingFactory2, IconHistory, IconRouter,
+  IconFileImport, IconBuildingFactory2, IconHistory, IconRouter, IconSettings,
 } from '@tabler/icons-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -64,6 +64,7 @@ const NAV_SECTIONS: {
       { to: '/snmp', label: 'SNMP', icon: IconRouter },
       { to: '/sites', label: 'Площадки', icon: IconBuildingFactory2, admin: true },
       { to: '/users', label: 'Пользователи', icon: IconUsers, admin: true },
+      { to: '/settings', label: 'Настройки', icon: IconSettings, admin: true },
     ],
   },
 ];
@@ -90,6 +91,7 @@ const PAGE_TITLES: { test: (path: string) => boolean; title: string }[] = [
   { test: (p) => p === '/snmp', title: 'SNMP' },
   { test: (p) => p === '/sites', title: 'Площадки' },
   { test: (p) => p === '/users', title: 'Пользователи' },
+  { test: (p) => p === '/settings', title: 'Настройки' },
 ];
 
 export function AppLayout() {
@@ -110,9 +112,13 @@ export function AppLayout() {
     document.title = page ? `${page.title} — WireMap` : 'WireMap';
   }, [pathname]);
 
-  // Пароль назначен не владельцем — до смены работать нельзя. Модалка без
-  // крестика, мимо неё не пройти.
-  const mustChangePassword = user?.must_change_password ?? false;
+  // Две разные причины закрыть модалку без крестика: пароль назначен не
+  // владельцем (первый вход, сброс администратором) или просто устарел по
+  // сроку, настроенному в политике (см. `/settings/password-policy`).
+  // Причина нужна модалке отдельно — тексты подсказки у них разные.
+  const passwordAssigned = user?.must_change_password ?? false;
+  const passwordExpired = (user?.password_expired ?? false) && !passwordAssigned;
+  const mustChangePassword = passwordAssigned || passwordExpired;
 
   return (
     <AppShell
@@ -186,7 +192,11 @@ export function AppLayout() {
         <Outlet />
       </AppShell.Main>
       {(passwordModalOpen || mustChangePassword) && (
-        <ChangePasswordModal forced={mustChangePassword} onClose={() => setPasswordModalOpen(false)} />
+        <ChangePasswordModal
+          forced={mustChangePassword}
+          reason={passwordExpired ? 'expired' : 'assigned'}
+          onClose={() => setPasswordModalOpen(false)}
+        />
       )}
     </AppShell>
   );

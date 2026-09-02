@@ -173,3 +173,22 @@ def test_reset_by_admin_also_resets_age_clock(client, headers, users, db):
     assert reset.status_code == 200
     db.refresh(editor)
     assert (datetime.now(timezone.utc) - editor.password_changed_at).total_seconds() < 5
+
+
+def test_me_reports_password_expired(client, headers, users, db):
+    """/auth/me — единственное место, где фронтенду заранее видно, что
+    пароль устарел: остальные ручки, отдающие UserOut, этого не считают и
+    отдают null, что тоже проверяем."""
+    client.patch("/settings/password-policy", json={"max_age_days": 30}, headers=headers["admin"])
+    editor = users["editor"]
+    editor.password_changed_at = datetime.now(timezone.utc) - timedelta(days=31)
+    db.commit()
+
+    me = client.get("/auth/me", headers=headers["editor"]).json()
+    assert me["password_expired"] is True
+
+    fresh = client.get("/auth/me", headers=headers["admin"]).json()
+    assert fresh["password_expired"] is False
+
+    listed = client.get("/auth/users", headers=headers["admin"]).json()
+    assert all(u["password_expired"] is None for u in listed)

@@ -8,6 +8,8 @@
 `POST /auth/users/{id}/password` не разошлись в требовании.
 """
 
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app import models
@@ -31,3 +33,14 @@ def length_error(db: Session, password: str) -> str | None:
     if len(password) < policy.min_length:
         return f"Пароль короче {policy.min_length} символов"
     return None
+
+
+def is_expired(db: Session, user: models.User) -> bool:
+    """Тот же расчёт, что у `auth.require_password_not_expired` — вынесен
+    сюда, чтобы `/auth/me` мог заранее сказать фронтенду «пароль устарел»,
+    не дожидаясь первого запроса, упавшего 403-й."""
+    policy = get_policy(db)
+    if policy.max_age_days is None or user.password_changed_at is None:
+        return False
+    age_days = (datetime.now(timezone.utc) - user.password_changed_at).days
+    return age_days >= policy.max_age_days

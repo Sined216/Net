@@ -74,6 +74,12 @@ class UserOut(BaseModel):
     role: Role
     is_active: bool
     must_change_password: bool
+    # Считается на лету по PasswordPolicy.max_age_days, а не хранится:
+    # значение верно только в момент ответа. Заполняется только в /auth/me
+    # (auth_router.read_me) — там же, где фронтенд решает, показывать ли
+    # принудительную форму смены пароля; в остальных ответах остаётся
+    # `null`, потому что там этот вопрос не задаётся.
+    password_expired: Optional[bool] = None
     created_at: datetime
     version: int = 1
 

@@ -1,6 +1,7 @@
 import { apiFetch, setToken } from './client';
 import type {
   Token, UserOut, UserCreate, UserUpdate, PasswordChange, PasswordReset,
+  PasswordPolicyOut, PasswordPolicyUpdate,
   TagOut, TagCreate, TagUpdate,
   DeviceTypeOut, DeviceTypeCreate, DeviceTypeUpdate,
   ConnectorTypeOut, ConnectorTypeCreate, ConnectorTypeUpdate,
@@ -37,6 +38,11 @@ export const resetUserPassword = (id: number, body: PasswordReset) =>
   apiFetch<UserOut>(`/auth/users/${id}/password`, { method: 'POST', body });
 export const changeOwnPassword = (body: PasswordChange) =>
   apiFetch<UserOut>('/auth/me/password', { method: 'POST', body });
+
+// ---------- Настройки ----------
+export const getPasswordPolicy = () => apiFetch<PasswordPolicyOut>('/settings/password-policy');
+export const updatePasswordPolicy = (body: PasswordPolicyUpdate) =>
+  apiFetch<PasswordPolicyOut>('/settings/password-policy', { method: 'PATCH', body });
 
 // ---------- Tags ----------
 export const listTags = () => apiFetch<TagOut[]>('/tags');
