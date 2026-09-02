@@ -34,6 +34,7 @@ export const listUsers = () => apiFetch<UserOut[]>('/auth/users');
 export const createUser = (body: UserCreate) => apiFetch<UserOut>('/auth/users', { method: 'POST', body });
 export const updateUser = (id: number, body: UserUpdate) => apiFetch<UserOut>(`/auth/users/${id}`, { method: 'PATCH', body });
 export const deactivateUser = (id: number) => apiFetch<UserOut>(`/auth/users/${id}`, { method: 'DELETE' });
+export const deleteUserPermanently = (id: number) => apiFetch<void>(`/auth/users/${id}/permanent`, { method: 'DELETE' });
 export const resetUserPassword = (id: number, body: PasswordReset) =>
   apiFetch<UserOut>(`/auth/users/${id}/password`, { method: 'POST', body });
 export const changeOwnPassword = (body: PasswordChange) =>

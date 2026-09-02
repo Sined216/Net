@@ -38,6 +38,11 @@ class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=100)
     password: str = Password
     role: Role = "viewer"
+    # Обязательна не на уровне схемы, а в обработчике — и только для
+    # не-админа: администратору площадки не назначают, `sites.
+    # accessible_sites()` отдаёт ему все безусловно. Требовать выбор у
+    # него значило бы просить о том, что ни на что не повлияет.
+    site_ids: list[int] = Field(default_factory=list)
 
 
 class UserUpdate(BaseModel):

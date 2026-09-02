@@ -39,8 +39,11 @@ def test_only_admin_lists_users(client, headers):
     assert client.get("/auth/users", headers=headers["viewer"]).status_code == 403
 
 
-def test_only_admin_creates_users(client, headers):
-    payload = {"full_name": "Новый", "username": "newbie", "password": "какой-то-пароль", "role": "viewer"}
+def test_only_admin_creates_users(client, headers, site):
+    payload = {
+        "full_name": "Новый", "username": "newbie", "password": "какой-то-пароль",
+        "role": "viewer", "site_ids": [site.id],
+    }
     assert client.post("/auth/users", json=payload, headers=headers["editor"]).status_code == 403
 
     response = client.post("/auth/users", json=payload, headers=headers["admin"])
@@ -54,10 +57,13 @@ def test_duplicate_username_is_rejected(client, headers):
     assert response.status_code == 409
 
 
-def test_created_user_can_log_in(client, headers):
+def test_created_user_can_log_in(client, headers, site):
     client.post(
         "/auth/users",
-        json={"full_name": "Новый", "username": "newbie", "password": "какой-то-пароль", "role": "editor"},
+        json={
+            "full_name": "Новый", "username": "newbie", "password": "какой-то-пароль",
+            "role": "editor", "site_ids": [site.id],
+        },
         headers=headers["admin"],
     )
     response = client.post("/auth/login", data={"username": "newbie", "password": "какой-то-пароль"})

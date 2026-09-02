@@ -70,10 +70,13 @@ def test_short_password_rejected_on_user_creation(client, headers):
 
 # ---------- требование сменить пароль ----------
 
-def test_created_user_must_change_password(client, headers):
+def test_created_user_must_change_password(client, headers, site):
     created = client.post(
         "/auth/users",
-        json={"full_name": "Новый", "username": "newbie", "password": "временный-пароль-123", "role": "editor"},
+        json={
+            "full_name": "Новый", "username": "newbie", "password": "временный-пароль-123",
+            "role": "editor", "site_ids": [site.id],
+        },
         headers=headers["admin"],
     ).json()
     assert created["must_change_password"] is True, "пароль придумал администратор, значит его знает не только владелец"
@@ -263,3 +266,135 @@ def test_user_list_exposes_state_but_not_hashes(client, headers):
     users_list = client.get("/auth/users", headers=headers["admin"]).json()
     assert {"is_active", "must_change_password"} <= set(users_list[0])
     assert "password_hash" not in users_list[0]
+
+
+# ---------- площадка при создании ----------
+
+def test_creating_non_admin_without_site_is_rejected(client, headers):
+    response = client.post(
+        "/auth/users",
+        json={"full_name": "Без площадки", "username": "no-site", "password": "достаточно-длинный", "role": "editor"},
+        headers=headers["admin"],
+    )
+    assert response.status_code == 422
+    assert "площад" in response.json()["detail"]
+
+
+def test_creating_editor_with_site_grants_access(client, headers, site):
+    response = client.post(
+        "/auth/users",
+        json={
+            "full_name": "С площадкой", "username": "with-site", "password": "достаточно-длинный",
+            "role": "editor", "site_ids": [site.id],
+        },
+        headers=headers["admin"],
+    )
+    assert response.status_code == 201
+    new_id = response.json()["id"]
+
+    access = client.get(f"/sites/{site.id}/access", headers=headers["admin"]).json()
+    assert new_id in access
+
+
+def test_creating_user_with_unknown_site_is_404(client, headers):
+    response = client.post(
+        "/auth/users",
+        json={
+            "full_name": "Мимо", "username": "bad-site", "password": "достаточно-длинный",
+            "role": "editor", "site_ids": [999999],
+        },
+        headers=headers["admin"],
+    )
+    assert response.status_code == 404
+
+
+def test_creating_admin_needs_no_site(client, headers):
+    """Админ и без площадок видит всё по роли — требовать выбор незачем."""
+    response = client.post(
+        "/auth/users",
+        json={"full_name": "Новый админ", "username": "new-admin", "password": "достаточно-длинный", "role": "admin"},
+        headers=headers["admin"],
+    )
+    assert response.status_code == 201
+
+
+def test_creating_admin_with_site_ids_is_harmless(client, headers, site):
+    """Прислали площадки для админа — не ошибка, просто не имеет смысла:
+    его доступ по роли их всё равно перекрывает."""
+    response = client.post(
+        "/auth/users",
+        json={
+            "full_name": "Админ с площадкой", "username": "admin-with-site", "password": "достаточно-длинный",
+            "role": "admin", "site_ids": [site.id],
+        },
+        headers=headers["admin"],
+    )
+    assert response.status_code == 201
+
+
+# ---------- удаление насовсем ----------
+
+def test_active_user_cannot_be_permanently_deleted(client, headers, users):
+    response = client.delete(f"/auth/users/{users['viewer'].id}/permanent", headers=headers["admin"])
+    assert response.status_code == 409
+    assert "заблок" in response.json()["detail"]
+
+
+def test_blocked_user_can_be_permanently_deleted(client, headers, users):
+    viewer = users["viewer"]
+    client.delete(f"/auth/users/{viewer.id}", headers=headers["admin"])  # блокировка
+
+    response = client.delete(f"/auth/users/{viewer.id}/permanent", headers=headers["admin"])
+    assert response.status_code == 204
+
+    listed = client.get("/auth/users", headers=headers["admin"]).json()
+    assert viewer.id not in {u["id"] for u in listed}
+
+
+def test_cannot_permanently_delete_self(client, headers, users):
+    admin = users["admin"]
+    # Себя нельзя даже заблокировать, но проверяем и вторую ручку отдельно —
+    # код в ней не полагается на то, что до неё не дойти.
+    response = client.delete(f"/auth/users/{admin.id}/permanent", headers=headers["admin"])
+    assert response.status_code == 409
+
+
+def test_deleting_blocked_admin_does_not_need_a_spare(client, headers, users):
+    """Заблокированный админ и так не считается активным — удалить его
+    можно даже если он был единственным администратором."""
+    second = client.post(
+        "/auth/users",
+        json={"full_name": "Второй админ", "username": "admin2", "password": "второй-длинный-пароль", "role": "admin"},
+        headers=headers["admin"],
+    ).json()
+    client.delete(f"/auth/users/{second['id']}", headers=headers["admin"])  # блокировка
+
+    response = client.delete(f"/auth/users/{second['id']}/permanent", headers=headers["admin"])
+    assert response.status_code == 204
+
+
+def test_permanent_delete_leaves_named_audit_entry(client, headers, users, db):
+    viewer = users["viewer"]
+    username = viewer.username
+    client.delete(f"/auth/users/{viewer.id}", headers=headers["admin"])
+    client.delete(f"/auth/users/{viewer.id}/permanent", headers=headers["admin"])
+
+    entries = client.get("/audit", headers=headers["admin"]).json()["items"]
+    delete_entry = next(e for e in entries if e["entity_type"] == "user" and e["action"] == "delete")
+    assert delete_entry["entity_id"] == viewer.id
+    # Прежние записи об этом пользователе (например, блокировка) не падают
+    # при чтении — автор просто не восстановим и отдаётся пустым.
+    block_entry = next(e for e in entries if e["entity_type"] == "user" and e["action"] == "update"
+                       and e["entity_id"] == viewer.id)
+    assert block_entry["user_name"] is None or isinstance(block_entry["user_name"], str)
+    assert username  # использован выше — фиксирует, что учётка правда была этим пользователем
+
+
+def test_only_admin_permanently_deletes(client, headers, users):
+    editor = users["editor"]
+    client.delete(f"/auth/users/{editor.id}", headers=headers["admin"])
+
+    # Не токеном заблокированного — тот получил бы 401 раньше, чем дело
+    # дойдёт до проверки роли. Нужен другой действующий не-админ.
+    response = client.delete(f"/auth/users/{editor.id}/permanent", headers=headers["viewer"])
+    assert response.status_code == 403

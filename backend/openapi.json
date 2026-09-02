@@ -5543,6 +5543,13 @@
             "title": "Role",
             "type": "string"
           },
+          "site_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Site Ids",
+            "type": "array"
+          },
           "username": {
             "maxLength": 100,
             "minLength": 1,
@@ -6473,6 +6480,47 @@
           }
         ],
         "summary": "Reset User Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/users/{user_id}/permanent": {
+      "delete": {
+        "description": "Настоящее удаление — рядом с блокировкой, а не вместо неё.\n\nТребует, чтобы учётная запись уже была заблокирована: это не лишняя\nформальность, а пауза перед необратимым шагом — блокировка и так снимает\nдоступ, удалять сразу же почти никогда не нужно. Защиты «не последний\nадминистратор» здесь нарочно нет: она бережёт активных админов, а\nзаблокированный админ в их число и так не входит (см.\n`_assert_not_last_admin`) — его удаление на этот счёт ничего не меняет,\nрешение уже было принято блокировкой.\n\nСсылки на пользователя (`audit_log.user_id` и подобные) — все\n`ON DELETE SET NULL`, кроме `user_sites` (`CASCADE`), так что запись\nпропадает, не ломая прошлые записи журнала — они просто теряют указание\nна автора, оставаясь на месте. Поэтому имя и логин фиксируются в самой\nзаписи об удалении, пока ссылаться ещё на что: дальше узнать, кто это\nбыл, будет неоткуда.",
+        "operationId": "delete_user_permanently_auth_users__user_id__permanent_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete User Permanently",
         "tags": [
           "auth"
         ]

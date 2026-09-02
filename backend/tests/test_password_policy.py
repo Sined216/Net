@@ -41,7 +41,7 @@ def test_admin_changes_min_length(client, headers):
     assert again["min_length"] == 20
 
 
-def test_new_min_length_applies_to_new_passwords(client, headers):
+def test_new_min_length_applies_to_new_passwords(client, headers, site):
     """Не только к тому, что видно в настройках, — к самой проверке при
     создании и смене пароля, той же ручкой, что раньше проверяла зашитые 12."""
     client.patch("/settings/password-policy", json={"min_length": 20}, headers=headers["admin"])
@@ -60,7 +60,10 @@ def test_new_min_length_applies_to_new_passwords(client, headers):
     long_enough = short_but_used_to_pass + "-ещё-длиннее"
     ok = client.post(
         "/auth/users",
-        json={"full_name": "Новый", "username": "newbie", "password": long_enough, "role": "viewer"},
+        json={
+            "full_name": "Новый", "username": "newbie", "password": long_enough,
+            "role": "viewer", "site_ids": [site.id],
+        },
         headers=headers["admin"],
     )
     assert ok.status_code == 201

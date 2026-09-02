@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import {
-  Alert, Badge, Button, Group, Modal, PasswordInput, Select, Stack, Table, Text,
+  Alert, Badge, Button, Group, Modal, MultiSelect, PasswordInput, Select, Stack, Table, Text,
   TextInput, Title,
 } from '@mantine/core';
 import { IconKey, IconLock, IconLockOpen, IconPlus } from '@tabler/icons-react';
-import { EditAction, RowAction } from '../components/RowAction';
+import { DeleteAction, EditAction, RowAction } from '../components/RowAction';
 import {
-  useCreateUser, useDeactivateUser, usePasswordPolicy, useResetUserPassword, useUpdateUser, useUsers,
+  useCreateUser, useDeactivateUser, useDeleteUserPermanently, usePasswordPolicy, useResetUserPassword,
+  useSites, useUpdateUser, useUsers,
 } from '../api/hooks';
 import { useAuth } from '../auth/AuthContext';
 import { notifyError, notifySuccess } from '../lib/notify';
@@ -28,6 +29,7 @@ export function UsersPage() {
   const [resetting, setResetting] = useState<UserOut | null>(null);
   const deactivate = useDeactivateUser();
   const update = useUpdateUser();
+  const deletePermanently = useDeleteUserPermanently();
 
   async function toggleActive(user: UserOut) {
     if (user.is_active) {
@@ -39,6 +41,20 @@ export function UsersPage() {
         { onSuccess: () => notifySuccess('Доступ восстановлен'), onError: notifyError },
       );
     }
+  }
+
+  async function handleDeletePermanently(user: UserOut) {
+    // Сильнее, чем у блокировки: шаг необратим, и об этом стоит сказать
+    // прямо в вопросе, а не только в подписи под таблицей.
+    if (!(await confirmAction(
+      `Удалить «${user.full_name}» насовсем? Это нельзя отменить. Записи в журнале изменений останутся, `
+      + 'но потеряют имя автора.',
+      { confirmLabel: 'Удалить насовсем' },
+    ))) return;
+    deletePermanently.mutate(user.id, {
+      onSuccess: () => notifySuccess('Учётная запись удалена'),
+      onError: notifyError,
+    });
   }
 
   return (
@@ -102,6 +118,15 @@ export function UsersPage() {
                     disabled={u.is_active && u.id === me?.id}
                     onClick={() => toggleActive(u)}
                   />
+                  {/* Насовсем — только у уже заблокированных: блокировка
+                      здесь не формальность, а обязательная пауза перед
+                      необратимым шагом. */}
+                  {!u.is_active && (
+                    <DeleteAction
+                      label={`Удалить «${u.full_name}» насовсем`}
+                      onClick={() => handleDeletePermanently(u)}
+                    />
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>
@@ -117,9 +142,10 @@ export function UsersPage() {
       </Table>
 
       <Text size="sm" c="dimmed">
-        Пользователи не удаляются, а блокируются: журнал изменений ссылается на автора, и записи
-        «кто менял устройство» не должны терять имя. Последнего активного администратора нельзя ни
-        разжаловать, ни заблокировать.
+        Пользователи сначала блокируются, а не удаляются: журнал изменений ссылается на автора, и записи
+        «кто менял устройство» не должны терять имя без предупреждения. Удалить насовсем можно только
+        уже заблокированную запись — тогда прошлые записи журнала теряют имя автора безвозвратно.
+        Последнего активного администратора нельзя ни разжаловать, ни заблокировать.
       </Text>
 
       {creating && <CreateUserModal onClose={() => setCreating(false)} />}
@@ -134,16 +160,27 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('viewer');
+  const [siteIds, setSiteIds] = useState<string[]>([]);
   const createUser = useCreateUser();
   const { data: policy } = usePasswordPolicy();
+  const { data: sites = [] } = useSites();
   const minLength = policy?.min_length ?? FALLBACK_MIN_LENGTH;
 
   const tooShort = password.length > 0 && password.length < minLength;
+  // Админу площадку не назначают — sites.accessible_sites() отдаёт ему все
+  // безусловно, выбор для него ничего не решает.
+  const needsSite = role !== 'admin';
+  const noSite = needsSite && siteIds.length === 0;
+  const canSubmit = password.length >= minLength && !noSite;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!canSubmit) return;
     createUser.mutate(
-      { full_name: fullName.trim(), username: username.trim(), password, role },
+      {
+        full_name: fullName.trim(), username: username.trim(), password, role,
+        site_ids: needsSite ? siteIds.map(Number) : [],
+      },
       {
         onSuccess: () => {
           notifySuccess('Пользователь создан — при первом входе он сменит пароль');
@@ -169,8 +206,19 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             required
           />
           <Select label="Роль" data={ROLES} value={role} onChange={(v) => setRole((v as UserRole) ?? 'viewer')} />
+          {needsSite && (
+            <MultiSelect
+              label="Площадки"
+              description="Без неё входить будет некуда — доступ выдаётся сразу"
+              data={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+              value={siteIds}
+              onChange={setSiteIds}
+              error={noSite ? 'Выберите хотя бы одну площадку' : null}
+              required
+            />
+          )}
           <Group justify="flex-end">
-            <Button type="submit" loading={createUser.isPending} disabled={password.length < minLength}>
+            <Button type="submit" loading={createUser.isPending} disabled={!canSubmit}>
               Создать
             </Button>
           </Group>

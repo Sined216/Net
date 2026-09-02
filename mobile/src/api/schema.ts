@@ -135,6 +135,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/users/{user_id}/permanent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete User Permanently
+         * @description Настоящее удаление — рядом с блокировкой, а не вместо неё.
+         *
+         *     Требует, чтобы учётная запись уже была заблокирована: это не лишняя
+         *     формальность, а пауза перед необратимым шагом — блокировка и так снимает
+         *     доступ, удалять сразу же почти никогда не нужно. Защиты «не последний
+         *     администратор» здесь нарочно нет: она бережёт активных админов, а
+         *     заблокированный админ в их число и так не входит (см.
+         *     `_assert_not_last_admin`) — его удаление на этот счёт ничего не меняет,
+         *     решение уже было принято блокировкой.
+         *
+         *     Ссылки на пользователя (`audit_log.user_id` и подобные) — все
+         *     `ON DELETE SET NULL`, кроме `user_sites` (`CASCADE`), так что запись
+         *     пропадает, не ломая прошлые записи журнала — они просто теряют указание
+         *     на автора, оставаясь на месте. Поэтому имя и логин фиксируются в самой
+         *     записи об удалении, пока ссылаться ещё на что: дальше узнать, кто это
+         *     был, будет неоткуда.
+         */
+        delete: operations["delete_user_permanently_auth_users__user_id__permanent_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/connector-types": {
         parameters: {
             query?: never;
@@ -3158,6 +3193,8 @@ export interface components {
              * @enum {string}
              */
             role: "admin" | "editor" | "viewer";
+            /** Site Ids */
+            site_ids?: number[];
             /** Username */
             username: string;
         };
@@ -3551,6 +3588,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_user_permanently_auth_users__user_id__permanent_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

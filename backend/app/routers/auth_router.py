@@ -130,6 +130,17 @@ def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db),
     length_error = password_policy.length_error(db, payload.password)
     if length_error:
         raise HTTPException(status_code=422, detail=length_error)
+
+    site_ids = sorted(set(payload.site_ids))
+    if payload.role != "admin" and not site_ids:
+        # Админу площадку не назначают — он видит все по роли; остальным
+        # без неё нечего делать: первый же запрос упрётся в «нет доступа».
+        raise HTTPException(status_code=422, detail="Выберите хотя бы одну площадку")
+    if site_ids:
+        found = db.query(models.Site.id).filter(models.Site.id.in_(site_ids)).count()
+        if found != len(site_ids):
+            raise HTTPException(status_code=404, detail="Одна из площадок не найдена")
+
     user = models.User(
         full_name=payload.full_name,
         username=payload.username,
@@ -139,7 +150,12 @@ def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db),
         must_change_password=True,
     )
     db.add(user)
-    log_change(db, admin.id, "create", "user", None, old=None, new={"username": payload.username, "role": payload.role})
+    db.flush()  # нужен user.id — площадки вставляются в том же коммите
+    for site_id in site_ids:
+        db.execute(models.user_sites.insert().values(user_id=user.id, site_id=site_id))
+
+    log_change(db, admin.id, "create", "user", None, old=None,
+               new={"username": payload.username, "role": payload.role, "доступ": site_ids})
     db.commit()
     db.refresh(user)
     return user
@@ -206,3 +222,35 @@ def deactivate_user(user_id: int, db: Session = Depends(get_db),
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.delete("/users/{user_id}/permanent", status_code=204)
+def delete_user_permanently(user_id: int, db: Session = Depends(get_db),
+                            admin: models.User = Depends(auth.can_admin)):
+    """Настоящее удаление — рядом с блокировкой, а не вместо неё.
+
+    Требует, чтобы учётная запись уже была заблокирована: это не лишняя
+    формальность, а пауза перед необратимым шагом — блокировка и так снимает
+    доступ, удалять сразу же почти никогда не нужно. Защиты «не последний
+    администратор» здесь нарочно нет: она бережёт активных админов, а
+    заблокированный админ в их число и так не входит (см.
+    `_assert_not_last_admin`) — его удаление на этот счёт ничего не меняет,
+    решение уже было принято блокировкой.
+
+    Ссылки на пользователя (`audit_log.user_id` и подобные) — все
+    `ON DELETE SET NULL`, кроме `user_sites` (`CASCADE`), так что запись
+    пропадает, не ломая прошлые записи журнала — они просто теряют указание
+    на автора, оставаясь на месте. Поэтому имя и логин фиксируются в самой
+    записи об удалении, пока ссылаться ещё на что: дальше узнать, кто это
+    был, будет неоткуда.
+    """
+    user = _get_user(db, user_id)
+    if user.id == admin.id:
+        raise HTTPException(status_code=409, detail="Нельзя удалить самого себя")
+    if user.is_active:
+        raise HTTPException(status_code=409, detail="Сначала заблокируйте учётную запись, прежде чем удалять её насовсем")
+
+    log_change(db, admin.id, "delete", "user", user.id,
+               old={"full_name": user.full_name, "username": user.username, "role": user.role}, new=None)
+    db.delete(user)
+    db.commit()
