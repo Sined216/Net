@@ -2993,7 +2993,6 @@
           },
           "new_password": {
             "maxLength": 128,
-            "minLength": 12,
             "title": "New Password",
             "type": "string"
           }
@@ -3005,12 +3004,83 @@
         "title": "PasswordChange",
         "type": "object"
       },
+      "PasswordPolicyOut": {
+        "properties": {
+          "max_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
+          },
+          "min_length": {
+            "title": "Min Length",
+            "type": "integer"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min_length"
+        ],
+        "title": "PasswordPolicyOut",
+        "type": "object"
+      },
+      "PasswordPolicyUpdate": {
+        "description": "Правка политики. Читается обработчиком через `exclude_unset=True`\n(тот же приём, что у `UserUpdate`/`SiteUpdate`) — иначе не отличить\n«поле не прислали» от «прислали null», а `max_age_days: null` — это\nосмысленное значение: выключить срок действия, а не оставить как есть.",
+        "properties": {
+          "max_age_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
+          },
+          "min_length": {
+            "anyOf": [
+              {
+                "maximum": 128.0,
+                "minimum": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Length"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "PasswordPolicyUpdate",
+        "type": "object"
+      },
       "PasswordReset": {
         "description": "Сброс пароля администратором: текущий он не знает, поэтому не\nспрашивается. Пользователю ставится требование сменить пароль.",
         "properties": {
           "new_password": {
             "maxLength": 128,
-            "minLength": 12,
             "title": "New Password",
             "type": "string"
           }
@@ -5460,7 +5530,6 @@
           },
           "password": {
             "maxLength": 128,
-            "minLength": 12,
             "title": "Password",
             "type": "string"
           },
@@ -10076,6 +10145,77 @@
         "summary": "Search",
         "tags": [
           "interfaces"
+        ]
+      }
+    },
+    "/settings/password-policy": {
+      "get": {
+        "description": "Доступна любой роли, не только админу: экран входа и смены пароля\nподсказывает требуемую длину до того, как человек её нарушит, и это\nне более чувствительная информация, чем сама форма.",
+        "operationId": "read_password_policy_settings_password_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Password Policy",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "update_password_policy_settings_password_policy_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Password Policy",
+        "tags": [
+          "settings"
         ]
       }
     },

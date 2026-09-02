@@ -97,6 +97,11 @@ class User(Base):
     failed_logins = Column(Integer, nullable=False, server_default="0")
     locked_until = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Когда пароль менялся в последний раз — по нему считается принудительная
+    # смена по сроку (`PasswordPolicy.max_age_days`). При заведении строки
+    # совпадает с `created_at`: до появления этой колонки момент смены никто
+    # не помнил, а «только что создан» — не худшее приближение.
+    password_changed_at = Column(DateTime(timezone=True), server_default=func.now())
     # Номер правки — см. app/versioning.py.
     version = Column(Integer, nullable=False, server_default="1")
 
@@ -684,4 +689,28 @@ class AuditLog(Base):
         # Журнал листают либо целиком по времени, либо по конкретной записи
         # («что было с этим устройством») — под оба случая по индексу.
         Index("ix_audit_entity", "entity_type", "entity_id"),
+    )
+
+
+class PasswordPolicy(Base):
+    """Требования к паролю — одна строка на всю систему, не на площадку:
+    от того, на какой фабрике человек работает, требования не зависят.
+
+    Единственная строка с фиксированным id, а не общий ключ-значение: поля
+    известны и типизированы (в отличие, скажем, от настроек принтера,
+    которые могут обрасти чем угодно), заводить под них универсальное
+    хранилище — усложнение без пользы. См. `app/password_policy.py`, где
+    длина проверяется в обработчиках, а не самой pydantic-схемой: значение
+    из базы схема на этапе импорта увидеть не может.
+    """
+    __tablename__ = "password_policy"
+    id = Column(Integer, primary_key=True, server_default="1")
+    min_length = Column(Integer, nullable=False, server_default="12")
+    # NULL — без принудительной смены по сроку.
+    max_age_days = Column(Integer)
+    version = Column(Integer, nullable=False, server_default="1")
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_password_policy_singleton"),
+        CheckConstraint("min_length BETWEEN 8 AND 128", name="ck_password_policy_min_length"),
     )

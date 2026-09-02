@@ -19,11 +19,13 @@ LinkSource = Literal["manual", "snmp", "lldp"]
 
 
 # ---------- Auth ----------
-# Двенадцать символов — рекомендация OWASP для паролей без второго фактора.
-# Требование длины, а не «одна заглавная и цифра»: длина даёт стойкость, а
-# правила состава лишь толкают людей к «Password1!».
-MIN_PASSWORD_LENGTH = 12
-Password = Field(min_length=MIN_PASSWORD_LENGTH, max_length=128)
+# Минимальная длина настраивается администратором (см. PasswordPolicy,
+# app/password_policy.py) и потому не может быть ограничением самого поля:
+# pydantic вычисляет Field(...) один раз при импорте модуля, а не на каждый
+# запрос, — заглянуть в базу оно не в состоянии. Верхняя граница здесь
+# осталась: это не часть политики, а защита от абсурдно длинных значений
+# в самом поле, вне зависимости от того, что настроил админ.
+Password = Field(max_length=128)
 
 
 class Token(BaseModel):
@@ -79,6 +81,24 @@ class UserOut(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class PasswordPolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    min_length: int
+    max_age_days: Optional[int] = None
+    version: int = 1
+
+
+class PasswordPolicyUpdate(BaseModel):
+    """Правка политики. Читается обработчиком через `exclude_unset=True`
+    (тот же приём, что у `UserUpdate`/`SiteUpdate`) — иначе не отличить
+    «поле не прислали» от «прислали null», а `max_age_days: null` — это
+    осмысленное значение: выключить срок действия, а не оставить как есть.
+    """
+    version: Optional[int] = None
+    min_length: Optional[int] = Field(default=None, ge=8, le=128)
+    max_age_days: Optional[int] = Field(default=None, ge=1)
 
 
 # ---------- Журнал изменений ----------

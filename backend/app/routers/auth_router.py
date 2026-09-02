@@ -1,9 +1,11 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth, versioning
+from app import models, schemas, auth, password_policy, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -96,9 +98,13 @@ def change_own_password(payload: schemas.PasswordChange, db: Session = Depends(g
         raise HTTPException(status_code=400, detail="Текущий пароль указан неверно")
     if payload.new_password == payload.current_password:
         raise HTTPException(status_code=400, detail="Новый пароль совпадает с текущим")
+    length_error = password_policy.length_error(db, payload.new_password)
+    if length_error:
+        raise HTTPException(status_code=422, detail=length_error)
 
     current_user.password_hash = auth.hash_password(payload.new_password)
     current_user.must_change_password = False
+    current_user.password_changed_at = datetime.now(timezone.utc)
     log_change(db, current_user.id, "update", "user", current_user.id,
                old={"password": "изменён"}, new=None)
     db.commit()
@@ -116,6 +122,9 @@ def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db),
                 admin: models.User = Depends(auth.can_admin)):
     if db.query(models.User).filter(models.User.username == payload.username).first():
         raise HTTPException(status_code=409, detail="Пользователь с таким логином уже существует")
+    length_error = password_policy.length_error(db, payload.password)
+    if length_error:
+        raise HTTPException(status_code=422, detail=length_error)
     user = models.User(
         full_name=payload.full_name,
         username=payload.username,
@@ -159,9 +168,13 @@ def update_user(user_id: int, payload: schemas.UserUpdate, db: Session = Depends
 def reset_user_password(user_id: int, payload: schemas.PasswordReset, db: Session = Depends(get_db),
                         admin: models.User = Depends(auth.can_admin)):
     user = _get_user(db, user_id)
+    length_error = password_policy.length_error(db, payload.new_password)
+    if length_error:
+        raise HTTPException(status_code=422, detail=length_error)
     user.password_hash = auth.hash_password(payload.new_password)
     # Пароль назначен чужим человеком — владелец обязан сменить его при входе.
     user.must_change_password = True
+    user.password_changed_at = datetime.now(timezone.utc)
 
     log_change(db, admin.id, "update", "user", user.id, old={"password": "сброшен администратором"}, new=None)
     db.commit()

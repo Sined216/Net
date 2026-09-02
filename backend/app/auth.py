@@ -133,13 +133,39 @@ def require_password_changed(user: models.User = Depends(get_current_user)) -> m
     return user
 
 
+def require_password_not_expired(
+    user: models.User = Depends(require_password_changed),
+    db: Session = Depends(get_db),
+) -> models.User:
+    """Вторая причина потребовать новый пароль — не «его назначили не вы»,
+    а «этому уже слишком много дней». Срок настраивается администратором
+    (`PasswordPolicy.max_age_days`, см. `app/password_policy.py`); `NULL`
+    значит, что срока нет, и эта проверка ничего не делает.
+
+    Композиция та же, что у `require_password_changed`: строится поверх
+    него, а не рядом, — так `must_change_password` проверяется первым и не
+    даёт двух разных 403 за один запрос.
+    """
+    from app.password_policy import get_policy  # локальный импорт: без цикла auth ↔ password_policy
+
+    policy = get_policy(db)
+    if policy.max_age_days is not None and user.password_changed_at is not None:
+        age_days = (datetime.now(timezone.utc) - user.password_changed_at).days
+        if age_days >= policy.max_age_days:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Пароль устарел — смените его: POST /auth/me/password",
+            )
+    return user
+
+
 def require_role(allowed_roles: List[str]):
-    # `require_password_changed`, а не голый `get_current_user`: без этого
-    # админ с временным паролем мог бы через `/auth/users/*` управлять
-    # чужими учётными записями, ни разу не сменив собственный пароль —
-    # эти маршруты живут в `auth_router`, который не проходит через общую
-    # проверку роутеров в `main.py`.
-    def checker(user: models.User = Depends(require_password_changed)) -> models.User:
+    # `require_password_not_expired`, а не голый `get_current_user`: без
+    # этого админ с временным или устаревшим паролем мог бы через
+    # `/auth/users/*` управлять чужими учётными записями, ни разу не сменив
+    # собственный, — эти маршруты живут в `auth_router`, который не
+    # проходит через общую проверку роутеров в `main.py`.
+    def checker(user: models.User = Depends(require_password_not_expired)) -> models.User:
         if user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

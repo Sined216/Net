@@ -11,7 +11,7 @@ from app.database import SessionLocal
 from app import codegen, models, auth
 from app.routers import (
     auth_router, tags, catalog, templates, devices, interfaces, links, link_templates,
-    topology, topology_groups, schema, imports, sites, audit, snmp, sync,
+    topology, topology_groups, schema, imports, sites, audit, snmp, sync, system_settings,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -44,12 +44,14 @@ app.add_middleware(
 # токена. Исключения ровно два и они осознанные: вход (/auth/login, внутри
 # auth_router) и /health для проб контейнера.
 #
-# `require_password_changed`, а не голый `get_current_user`: пароль,
+# `require_password_not_expired`, а не голый `get_current_user`: пароль,
 # назначенный не самим человеком, до смены не должен пускать никуда, кроме
-# неё самой. Раньше это проверял только браузер, и токен, выданный по
-# временному паролю, был полноценным — auth_router подключается отдельно и
-# без этой проверки, иначе сменить временный пароль стало бы нечем.
-authenticated = [Depends(auth.require_password_changed)]
+# неё самой, — то же верно для пароля, который никто не менял дольше
+# срока, разрешённого политикой (`app/password_policy.py`). Раньше первую
+# из этих проверок делал только браузер, и токен, выданный по временному
+# паролю, был полноценным — auth_router подключается отдельно и без неё,
+# иначе сменить временный пароль стало бы нечем.
+authenticated = [Depends(auth.require_password_not_expired)]
 
 app.include_router(auth_router.router)
 # У sites та же оговорка, что у auth_router: список площадок собирает
@@ -60,6 +62,11 @@ app.include_router(auth_router.router)
 # Пишущие маршруты внутри `sites` защищены отдельно, через `can_admin`,
 # которая эту же проверку несёт сама.
 app.include_router(sites.router, dependencies=[Depends(auth.get_current_user)])
+# Та же оговорка и у настроек: форма смены пароля должна знать требуемую
+# длину ещё до того, как пароль сменят, — иначе показывать в ней нечего
+# при первом входе с временным паролем. Правка настроек (PATCH) защищена
+# отдельно, через `can_admin` внутри самого роутера.
+app.include_router(system_settings.router, dependencies=[Depends(auth.get_current_user)])
 for module in (tags, catalog, templates, devices, interfaces, links, link_templates,
                topology, topology_groups, schema, imports, audit, snmp, sync):
     app.include_router(module.router, dependencies=authenticated)

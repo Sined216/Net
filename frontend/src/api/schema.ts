@@ -1019,6 +1019,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/password-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Password Policy
+         * @description Доступна любой роли, не только админу: экран входа и смены пароля
+         *     подсказывает требуемую длину до того, как человек её нарушит, и это
+         *     не более чувствительная информация, чем сама форма.
+         */
+        get: operations["read_password_policy_settings_password_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Password Policy */
+        patch: operations["update_password_policy_settings_password_policy_patch"];
+        trace?: never;
+    };
     "/sites": {
         parameters: {
             query?: never;
@@ -2312,6 +2335,33 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /** PasswordPolicyOut */
+        PasswordPolicyOut: {
+            /** Max Age Days */
+            max_age_days?: number | null;
+            /** Min Length */
+            min_length: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * PasswordPolicyUpdate
+         * @description Правка политики. Читается обработчиком через `exclude_unset=True`
+         *     (тот же приём, что у `UserUpdate`/`SiteUpdate`) — иначе не отличить
+         *     «поле не прислали» от «прислали null», а `max_age_days: null` — это
+         *     осмысленное значение: выключить срок действия, а не оставить как есть.
+         */
+        PasswordPolicyUpdate: {
+            /** Max Age Days */
+            max_age_days?: number | null;
+            /** Min Length */
+            min_length?: number | null;
+            /** Version */
+            version?: number | null;
         };
         /**
          * PasswordReset
@@ -5446,6 +5496,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_password_policy_settings_password_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordPolicyOut"];
+                };
+            };
+        };
+    };
+    update_password_policy_settings_password_policy_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordPolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordPolicyOut"];
                 };
             };
             /** @description Validation Error */
