@@ -11,15 +11,16 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { listTemplateNames } from '../db/database';
 import { queueDevice } from '../db/queue';
 import { useAppState } from '../state';
-import { Button, Card, Dim, Field, Notice, Screen, Title, colors } from '../ui';
-import type { RootStackParams } from '../App';
+import {
+  Alert, Button, Dim, Field, Group, Paper, Screen, Stack,
+} from '../ui';
+import type { AddRoutes } from '../navigation/types';
 
-type Props = NativeStackScreenProps<RootStackParams, 'AddDevice'>;
+type Props = NativeStackScreenProps<AddRoutes, 'AddDevice'>;
 
 export function AddDeviceScreen({ navigation }: Props) {
   const { refresh } = useAppState();
@@ -59,63 +60,64 @@ export function AddDeviceScreen({ navigation }: Props) {
   }
 
   return (
-    <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
-        <Card>
-          <Title>Нашёл устройство</Title>
-          <Dim>
-            Запишите, как есть. В офисе это попадёт на разбор, а не сразу в спецификацию — там и уточните.
-          </Dim>
-        </Card>
+    <Screen scroll>
+      <Stack>
+        <Dim>
+          Запишите, как есть. В офисе это попадёт на разбор, а не сразу в спецификацию — там и уточните.
+        </Dim>
 
-        <Card>
-          <Field
-            label="Название" hint="Как называют на месте: «свитч в щитовой»"
-            value={name} onChangeText={setName}
-          />
-          <Field
-            label="Модель" hint="Как написано на корпусе"
-            value={templateName} onChangeText={setTemplateName} autoCapitalize="none"
-          />
-          {suggestions.length > 0 ? (
-            <View style={styles.suggest}>
-              <Dim>Есть в справочнике:</Dim>
-              {suggestions.map((item) => (
-                <Pressable key={item} onPress={() => setTemplateName(item)} style={styles.suggestItem}>
-                  <Text style={styles.suggestText}>{item}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          <Field
-            label="IP-адрес" value={ip} onChangeText={setIp}
-            autoCapitalize="none" placeholder="10.10.1.5"
-          />
-          <Field
-            label="MAC" value={mac} onChangeText={setMac}
-            autoCapitalize="none" placeholder="00:11:22:33:44:55"
-          />
-          <Field
-            label="Заметка" hint="Где стоит, что рядом, что смутило"
-            value={notes} onChangeText={setNotes} multiline
-          />
+        <Paper>
+          <Stack gap="lg">
+            <Field
+              label="Название" hint="Как называют на месте: «свитч в щитовой»"
+              value={name} onChangeText={setName}
+            />
+            <Field
+              label="Модель" hint="Как написано на корпусе"
+              value={templateName} onChangeText={setTemplateName} autoCapitalize="none"
+            />
+            {suggestions.length > 0 ? (
+              <Stack gap="sm">
+                <Dim size="xs">Есть в справочнике:</Dim>
+                <Group gap="sm" wrap>
+                  {suggestions.map((item) => (
+                    <Button
+                      key={item} title={item} variant="default" size="sm"
+                      onPress={() => setTemplateName(item)}
+                    />
+                  ))}
+                </Group>
+              </Stack>
+            ) : null}
+            <Field
+              label="IP-адрес" value={ip} onChangeText={setIp}
+              autoCapitalize="none" placeholder="10.10.1.5"
+            />
+            <Field
+              label="MAC" value={mac} onChangeText={setMac}
+              autoCapitalize="none" placeholder="00:11:22:33:44:55"
+            />
+            <Field
+              label="Заметка" hint="Где стоит, что рядом, что смутило"
+              value={notes} onChangeText={setNotes} multiline
+            />
+          </Stack>
+        </Paper>
 
-          {!canSave ? (
-            <Notice kind="warn">Заполните хотя бы название или модель — иначе запись нечем опознать.</Notice>
-          ) : null}
-          <Button title="Сохранить" onPress={handleSave} busy={saving} disabled={!canSave} />
-          <Dim>Сохраняется на телефон. Уедет в WireMap, когда вернётесь в офис.</Dim>
-        </Card>
-      </ScrollView>
+        {!canSave ? (
+          <Alert color="yellow">Заполните хотя бы название или модель — иначе запись нечем опознать.</Alert>
+        ) : null}
+
+        <Group justify="end" gap="sm">
+          <Button title="Отмена" variant="default" onPress={() => navigation.goBack()} />
+          <Button
+            title="Сохранить" icon="check"
+            onPress={() => { void handleSave(); }}
+            busy={saving} disabled={!canSave}
+          />
+        </Group>
+        <Dim size="xs">Сохраняется на телефон. Уедет в WireMap, когда вернётесь в офис.</Dim>
+      </Stack>
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  suggest: { marginTop: -6, marginBottom: 14 },
-  suggestItem: {
-    paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#fff',
-    borderWidth: 1, borderColor: colors.border, borderRadius: 8, marginTop: 6,
-  },
-  suggestText: { fontSize: 16, color: colors.accent },
-});

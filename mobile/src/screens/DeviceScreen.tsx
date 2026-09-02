@@ -9,14 +9,18 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { readDevice, readInterfaces, readLinkForInterface, readTemplateName } from '../db/database';
+import {
+  readDevice, readInterfaces, readLinksForInterfaces, readTemplateName,
+} from '../db/database';
 import type { DeviceOut, InterfaceOut, LinkOut } from '../api/types';
-import { Button, Card, Dim, Screen, Title, colors } from '../ui';
-import type { RootStackParams } from '../App';
+import {
+  Badge, Button, Dim, Empty, Group, ListRow, Paper, Screen, Stack, Text, Title, dash, space,
+} from '../ui';
+import type { SpecStackParams } from '../navigation/types';
 
-type Props = NativeStackScreenProps<RootStackParams, 'Device'>;
+type Props = NativeStackScreenProps<SpecStackParams, 'Device'>;
 
 interface PortRow {
   iface: InterfaceOut;
@@ -33,65 +37,96 @@ export function DeviceScreen({ route, navigation }: Props) {
     const found = await readDevice(id);
     setDevice(found);
     setTemplateName(found ? await readTemplateName(found.template_id) : null);
+
     const ifaces = await readInterfaces(id);
-    const rows: PortRow[] = [];
-    for (const iface of ifaces) {
-      rows.push({ iface, link: await readLinkForInterface(iface.id) });
-    }
-    setPorts(rows);
+    const links = await readLinksForInterfaces(ifaces.map((i) => i.id));
+    setPorts(ifaces.map((iface) => ({ iface, link: links.get(iface.id) ?? null })));
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
 
+  // В шапке — код устройства, а не слово «Устройство»: так видно, куда зашёл.
+  useEffect(() => {
+    if (device) navigation.setOptions({ title: device.code });
+  }, [device, navigation]);
+
   if (!device) {
-    return <Screen><Dim>Устройство не найдено в снимке.</Dim></Screen>;
+    return (
+      <Screen>
+        <Empty icon="database">Устройство не найдено в снимке.</Empty>
+      </Screen>
+    );
   }
 
   return (
-    <Screen>
-      <ScrollView>
-        <Card>
-          <Title>{device.code}</Title>
-          <Text style={styles.name}>{device.name || '—'}</Text>
-          <Dim>{`модель: ${templateName ?? '—'}`}</Dim>
-          {device.management_ip ? <Dim>{`адрес: ${device.management_ip}`}</Dim> : null}
-          {device.mac ? <Dim>{`MAC: ${device.mac}`}</Dim> : null}
-          {device.notes ? <Text style={styles.notes}>{device.notes}</Text> : null}
-        </Card>
+    <Screen padded={false}>
+      <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg }}>
+        <Paper>
+          <Stack gap="md">
+            <View>
+              <Title order={3}>{device.code}</Title>
+              <Text size="md">{dash(device.name)}</Text>
+            </View>
+            <Group gap="xl" wrap align="start">
+              <Fact label="Модель">{dash(templateName)}</Fact>
+              <Fact label="Адрес" mono>{dash(device.management_ip)}</Fact>
+              <Fact label="MAC" mono>{dash(device.mac)}</Fact>
+            </Group>
+            {device.notes ? <Text size="sm">{device.notes}</Text> : null}
+          </Stack>
+        </Paper>
 
-        <Card>
-          <Title>{`Порты (${ports.length})`}</Title>
-          <Dim>Показано так, как записано в WireMap. Расходится с тем, что в шкафу, — отметьте связь.</Dim>
-          {ports.map(({ iface, link }) => {
-            const other = describeOtherEnd(link, iface.id);
-            return (
-              <View key={iface.id} style={styles.port}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.portLabel}>{iface.label}</Text>
-                  {other ? (
-                    <Text style={styles.busy}>{`занят: ${other}`}</Text>
-                  ) : (
-                    <Text style={styles.free}>свободен по документации</Text>
-                  )}
-                </View>
-                {!other ? (
-                  <View style={{ width: 130 }}>
-                    <Button
-                      title="Есть кабель" kind="secondary"
-                      onPress={() => navigation.navigate('AddLink', {
-                        aDeviceId: device.id,
-                        aDeviceText: device.code,
-                        aPortText: iface.label,
-                      })}
-                    />
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </Card>
+        <Stack gap="sm">
+          <Group justify="space-between">
+            <Title order={4}>{`Порты (${ports.length})`}</Title>
+          </Group>
+          <Dim size="xs">
+            Показано так, как записано в WireMap. Расходится с тем, что в шкафу, — отметьте связь.
+          </Dim>
+
+          {ports.length === 0 ? (
+            <Empty icon="inbox">У этого устройства в снимке нет портов.</Empty>
+          ) : (
+            <Paper padding="none">
+              {ports.map(({ iface, link }, index) => {
+                const other = describeOtherEnd(link, iface.id);
+                return (
+                  <ListRow
+                    key={iface.id}
+                    first={index === 0}
+                    title={iface.label}
+                    subtitle={other ? `занят: ${other}` : undefined}
+                    badges={other
+                      ? <Badge color="gray">занят</Badge>
+                      : <Badge color="green">свободен по документации</Badge>}
+                    right={other ? undefined : (
+                      <Button
+                        title="Есть кабель" variant="light" icon="link-2" size="sm"
+                        onPress={() => navigation.navigate('AddLink', {
+                          aDeviceId: device.id,
+                          aDeviceText: device.code,
+                          aPortText: iface.label,
+                        })}
+                      />
+                    )}
+                  />
+                );
+              })}
+            </Paper>
+          )}
+        </Stack>
       </ScrollView>
     </Screen>
+  );
+}
+
+/** Пара «подпись — значение», как в карточке устройства на сайте. */
+function Fact({ label, children, mono }: { label: string; children: string; mono?: boolean }) {
+  return (
+    <View>
+      <Dim size="xs">{label}</Dim>
+      <Text size="sm" mono={mono}>{children}</Text>
+    </View>
   );
 }
 
@@ -106,15 +141,3 @@ function describeOtherEnd(link: LinkOut | null, interfaceId: number): string | n
   if (!far) return 'второй конец не указан';
   return `${far.device_code}${far.interface_label ? ` / ${far.interface_label}` : ''}`;
 }
-
-const styles = StyleSheet.create({
-  name: { fontSize: 17, color: colors.text, marginBottom: 6 },
-  notes: { fontSize: 15, color: colors.text, marginTop: 8 },
-  port: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 10,
-  },
-  portLabel: { fontSize: 16, fontWeight: '600', color: colors.text },
-  busy: { fontSize: 14, color: colors.dim, marginTop: 2 },
-  free: { fontSize: 14, color: colors.ok, marginTop: 2 },
-});

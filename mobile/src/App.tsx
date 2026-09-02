@@ -13,52 +13,48 @@
  */
 
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppStateProvider } from './state';
-import { SyncScreen } from './screens/SyncScreen';
-import { DevicesScreen } from './screens/DevicesScreen';
-import { DeviceScreen } from './screens/DeviceScreen';
-import { AddDeviceScreen } from './screens/AddDeviceScreen';
-import { AddLinkScreen } from './screens/AddLinkScreen';
-import { QueueScreen } from './screens/QueueScreen';
-import { colors } from './ui';
+import { AppStateProvider, useAppState } from './state';
+import { RootTabs } from './navigation/RootTabs';
+import { ThemeProvider, navigationTheme, useTheme } from './ui';
 
-export type RootStackParams = {
-  Sync: undefined;
-  Devices: undefined;
-  Device: { id: number };
-  AddDevice: undefined;
-  /** Конец A подставляется, когда экран открыт от гнезда в карточке. */
-  AddLink: { aDeviceId?: number; aDeviceText?: string; aPortText?: string };
-  Queue: undefined;
-};
+/**
+ * Пока база не прочитана, экранов нет.
+ *
+ * Дело не в мигании: поля на экранах берут начальные значения из настроек, а
+ * начальное значение состояния берётся один раз, при первом рендере. Пусти
+ * мы экраны раньше — адрес сервера остался бы пустым при сохранённом, ровно
+ * как было до появления настроек. Ожидание — одно открытие SQLite.
+ */
+function Gate() {
+  const { ready } = useAppState();
+  const theme = useTheme();
 
-const Stack = createNativeStackNavigator<RootStackParams>();
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.p.bg }}>
+        <ActivityIndicator size="large" color={theme.p.primary} />
+      </View>
+    );
+  }
+  return (
+    <NavigationContainer theme={navigationTheme(theme)}>
+      <StatusBar style={theme.isDark ? 'light' : 'dark'} />
+      <RootTabs />
+    </NavigationContainer>
+  );
+}
 
 export function App() {
   return (
     <SafeAreaProvider>
-      <AppStateProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <Stack.Navigator
-            screenOptions={{
-              headerStyle: { backgroundColor: colors.card },
-              headerTitleStyle: { color: colors.text },
-              contentStyle: { backgroundColor: colors.bg },
-            }}
-          >
-            <Stack.Screen name="Sync" component={SyncScreen} options={{ title: 'WireMap Обход' }} />
-            <Stack.Screen name="Devices" component={DevicesScreen} options={{ title: 'Спецификация' }} />
-            <Stack.Screen name="Device" component={DeviceScreen} options={{ title: 'Устройство' }} />
-            <Stack.Screen name="AddDevice" component={AddDeviceScreen} options={{ title: 'Новое устройство' }} />
-            <Stack.Screen name="AddLink" component={AddLinkScreen} options={{ title: 'Новая связь' }} />
-            <Stack.Screen name="Queue" component={QueueScreen} options={{ title: 'Найдено в цеху' }} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </AppStateProvider>
+      <ThemeProvider>
+        <AppStateProvider>
+          <Gate />
+        </AppStateProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

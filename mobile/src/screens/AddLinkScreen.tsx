@@ -13,14 +13,15 @@
  */
 
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { queueLink } from '../db/queue';
 import { useAppState } from '../state';
-import { Button, Card, Dim, Field, Notice, Screen, Title } from '../ui';
-import type { RootStackParams } from '../App';
+import {
+  Alert, Badge, Button, Dim, Field, Group, Paper, Screen, Stack, Title,
+} from '../ui';
+import type { AddRoutes } from '../navigation/types';
 
-type Props = NativeStackScreenProps<RootStackParams, 'AddLink'>;
+type Props = NativeStackScreenProps<AddRoutes, 'AddLink'>;
 
 export function AddLinkScreen({ route, navigation }: Props) {
   const { aDeviceId, aDeviceText, aPortText } = route.params ?? {};
@@ -61,42 +62,54 @@ export function AddLinkScreen({ route, navigation }: Props) {
   }
 
   return (
-    <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
-        <Card>
-          <Title>Нашёл кабель</Title>
-          <Dim>
-            Запишите оба конца так, как видите: подпись на железке и номер гнезда. Опознавать будут в офисе.
-          </Dim>
-          {aDeviceId != null ? (
-            <View style={{ marginTop: 10 }}>
-              <Notice kind="ok">Конец A взят из спецификации — в офисе опознается точно.</Notice>
-            </View>
-          ) : null}
-        </Card>
+    <Screen scroll>
+      <Stack>
+        <Dim>
+          Запишите оба конца так, как видите: подпись на железке и номер гнезда. Опознавать будут в офисе.
+        </Dim>
 
-        <Card>
-          <Title>Конец A</Title>
-          <Field label="Устройство" value={aDevice} onChangeText={setADevice} placeholder="SW-0001 или «свитч у окна»" />
-          <Field label="Гнездо" value={aPort} onChangeText={setAPort} placeholder="3 или Gi0/3" autoCapitalize="none" />
-        </Card>
+        <Paper>
+          <Stack gap="lg">
+            <Group gap="sm">
+              <Title order={4}>Конец A</Title>
+              {/* Не зелёная плашка: то, что конец взят из снимка, — обычный
+                  факт, а не успех, о котором надо кричать. */}
+              {aDeviceId != null ? <Badge color="blue">из спецификации</Badge> : null}
+            </Group>
+            <Field label="Устройство" value={aDevice} onChangeText={setADevice} placeholder="SW-0001 или «свитч у окна»" />
+            <Field label="Гнездо" value={aPort} onChangeText={setAPort} placeholder="3 или Gi0/3" autoCapitalize="none" />
+          </Stack>
+        </Paper>
 
-        <Card>
-          <Title>Конец B</Title>
-          <Field label="Устройство" value={bDevice} onChangeText={setBDevice} placeholder="камера над воротами" />
-          <Field label="Гнездо" value={bPort} onChangeText={setBPort} placeholder="eth0" autoCapitalize="none" />
-        </Card>
+        <Paper>
+          <Stack gap="lg">
+            <Title order={4}>Конец B</Title>
+            <Field label="Устройство" value={bDevice} onChangeText={setBDevice} placeholder="камера над воротами" />
+            <Field label="Гнездо" value={bPort} onChangeText={setBPort} placeholder="eth0" autoCapitalize="none" />
+          </Stack>
+        </Paper>
 
-        <Card>
-          <Field label="Среда" hint="медь, оптика — если видно" value={medium} onChangeText={setMedium} />
-          <Field label="Заметка" value={notes} onChangeText={setNotes} multiline />
-          {!canSave ? (
-            <Notice kind="warn">Нужны оба конца — иначе связь в офисе не собрать.</Notice>
-          ) : null}
-          <Button title="Сохранить" onPress={handleSave} busy={saving} disabled={!canSave} />
-          <Dim>Сохраняется на телефон. Уедет в WireMap, когда вернётесь в офис.</Dim>
-        </Card>
-      </ScrollView>
+        <Paper>
+          <Stack gap="lg">
+            <Field label="Среда" hint="медь, оптика — если видно" value={medium} onChangeText={setMedium} />
+            <Field label="Заметка" value={notes} onChangeText={setNotes} multiline />
+          </Stack>
+        </Paper>
+
+        {!canSave ? (
+          <Alert color="yellow">Нужны оба конца — иначе связь в офисе не собрать.</Alert>
+        ) : null}
+
+        <Group justify="end" gap="sm">
+          <Button title="Отмена" variant="default" onPress={() => navigation.goBack()} />
+          <Button
+            title="Сохранить" icon="check"
+            onPress={() => { void handleSave(); }}
+            busy={saving} disabled={!canSave}
+          />
+        </Group>
+        <Dim size="xs">Сохраняется на телефон. Уедет в WireMap, когда вернётесь в офис.</Dim>
+      </Stack>
     </Screen>
   );
 }

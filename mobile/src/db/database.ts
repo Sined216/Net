@@ -33,6 +33,13 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
 
+    -- Настройки связи: адрес, логин, токен. Снимку не принадлежат и его
+    -- перезапись не переживают — потому и отдельная таблица (см. settings.ts).
+    CREATE TABLE IF NOT EXISTS setting (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     -- Снимок: что привезли из офиса. Целиком заменяется при загрузке.
     CREATE TABLE IF NOT EXISTS snapshot_meta (
       id           INTEGER PRIMARY KEY CHECK (id = 1),
@@ -190,6 +197,31 @@ export async function readLinkForInterface(interfaceId: number): Promise<LinkOut
     'SELECT payload FROM link WHERE a_id = ? OR b_id = ? LIMIT 1', interfaceId, interfaceId,
   );
   return row ? (JSON.parse(row.payload) as LinkOut) : null;
+}
+
+/** Связи сразу для всех гнёзд устройства.
+ *
+ * По одному запросу на порт получалось до полусотни обращений к базе на
+ * каждое открытие карточки — а карточка в цеху открывается чаще всего.
+ * Берём одним запросом и раскладываем по гнёздам в памяти.
+ */
+export async function readLinksForInterfaces(ids: number[]): Promise<Map<number, LinkOut>> {
+  const found = new Map<number, LinkOut>();
+  if (ids.length === 0) return found;
+  const db = await getDb();
+  const holes = ids.map(() => '?').join(', ');
+  const rows = await db.getAllAsync<{ payload: string }>(
+    `SELECT payload FROM link WHERE a_id IN (${holes}) OR b_id IN (${holes})`,
+    ...ids, ...ids,
+  );
+  for (const row of rows) {
+    const link = JSON.parse(row.payload) as LinkOut;
+    // Связь может касаться сразу двух гнёзд одного устройства — записываем
+    // её обоим концам, иначе у второго порт покажется свободным.
+    if (link.interface_a_id != null) found.set(link.interface_a_id, link);
+    if (link.interface_b_id != null) found.set(link.interface_b_id, link);
+  }
+  return found;
 }
 
 /** Название модели по её номеру — у устройства хранится только `template_id`,

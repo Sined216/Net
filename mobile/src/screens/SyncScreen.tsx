@@ -1,80 +1,85 @@
 /**
- * Главный экран: связь с WireMap. Всё, что тут делают, делают в офисе.
+ * Обмен: забрать снимок перед выходом в цех, выгрузить найденное после.
  *
- * Два действия и оба требуют сети:
- * - **забрать снимок** перед выходом в цех;
- * - **выгрузить найденное** после возвращения.
+ * Оба действия требуют сети и делаются в офисе. Экран намеренно говорит,
+ * что снимок целиком заменяется, а находки идут не в спецификацию, а «на
+ * разбор»: человек должен понимать это до того, как нажмёт, а не после.
  *
- * Экран намеренно говорит, что снимок целиком заменяется, а находки идут
- * не в спецификацию, а «на разбор». Человек должен понимать это до того,
- * как нажмёт, а не после.
+ * Настройки связи живут на отдельном экране — они запоминаются, и держать
+ * их перед глазами при каждом обмене незачем.
  */
 
 import { useState } from 'react';
-import { ScrollView, Text, View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ApiError, fetchSnapshot, login, uploadFindings } from '../api/client';
+import { ApiError, fetchSnapshot, uploadFindings } from '../api/client';
 import { saveSnapshot } from '../db/database';
-import { collectUnsent, markSent, clearSent } from '../db/queue';
-import { useAppState, snapshotAge } from '../state';
-import { Button, Card, Dim, Field, Notice, Screen, Title, colors } from '../ui';
-import type { RootStackParams } from '../App';
+import { collectUnsent, markSent } from '../db/queue';
+import { useAppState, sessionUntil, snapshotAge } from '../state';
+import {
+  Alert, Badge, Button, Dim, Group, IconButton, PageHeader, Paper, Screen, Stack, Text, Title,
+} from '../ui';
+import type { SyncStackParams } from '../navigation/types';
 
-type Props = NativeStackScreenProps<RootStackParams, 'Sync'>;
+type Props = NativeStackScreenProps<SyncStackParams, 'Sync'>;
 
 export function SyncScreen({ navigation }: Props) {
-  const { meta, pending, ready, token, setToken, refresh, connection } = useAppState();
+  const { meta, pending, settings, signOut, refresh, connection } = useAppState();
 
-  const [baseUrl, setBaseUrl] = useState(meta?.base_url ?? 'http://');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<null | 'download' | 'upload'>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
   const age = meta ? snapshotAge(meta.taken_at) : null;
-  const hasQueue = pending.devices + pending.links > 0;
+  const waiting = pending.devices + pending.links;
+  const until = sessionUntil(settings.tokenExpiresAt);
 
-  /** Вход нужен обоим действиям, поэтому он общий и делается по месту:
-   * токен живёт в памяти и пропадает при перезапуске.
-   *
-   * Возвращает и адрес: при входе он мог уточниться (см. `login` — API
-   * бывает на `/api`), а состояние обновится только к следующему кадру.
-   */
-  async function ensureLink(): Promise<{ token: string; url: string }> {
-    const url = baseUrl.trim();
-    if (token) return { token, url };
-    if (!username.trim() || !password) {
-      throw new ApiError(0, 'Введите логин и пароль — без входа сервер не ответит.');
+  /** Оба действия начинаются одинаково: нужен живой сеанс. Нет — отправляем
+   * вводить пароль, а не показываем отказ, который человеку нечем починить
+   * прямо здесь. */
+  function requireSession(): string | null {
+    if (settings.token) return settings.token;
+    setError(null);
+    navigation.navigate('Connection');
+    return null;
+  }
+
+  /** Сервер не принял токен: часы разъехались, сервер перезапустили с новым
+   * ключом, учётку отключили. Гасим сеанс и отправляем входить заново —
+   * адрес и логин при этом остаются. */
+  async function handleFailure(e: unknown) {
+    if (e instanceof ApiError && e.status === 401) {
+      await signOut();
+      setError('Сеанс истёк. Введите пароль заново.');
+      navigation.navigate('Connection');
+      return;
     }
-    const session = await login(url, username.trim(), password);
-    setToken(session.token);
-    // Показываем уточнённый адрес в поле: человек должен видеть, куда
-    // телефон ходит на самом деле.
-    if (session.baseUrl !== url) setBaseUrl(session.baseUrl);
-    return { token: session.token, url: session.baseUrl };
+    setError(e instanceof Error ? e.message : String(e));
   }
 
   async function handleDownload() {
+    const token = requireSession();
+    if (!token) return;
     setBusy('download'); setError(null); setDone(null);
     try {
-      const { token: fresh, url } = await ensureLink();
-      const snapshot = await fetchSnapshot({ baseUrl: url, token: fresh, siteId: null });
+      const url = settings.baseUrl;
+      const snapshot = await fetchSnapshot({ baseUrl: url, token, siteId: null });
       await saveSnapshot(snapshot, url);
       await refresh();
       setDone(`Снимок «${snapshot.site_name}» загружен: устройств ${snapshot.devices.length}, связей ${snapshot.links.length}.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      await handleFailure(e);
     } finally {
       setBusy(null);
     }
   }
 
   async function handleUpload() {
+    const token = requireSession();
+    if (!token) return;
     setBusy('upload'); setError(null); setDone(null);
     try {
-      const { token: fresh, url } = await ensureLink();
-      const link = connection(url);
+      const link = connection();
       if (!link) throw new ApiError(0, 'Сначала загрузите снимок — без него неизвестно, на какую площадку выгружать.');
 
       const payload = await collectUnsent();
@@ -82,7 +87,7 @@ export function SyncScreen({ navigation }: Props) {
         setDone('Отправлять нечего — очередь пуста.');
         return;
       }
-      const result = await uploadFindings({ ...link, token: fresh }, payload);
+      const result = await uploadFindings({ ...link, token }, payload);
       // По ключам из ответа, а не «всё, что отправили»: сервер перечисляет
       // и те, что принял в прошлый раз до обрыва связи.
       await markSent(result.accepted_uuids);
@@ -95,106 +100,91 @@ export function SyncScreen({ navigation }: Props) {
         + '. Записи ждут разбора в WireMap, на вкладке «Импорт и обход».',
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      await handleFailure(e);
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
-        <Card>
-          <Title>Снимок площадки</Title>
-          {!ready ? <Dim>Читаю базу…</Dim> : meta ? (
-            <>
-              <Text style={styles.site}>{meta.site_name}</Text>
-              <Dim>{`Загружен ${age?.text}`}</Dim>
-              {age?.stale ? (
-                <View style={{ marginTop: 10 }}>
-                  <Notice kind="warn">
+    <Screen scroll>
+      <PageHeader title="Обмен">
+        <IconButton
+          icon="settings" label="Связь с WireMap"
+          onPress={() => navigation.navigate('Connection')}
+        />
+      </PageHeader>
+
+      <Stack>
+        <Dim>Оба действия требуют сети — их делают в офисе, до выхода в цех и после.</Dim>
+
+        {error ? <Alert color="red">{error}</Alert> : null}
+        {done ? <Alert color="green">{done}</Alert> : null}
+
+        <Paper>
+          <Stack gap="md">
+            <Title order={4}>Снимок площадки</Title>
+            {meta ? (
+              <>
+                <Text size="lg" fw="700">{meta.site_name}</Text>
+                <Dim>{`Загружен ${age?.text}`}</Dim>
+                {age?.stale ? (
+                  <Alert color="yellow">
                     Снимку больше суток. В офисе могли что-то поправить — если есть связь, загрузите заново.
-                  </Notice>
-                </View>
-              ) : null}
-              <View style={{ marginTop: 12 }}>
-                <Button title="Открыть спецификацию" kind="secondary" onPress={() => navigation.navigate('Devices')} />
-              </View>
-            </>
-          ) : (
-            <Dim>Снимка ещё нет. Загрузите его в офисе — в цеху сети не будет.</Dim>
-          )}
-        </Card>
-
-        <Card>
-          <Title>Найдено в цеху</Title>
-          {hasQueue ? (
-            <Text style={styles.pending}>
-              {`Ждут отправки: устройств ${pending.devices}, связей ${pending.links}`}
-            </Text>
-          ) : (
-            <Dim>Пока ничего не отмечено.</Dim>
-          )}
-          <View style={{ marginTop: 12 }}>
-            <Button title="Что найдено" kind="secondary" onPress={() => navigation.navigate('Queue')} />
-          </View>
-        </Card>
-
-        <Card>
-          <Title>Связь с WireMap</Title>
-          <Field
-            label="Адрес сервера"
-            hint="Тот же, что открываете в браузере в офисе — до первой косой черты"
-            value={baseUrl} onChangeText={setBaseUrl}
-            placeholder="http://10.10.1.5:8080"
-            autoCapitalize="none" keyboardType="url"
-          />
-          {token ? (
-            <Dim>Вход выполнен. Токен действует до перезапуска приложения.</Dim>
-          ) : (
-            <>
-              <Field label="Логин" value={username} onChangeText={setUsername} autoCapitalize="none" />
-              <Field label="Пароль" value={password} onChangeText={setPassword} secureTextEntry />
-            </>
-          )}
-
-          {error ? <Notice kind="error">{error}</Notice> : null}
-          {done ? <Notice kind="ok">{done}</Notice> : null}
-
-          <View style={{ marginTop: 6 }}>
+                  </Alert>
+                ) : null}
+              </>
+            ) : (
+              <Dim>Снимка ещё нет. Загрузите его в офисе — в цеху сети не будет.</Dim>
+            )}
             <Button
-              title="Забрать снимок" onPress={handleDownload}
-              busy={busy === 'download'} disabled={busy !== null || baseUrl.trim().length < 8}
+              title="Забрать снимок" icon="download-cloud" fullWidth
+              onPress={() => { void handleDownload(); }}
+              busy={busy === 'download'}
+              disabled={busy !== null || settings.baseUrl.length < 8}
             />
-            <Dim>Заменяет то, что сейчас на телефоне. Найденное в цеху при этом остаётся.</Dim>
-          </View>
+            <Dim size="xs">Заменяет то, что сейчас на телефоне. Найденное в цеху при этом остаётся.</Dim>
+          </Stack>
+        </Paper>
 
-          <View style={{ marginTop: 16 }}>
+        <Paper>
+          <Stack gap="md">
+            <Group justify="space-between">
+              <Title order={4}>Найдено в цеху</Title>
+              {waiting > 0 ? <Badge color="orange">{`ждут отправки: ${waiting}`}</Badge> : null}
+            </Group>
+            {waiting > 0
+              ? <Dim>{`Устройств ${pending.devices}, связей ${pending.links}.`}</Dim>
+              : <Dim>Пока ничего не отмечено.</Dim>}
             <Button
-              title="Выгрузить найденное" onPress={handleUpload}
-              busy={busy === 'upload'} disabled={busy !== null || !hasQueue}
+              title="Выгрузить найденное" variant="light" icon="upload-cloud" fullWidth
+              onPress={() => { void handleUpload(); }}
+              busy={busy === 'upload'}
+              disabled={busy !== null || waiting === 0}
             />
-            <Dim>
+            <Dim size="xs">
               Записи попадают не в спецификацию, а на разбор: в WireMap человек переносит их по одной.
             </Dim>
-          </View>
-        </Card>
+          </Stack>
+        </Paper>
 
-        {pending.devices + pending.links === 0 ? (
-          <Card>
+        <Paper padding="sm">
+          <Group justify="space-between">
+            <View style={{ flex: 1 }}>
+              <Text size="sm" numberOfLines={1}>{settings.baseUrl || 'адрес не задан'}</Text>
+              <Dim size="xs">
+                {settings.token
+                  ? `${settings.username}${until ? ` · сеанс до ${until}` : ''}`
+                  : 'вход не выполнен'}
+              </Dim>
+            </View>
             <Button
-              title="Убрать отправленное" kind="secondary"
-              onPress={async () => { await clearSent(); await refresh(); setDone('Отправленные записи убраны.'); }}
+              title="Изменить" variant="subtle" size="sm"
+              onPress={() => navigation.navigate('Connection')}
             />
-            <Dim>Очищает список находок, которые сервер уже принял.</Dim>
-          </Card>
-        ) : null}
-      </ScrollView>
+          </Group>
+        </Paper>
+      </Stack>
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  site: { fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 2 },
-  pending: { fontSize: 16, color: colors.warn, fontWeight: '600' },
-});
