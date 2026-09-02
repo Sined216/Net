@@ -21,3 +21,6 @@ cryptography>=43
 # в формате, который понимает MibBuilder самого pysnmp; отдельный пакет,
 # не входит в pysnmp с версии 7.
 pysnmp-mibs==0.1.6
+# QR-код устройства (GET /devices/{id}/qr). Чистый Python — SvgPathImage
+# строит SVG без Pillow.
+qrcode==8.0

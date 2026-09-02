@@ -33,6 +33,10 @@ export const useDevices = (query: DeviceQuery = {}, enabled = true) =>
  * среди всех устройств, то есть везла всю спецификацию ради одной железки. */
 export const useDevice = (id: number | null) =>
   useQuery({ queryKey: ['device', id], queryFn: () => api.getDevice(id!), enabled: id != null && !Number.isNaN(id) });
+// QR не меняется, пока не сменился код устройства (переименование его не
+// трогает) — можно не считать staleTime, кэш живёт весь визит на страницу.
+export const useDeviceQr = (id: number | null) =>
+  useQuery({ queryKey: ['deviceQr', id], queryFn: () => api.getDeviceQr(id!), enabled: id != null && !Number.isNaN(id) });
 /** Схема связей: узлы и линии, собранные сервером.
  *
  * Раньше её собирал браузер — из всех устройств площадки со всеми портами

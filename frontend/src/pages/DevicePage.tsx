@@ -13,6 +13,7 @@ import { confirmAction } from '../lib/confirm';
 import { deviceRoleLabel } from '../lib/enumLabels';
 import { InterfaceRow } from './devices/InterfaceRow';
 import { DeviceFormModal } from './devices/DeviceFormModal';
+import { DeviceQrCode } from './devices/DeviceQrCode';
 import { useCan } from '../auth/permissions';
 import { DeviceHistory } from '../history/DeviceHistory';
 
@@ -118,30 +119,33 @@ export function DevicePage() {
         </Group>
       </Group>
 
-      <Card withBorder padding="sm">
-        <Group gap="xl" wrap="wrap">
-          <Field label="Тип">{typeName}</Field>
-          <Field label="Модель">
-            {template?.color && <span className="tag-badge-dot" style={{ background: template.color }} />}
-            {template?.name ?? '—'}
-          </Field>
-          <Field label="Производитель">{template?.manufacturer || '—'}</Field>
-          <Field label="IP управления">{device.management_ip || '—'}</Field>
-          <Field label="MAC">{device.mac || '—'}</Field>
-          <Field label="Роль">{device.role ? deviceRoleLabel(device.role) : '—'}</Field>
-          <Field label="Установлено">{device.install_date || '—'}</Field>
-          <Field label="Группа">{device.topology_group_name ?? '—'}</Field>
-          <Field label="Порты">{busyCount} из {interfaces.length} занято</Field>
-        </Group>
-        {device.tags.length > 0 && (
-          <Group gap={6} mt="sm">
-            {device.tags.map((t) => (
-              <Badge key={t.id} variant="outline" color={t.color ?? 'gray'}>{t.name}</Badge>
-            ))}
+      <Group align="flex-start" wrap="wrap">
+        <Card withBorder padding="sm" style={{ flex: 1, minWidth: 320 }}>
+          <Group gap="xl" wrap="wrap">
+            <Field label="Тип">{typeName}</Field>
+            <Field label="Модель">
+              {template?.color && <span className="tag-badge-dot" style={{ background: template.color }} />}
+              {template?.name ?? '—'}
+            </Field>
+            <Field label="Производитель">{template?.manufacturer || '—'}</Field>
+            <Field label="IP управления">{device.management_ip || '—'}</Field>
+            <Field label="MAC">{device.mac || '—'}</Field>
+            <Field label="Роль">{device.role ? deviceRoleLabel(device.role) : '—'}</Field>
+            <Field label="Установлено">{device.install_date || '—'}</Field>
+            <Field label="Группа">{device.topology_group_name ?? '—'}</Field>
+            <Field label="Порты">{busyCount} из {interfaces.length} занято</Field>
           </Group>
-        )}
-        {device.notes && <Text size="sm" c="dimmed" mt="sm">{device.notes}</Text>}
-      </Card>
+          {device.tags.length > 0 && (
+            <Group gap={6} mt="sm">
+              {device.tags.map((t) => (
+                <Badge key={t.id} variant="outline" color={t.color ?? 'gray'}>{t.name}</Badge>
+              ))}
+            </Group>
+          )}
+          {device.notes && <Text size="sm" c="dimmed" mt="sm">{device.notes}</Text>}
+        </Card>
+        <DeviceQrCode deviceId={device.id} code={device.code} />
+      </Group>
 
       <Title order={3} mt="sm">Порты</Title>
       <Paper withBorder>

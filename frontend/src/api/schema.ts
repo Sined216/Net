@@ -579,6 +579,37 @@ export interface paths {
         patch: operations["update_device_position_devices__device_id__position_patch"];
         trace?: never;
     };
+    "/devices/{device_id}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Device Qr
+         * @description QR-код устройства — картинкой, не JSON-полем в DeviceOut: это
+         *     отображение по требованию, а не то, что нужно в каждом ответе со списком.
+         *
+         *     Кодируется `code` (например, «SW-0042»), не ссылка: сканера, который
+         *     умел бы её открыть, в проекте пока нет ни в вебе, ни в мобильном
+         *     приложении — значение кладётся на будущее опознание, ручное или
+         *     автоматическое, и `code` для этого лучше `id` — человекочитаем и не
+         *     привязан к конкретной базе (перенос площадки id не переживёт, код —
+         *     переживёт).
+         *
+         *     Доступ — как у чтения самой карточки, не `can_edit`: показ кода ничего
+         *     не меняет.
+         */
+        get: operations["get_device_qr_devices__device_id__qr_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{device_id}/tags": {
         parameters: {
             query?: never;
@@ -4573,6 +4604,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_qr_devices__device_id__qr_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -121,6 +121,10 @@ export const listDevices = (query: DeviceQuery = {}) =>
 export const listFreePorts = (query: FreePortQuery = {}) =>
   apiFetch<FreePortOut[]>('/interfaces/free', { query: query as Record<string, string | number | undefined> });
 export const getDevice = (id: number) => apiFetch<DeviceOut>(`/devices/${id}`);
+// Тело — не JSON, а SVG: apiFetch распознаёт это сам (JSON.parse падает,
+// остаётся исходный текст) и возвращает разметку строкой, готовой к
+// dangerouslySetInnerHTML.
+export const getDeviceQr = (id: number) => apiFetch<string>(`/devices/${id}/qr`);
 export const listInterfaces = (deviceId: number) =>
   apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces`);
 export const createDevice = (body: DeviceCreate) => apiFetch<DeviceOut>('/devices', { method: 'POST', body });

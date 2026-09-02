@@ -1,3 +1,7 @@
+import io
+
+import qrcode
+import qrcode.image.svg
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import Text, cast, false, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -124,6 +128,36 @@ def get_device(device_id: int, db: Session = Depends(get_db),
     if not device:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
     return serialize.serialize_device(device, db=db)
+
+
+@router.get("/{device_id}/qr")
+def get_device_qr(device_id: int, db: Session = Depends(get_db),
+                   site_id: int = Depends(sites.current_site_id)):
+    """QR-код устройства — картинкой, не JSON-полем в DeviceOut: это
+    отображение по требованию, а не то, что нужно в каждом ответе со списком.
+
+    Кодируется `code` (например, «SW-0042»), не ссылка: сканера, который
+    умел бы её открыть, в проекте пока нет ни в вебе, ни в мобильном
+    приложении — значение кладётся на будущее опознание, ручное или
+    автоматическое, и `code` для этого лучше `id` — человекочитаем и не
+    привязан к конкретной базе (перенос площадки id не переживёт, код —
+    переживёт).
+
+    Доступ — как у чтения самой карточки, не `can_edit`: показ кода ничего
+    не меняет.
+    """
+    device = db.query(models.Device.code).filter(
+        models.Device.id == device_id, models.Device.site_id == site_id,
+    ).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Устройство не найдено")
+
+    # SvgPathImage — один <path> на всю картинку, а не рамка на каждый
+    # модуль: тот же QR, но в разы меньше принимать и хранить.
+    image = qrcode.make(device.code, image_factory=qrcode.image.svg.SvgPathImage)
+    buf = io.BytesIO()
+    image.save(buf)
+    return Response(content=buf.getvalue(), media_type="image/svg+xml")
 
 
 @router.post("", response_model=schemas.DeviceOut, status_code=201)

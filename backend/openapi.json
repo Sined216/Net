@@ -8340,6 +8340,68 @@
         ]
       }
     },
+    "/devices/{device_id}/qr": {
+      "get": {
+        "description": "QR-код устройства — картинкой, не JSON-полем в DeviceOut: это\nотображение по требованию, а не то, что нужно в каждом ответе со списком.\n\nКодируется `code` (например, «SW-0042»), не ссылка: сканера, который\nумел бы её открыть, в проекте пока нет ни в вебе, ни в мобильном\nприложении — значение кладётся на будущее опознание, ручное или\nавтоматическое, и `code` для этого лучше `id` — человекочитаем и не\nпривязан к конкретной базе (перенос площадки id не переживёт, код —\nпереживёт).\n\nДоступ — как у чтения самой карточки, не `can_edit`: показ кода ничего\nне меняет.",
+        "operationId": "get_device_qr_devices__device_id__qr_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Device Qr",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
     "/devices/{device_id}/tags": {
       "put": {
         "operationId": "set_device_tags_devices__device_id__tags_put",
