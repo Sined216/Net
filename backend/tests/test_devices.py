@@ -264,3 +264,20 @@ def test_search_by_device_code_is_one_row_not_one_per_port(client, headers, make
     device = make_device()
     found = client.get("/search", params={"query": device["code"]}, headers=headers["viewer"]).json()
     assert [r["device_id"] for r in found] == [device["id"]]
+
+
+def test_device_carries_group_name(client, headers, make_device):
+    """Карточка устройства получает имя группы, а не только id — искать
+    его самим клиентам не нужно (список устройств делает это сам, но
+    карточка одного устройства и мобильный снимок — нет)."""
+    group = client.post(
+        "/topology-groups", json={"name": "Цех сборки", "color": "#94a3b8"}, headers=headers["editor"],
+    ).json()
+    device = make_device()
+
+    ungrouped = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert ungrouped["topology_group_name"] is None
+
+    client.patch(f"/devices/{device['id']}", json={"topology_group_id": group["id"]}, headers=headers["editor"])
+    grouped = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert grouped["topology_group_name"] == "Цех сборки"

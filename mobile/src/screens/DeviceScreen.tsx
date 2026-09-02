@@ -71,6 +71,11 @@ export function DeviceScreen({ route, navigation }: Props) {
               <Fact label="Модель">{dash(templateName)}</Fact>
               <Fact label="Адрес" mono>{dash(device.management_ip)}</Fact>
               <Fact label="MAC" mono>{dash(device.mac)}</Fact>
+              {/* Уже в снимке, отдельного запроса не нужно: DeviceOut несёт
+                  готовое имя группы, а не только id, — см. backend/app/
+                  serialize.py. Телефону негде хранить список групп, чтобы
+                  искать по нему самому. */}
+              <Fact label="Группа">{dash(device.topology_group_name)}</Fact>
             </Group>
             {device.notes ? <Text size="sm">{device.notes}</Text> : null}
           </Stack>

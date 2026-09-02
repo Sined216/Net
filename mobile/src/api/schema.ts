@@ -1685,6 +1685,8 @@ export interface components {
             template_id: number;
             /** Topology Group Id */
             topology_group_id?: number | null;
+            /** Topology Group Name */
+            topology_group_name?: string | null;
             /** Topology X */
             topology_x?: number | null;
             /** Topology Y */

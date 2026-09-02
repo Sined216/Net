@@ -187,3 +187,18 @@ def test_snapshot_carries_devices_with_ports_and_links(client, headers, make_dev
     assert body["links"][0]["end_a"] is not None
     assert body["links"][0]["end_b"] is not None
     assert len(body["templates"]) >= 1
+
+
+def test_snapshot_carries_device_group_name(client, headers, make_device):
+    """Мобильный снимок хранит устройство целиком как есть (весь DeviceOut),
+    и группа должна быть в нём готовым именем — телефону негде хранить
+    список групп отдельно, чтобы искать по нему id."""
+    group = client.post(
+        "/topology-groups", json={"name": "Участок 3", "color": "#94a3b8"}, headers=headers["editor"],
+    ).json()
+    device = make_device()
+    client.patch(f"/devices/{device['id']}", json={"topology_group_id": group["id"]}, headers=headers["editor"])
+
+    body = client.get("/sync/snapshot", headers=headers["editor"]).json()
+    found = next(d for d in body["devices"] if d["id"] == device["id"])
+    assert found["topology_group_name"] == "Участок 3"

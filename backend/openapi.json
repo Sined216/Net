@@ -771,6 +771,17 @@
             ],
             "title": "Topology Group Id"
           },
+          "topology_group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topology Group Name"
+          },
           "topology_x": {
             "anyOf": [
               {

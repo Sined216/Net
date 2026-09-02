@@ -46,7 +46,12 @@ def snapshot(db: Session = Depends(get_db),
 
     devices = (
         db.query(models.Device)
-        .options(joinedload(models.Device.interfaces), joinedload(models.Device.tags))
+        .options(
+            joinedload(models.Device.interfaces), joinedload(models.Device.tags),
+            # Иначе имя группы (DeviceOut.topology_group_name) — это отдельный
+            # запрос на каждое устройство площадки, а не на весь снимок разом.
+            joinedload(models.Device.topology_group),
+        )
         .filter(models.Device.site_id == site_id)
         .order_by(models.Device.code)
         .all()

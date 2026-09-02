@@ -130,6 +130,7 @@ export function DevicePage() {
           <Field label="MAC">{device.mac || '—'}</Field>
           <Field label="Роль">{device.role ? deviceRoleLabel(device.role) : '—'}</Field>
           <Field label="Установлено">{device.install_date || '—'}</Field>
+          <Field label="Группа">{device.topology_group_name ?? '—'}</Field>
           <Field label="Порты">{busyCount} из {interfaces.length} занято</Field>
         </Group>
         {device.tags.length > 0 && (
