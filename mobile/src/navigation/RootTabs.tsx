@@ -23,6 +23,7 @@ import { AddLinkScreen } from '../screens/AddLinkScreen';
 import { QueueScreen } from '../screens/QueueScreen';
 import { SyncScreen } from '../screens/SyncScreen';
 import { ConnectionScreen } from '../screens/ConnectionScreen';
+import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import type { QueueStackParams, SpecStackParams, SyncStackParams, TabParams } from './types';
 
 const Tabs = createBottomTabNavigator<TabParams>();
@@ -71,6 +72,9 @@ function SyncTab() {
     <SyncStack.Navigator screenOptions={options}>
       <SyncStack.Screen name="Sync" component={SyncScreen} options={{ title: 'Обмен с WireMap' }} />
       <SyncStack.Screen name="Connection" component={ConnectionScreen} options={{ title: 'Связь с WireMap' }} />
+      <SyncStack.Screen
+        name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Смена пароля' }}
+      />
     </SyncStack.Navigator>
   );
 }

@@ -11,7 +11,9 @@
  *   запрос без предела висит до бесконечности вместо понятного отказа.
  */
 
-import type { SyncSnapshot, SyncUploadRequest, SyncUploadResult, Token } from './types';
+import type {
+  PasswordChange, PasswordPolicyOut, SyncSnapshot, SyncUploadRequest, SyncUploadResult, Token, UserOut,
+} from './types';
 
 /** Обычные запросы: если сервер не ответил за это время, он недоступен. */
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -99,7 +101,9 @@ async function readError(response: Response): Promise<string> {
   }
   if (detail) return detail;
   if (response.status === 401) return 'Требуется вход: логин или пароль не подошли, либо истёк сеанс.';
-  if (response.status === 403) return 'Недостаточно прав: выгружать записи может только редактор.';
+  // Свой сервер здесь всегда шлёт detail — эта ветка ловит нетиповой ответ
+  // (например, страницу ошибки от чужого прокси), а не настоящую причину.
+  if (response.status === 403) return 'Недостаточно прав для этого действия.';
   return `Сервер ответил ошибкой ${response.status}.`;
 }
 
@@ -151,3 +155,16 @@ export const uploadFindings = (connection: Connection, payload: SyncUploadReques
   request<SyncUploadResult>(connection, '/sync/upload', {
     method: 'POST', body: payload, timeoutMs: SNAPSHOT_TIMEOUT_MS,
   });
+
+/** Кто вошёл — и не пора ли сменить пароль. Единственная ручка, которую
+ * можно вызывать даже с временным или просроченным паролем (сервер не
+ * держит её за общей проверкой — иначе сменить такой пароль было бы
+ * нечем). */
+export const me = (connection: Connection) => request<UserOut>(connection, '/auth/me');
+
+export const changePassword = (connection: Connection, payload: PasswordChange) =>
+  request<UserOut>(connection, '/auth/me/password', { method: 'POST', body: payload });
+
+/** Требуемая длина пароля — та же, что видит сайт, а не своя копия числа. */
+export const getPasswordPolicy = (connection: Connection) =>
+  request<PasswordPolicyOut>(connection, '/settings/password-policy');

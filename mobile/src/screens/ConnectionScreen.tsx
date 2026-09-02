@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { login } from '../api/client';
+import { login, me } from '../api/client';
 import { useAppState, sessionUntil } from '../state';
 import {
   Alert, Button, Dim, Field, Group, Paper, Screen, Stack, Text, Title, space,
@@ -39,6 +39,23 @@ export function ConnectionScreen({ navigation }: Props) {
       // Адрес мог уточниться до `…/api` — сохраняем найденный, а не введённый.
       await saveConnection(session.baseUrl, username.trim());
       await saveSession(session.token);
+
+      // Пароль назначен не самим человеком (первый вход, сброс) или
+      // просрочен по сроку из политики — тогда сразу на смену, не в
+      // обычный обмен: остальное сервер всё равно отклонит тем же
+      // требованием. Вход при этом уже удался и сохранён — если сама эта
+      // проверка не прошла (сеть моргнула сразу после входа), не подводим
+      // её под общую ошибку, а просто возвращаемся: сеанс на месте, и
+      // сервер напомнит о смене пароля при первом же обычном запросе.
+      try {
+        const who = await me({ baseUrl: session.baseUrl, token: session.token, siteId: null });
+        if (who.must_change_password || who.password_expired) {
+          navigation.navigate('ChangePassword', { forced: true });
+          return;
+        }
+      } catch {
+        // см. комментарий выше
+      }
       navigation.goBack();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -99,7 +116,11 @@ export function ConnectionScreen({ navigation }: Props) {
                 Пока сеанс жив, WireMap доступен без пароля — всякому, у кого
                 разблокирован телефон. Отдаёте телефон — выйдите.
               </Dim>
-              <Group justify="end" style={{ marginTop: space.xs }}>
+              <Group justify="end" gap="sm" style={{ marginTop: space.xs }}>
+                <Button
+                  title="Сменить пароль" variant="subtle" icon="key"
+                  onPress={() => navigation.navigate('ChangePassword')}
+                />
                 <Button
                   title="Выйти" variant="subtle" color="red" icon="log-out"
                   onPress={() => { void signOut(); }}

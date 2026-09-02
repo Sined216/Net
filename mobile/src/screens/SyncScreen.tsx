@@ -54,6 +54,14 @@ export function SyncScreen({ navigation }: Props) {
       navigation.navigate('Connection');
       return;
     }
+    // Сеанс живой, но пароль пора сменить: назначен не человеком или
+    // просрочен по сроку из политики — сервер отвечает 403 с текстом,
+    // упоминающим ручку смены. Ведём прямо туда, а не показываем текст,
+    // который человеку самому пришлось бы разбирать.
+    if (e instanceof ApiError && e.status === 403 && e.message.includes('/auth/me/password')) {
+      navigation.navigate('ChangePassword');
+      return;
+    }
     setError(e instanceof Error ? e.message : String(e));
   }
 

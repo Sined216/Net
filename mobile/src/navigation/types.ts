@@ -35,6 +35,9 @@ export type QueueStackParams = AddRoutes & {
 export type SyncStackParams = {
   Sync: undefined;
   Connection: undefined;
+  /** `forced` — тем же путём пришли не сами: пароль назначен не
+   * человеком или просрочен по сроку. Экран тогда без выхода назад. */
+  ChangePassword: { forced?: boolean } | undefined;
 };
 
 export type TabParams = {

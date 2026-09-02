@@ -24,3 +24,6 @@ export type DeviceTemplateOut = S['DeviceTemplateOut'];
 export type DeviceTypeOut = S['DeviceTypeOut'];
 export type SiteOut = S['SiteOut'];
 export type Token = S['Token'];
+export type UserOut = S['UserOut'];
+export type PasswordChange = S['PasswordChange'];
+export type PasswordPolicyOut = S['PasswordPolicyOut'];
