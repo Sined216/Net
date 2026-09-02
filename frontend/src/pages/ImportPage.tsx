@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon, Alert, Badge, Button, Group, Menu, Stack, Table, Tabs, Text, Title, Tooltip, UnstyledButton,
 } from '@mantine/core';
@@ -9,7 +9,8 @@ import {
 import { DeleteAction, RowAction } from '../components/RowAction';
 import { Link } from 'react-router-dom';
 import {
-  useClearImportRows, useDeleteImportRow, useDeviceTemplates, useImportRows, useUploadImportFile,
+  useClearImportRows, useDeleteImportRow, useDeviceTemplates, useImportLinkRows, useImportRows,
+  useUploadImportFile,
 } from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { confirmAction } from '../lib/confirm';
@@ -29,6 +30,10 @@ import { useCan } from '../auth/permissions';
  */
 export function ImportPage() {
   const { data: rows = [], isLoading } = useImportRows();
+  // Только чтобы знать, сколько ждёт на соседней вкладке, — сама вкладка
+  // читает эти же данные заново своим вызовом того же хука, TanStack Query
+  // отдаёт их из одного кэша по queryKey, лишнего запроса не будет.
+  const { data: linkRows = [] } = useImportLinkRows();
   const { data: templates = [] } = useDeviceTemplates();
   const upload = useUploadImportFile();
   const deleteRow = useDeleteImportRow();
@@ -41,7 +46,21 @@ export function ImportPage() {
 
   const waiting = rows.filter((r) => r.status === 'new');
   const moved = rows.filter((r) => r.status === 'moved');
+  const linkWaiting = linkRows.filter((r) => r.status === 'new');
   const sorted = useMemo(() => sortRows(rows, sort), [rows, sort]);
+
+  // Вкладка «Устройства» открыта по умолчанию, а её счётчик показывает
+  // только свою таблицу — если из цеха приехали одни связи, эта вкладка
+  // выглядит пустой, и человек решает, что выгрузка потерялась. Стоит
+  // обеим таблицам загрузиться — открываем ту, где действительно есть что
+  // разобрать; ручной выбор человека после этого уже не трогаем (эффект
+  // сработает только на первых свежих данных, а не на каждое изменение).
+  const autoSelected = useRef(false);
+  useEffect(() => {
+    if (autoSelected.current) return;
+    if (waiting.length === 0 && linkWaiting.length > 0) setTab('links');
+    if (rows.length > 0 || linkRows.length > 0) autoSelected.current = true;
+  }, [rows.length, linkRows.length, waiting.length, linkWaiting.length]);
 
   /** Щелчок по заголовку: первый раз — по возрастанию, второй — наоборот. */
   function toggleSort(key: SortKey) {
@@ -118,8 +137,13 @@ export function ImportPage() {
           <Tabs.Tab value="devices" leftSection={<IconDeviceDesktop size={16} />}>
             Устройства{rows.length > 0 ? ` (${rows.length})` : ''}
           </Tabs.Tab>
-          <Tabs.Tab value="links" leftSection={<IconPlugConnected size={16} />}>
-            Связи из обхода
+          <Tabs.Tab
+            value="links" leftSection={<IconPlugConnected size={16} />}
+            rightSection={linkWaiting.length > 0 ? (
+              <Badge size="xs" circle variant="filled" color="blue">{linkWaiting.length}</Badge>
+            ) : undefined}
+          >
+            Связи из обхода{linkRows.length > 0 ? ` (${linkRows.length})` : ''}
           </Tabs.Tab>
         </Tabs.List>
 
