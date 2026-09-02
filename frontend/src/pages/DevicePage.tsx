@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import {
   Anchor, Badge, Button, Card, Group, NumberInput, Paper, Stack, Table, Text, Title,
 } from '@mantine/core';
-import { IconArrowLeft, IconEdit, IconPlus, IconTopologyStar, IconTrash } from '@tabler/icons-react';
+import { IconArrowLeft, IconEdit, IconPlus, IconPrinter, IconTopologyStar, IconTrash } from '@tabler/icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDevice, useDeviceTemplates, useDeviceTypes, useVlans,
+  useAddInterface, useAddInterfacesBulk, useDeleteDevice, useDevice, useDeviceTemplates, useDeviceTypes,
+  usePrintDeviceLabel, useVlans,
 } from '../api/hooks';
 import { RowAction } from '../components/RowAction';
 import { notifyError, notifySuccess } from '../lib/notify';
@@ -36,6 +37,7 @@ export function DevicePage() {
   const addInterface = useAddInterface();
   const addPortsBulk = useAddInterfacesBulk();
   const deleteDevice = useDeleteDevice();
+  const printLabel = usePrintDeviceLabel();
   const [bulkCount, setBulkCount] = useState<number | ''>(24);
   const [editing, setEditing] = useState(false);
 
@@ -91,6 +93,18 @@ export function DevicePage() {
     });
   }
 
+  function handlePrint() {
+    // Как у SNMP-опроса: недоступный принтер — не ошибка запроса, а
+    // обычный ответ с ok=false, поэтому проверяется отдельно от onError.
+    printLabel.mutate({ id: device!.id }, {
+      onSuccess: (result) => {
+        if (result.ok) notifySuccess('Этикетка отправлена на печать');
+        else notifyError(new Error(result.error ?? 'Принтер не ответил'));
+      },
+      onError: notifyError,
+    });
+  }
+
   return (
     <Stack>
       <Group justify="space-between" wrap="wrap">
@@ -106,6 +120,14 @@ export function DevicePage() {
           >
             Показать на схеме
           </Button>
+          {canEdit && (
+            <Button
+              variant="light" leftSection={<IconPrinter size={16} />}
+              loading={printLabel.isPending} onClick={handlePrint}
+            >
+              Печать этикетки
+            </Button>
+          )}
           {canEdit && (
             <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => setEditing(true)}>
               Редактировать

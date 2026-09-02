@@ -2,6 +2,7 @@ import { apiFetch, setToken } from './client';
 import type {
   Token, UserOut, UserCreate, UserUpdate, PasswordChange, PasswordReset,
   PasswordPolicyOut, PasswordPolicyUpdate,
+  PrinterSettingsOut, PrinterSettingsUpdate, PrintLabelRequest, PrintLabelResult,
   TagOut, TagCreate, TagUpdate,
   DeviceTypeOut, DeviceTypeCreate, DeviceTypeUpdate,
   ConnectorTypeOut, ConnectorTypeCreate, ConnectorTypeUpdate,
@@ -44,6 +45,9 @@ export const changeOwnPassword = (body: PasswordChange) =>
 export const getPasswordPolicy = () => apiFetch<PasswordPolicyOut>('/settings/password-policy');
 export const updatePasswordPolicy = (body: PasswordPolicyUpdate) =>
   apiFetch<PasswordPolicyOut>('/settings/password-policy', { method: 'PATCH', body });
+export const getPrinterSettings = () => apiFetch<PrinterSettingsOut>('/settings/printer');
+export const updatePrinterSettings = (body: PrinterSettingsUpdate) =>
+  apiFetch<PrinterSettingsOut>('/settings/printer', { method: 'PATCH', body });
 
 // ---------- Tags ----------
 export const listTags = () => apiFetch<TagOut[]>('/tags');
@@ -125,6 +129,10 @@ export const getDevice = (id: number) => apiFetch<DeviceOut>(`/devices/${id}`);
 // остаётся исходный текст) и возвращает разметку строкой, готовой к
 // dangerouslySetInnerHTML.
 export const getDeviceQr = (id: number) => apiFetch<string>(`/devices/${id}/qr`);
+// Тело не обязательно: без него используется сохранённый адрес принтера
+// (см. настройки), с ним — разовая печать на другой адрес.
+export const printDeviceLabel = (id: number, body: PrintLabelRequest = {}) =>
+  apiFetch<PrintLabelResult>(`/devices/${id}/print-label`, { method: 'POST', body });
 export const listInterfaces = (deviceId: number) =>
   apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces`);
 export const createDevice = (body: DeviceCreate) => apiFetch<DeviceOut>('/devices', { method: 'POST', body });

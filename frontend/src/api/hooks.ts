@@ -13,7 +13,7 @@ import type {
   LinkTemplateCreate, LinkTemplateUpdate,
   LinkCreate, LinkUpdate,
   TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
-  UserCreate, UserUpdate, PasswordReset, PasswordPolicyUpdate,
+  UserCreate, UserUpdate, PasswordReset, PasswordPolicyUpdate, PrinterSettingsUpdate, PrintLabelRequest,
   SiteCreate, SiteUpdate, AuditQuery, DeviceQuery, LinkQuery, FreePortQuery,
   SnmpProbeRequest, SnmpWalkRequest,
 } from './types';
@@ -580,6 +580,23 @@ export function useUpdatePasswordPolicy() {
   return useMutation({
     mutationFn: (body: PasswordPolicyUpdate) => api.updatePasswordPolicy(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['passwordPolicy'] }),
+  });
+}
+export const usePrinterSettings = () =>
+  useQuery({ queryKey: ['printerSettings'], queryFn: api.getPrinterSettings });
+export function useUpdatePrinterSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PrinterSettingsUpdate) => api.updatePrinterSettings(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['printerSettings'] }),
+  });
+}
+/** Печать этикетки — не список и не запрос настроек: результат нужен один
+ * раз, показать в уведомлении, кэшировать нечего (тот же принцип, что у
+ * SNMP-опроса ниже). */
+export function usePrintDeviceLabel() {
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body?: PrintLabelRequest }) => api.printDeviceLabel(id, body),
   });
 }
 

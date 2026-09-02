@@ -579,6 +579,37 @@ export interface paths {
         patch: operations["update_device_position_devices__device_id__position_patch"];
         trace?: never;
     };
+    "/devices/{device_id}/print-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Print Device Label
+         * @description Печать этикетки — код устройства, тот же QR, что на карточке, и
+         *     название с моделью. Один встроенный макет, редактора нет.
+         *
+         *     Доступ — как у SNMP-опроса (`can_edit`): запрос уходит с сервера в сеть
+         *     по адресу, который либо сохранён администратором, либо пришёл в теле
+         *     запроса, — это действие на стороне физического мира, а не просмотр.
+         *
+         *     Недоступный или не настроенный принтер — не HTTP-ошибка (кроме случая
+         *     «нет устройства» или «адрес нигде не указан»): `label_printer.
+         *     print_label()` сама никогда не бросает исключение на сетевой отказ, а
+         *     возвращает `ok=False` с текстом причины — тем же принципом, что и у
+         *     SNMP-опроса.
+         */
+        post: operations["print_device_label_devices__device_id__print_label_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{device_id}/qr": {
         parameters: {
             query?: never;
@@ -1106,6 +1137,29 @@ export interface paths {
         head?: never;
         /** Update Password Policy */
         patch: operations["update_password_policy_settings_password_policy_patch"];
+        trace?: never;
+    };
+    "/settings/printer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Printer Settings
+         * @description Доступна любой роли: адрес принтера в заводской сети — не секрет, а
+         *     экран карточки устройства должен уметь показать «принтер не настроен»,
+         *     не будучи админом.
+         */
+        get: operations["read_printer_settings_settings_printer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Printer Settings */
+        patch: operations["update_printer_settings_settings_printer_patch"];
         trace?: never;
     };
     "/sites": {
@@ -2454,6 +2508,58 @@ export interface components {
             connector_id?: number | null;
             /** Count */
             count: number;
+        };
+        /**
+         * PrintLabelRequest
+         * @description Пусто — печать берёт сохранённый адрес принтера. Оба поля можно
+         *     прислать, чтобы напечатать разово на другой, не трогая настройку.
+         */
+        PrintLabelRequest: {
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+        };
+        /**
+         * PrintLabelResult
+         * @description Тот же принцип, что у SnmpProbeResult: неответивший принтер — не
+         *     HTTP-ошибка, а обычный исход с `ok=False` и текстом причины.
+         */
+        PrintLabelResult: {
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** PrinterSettingsOut */
+        PrinterSettingsOut: {
+            /** Host */
+            host?: string | null;
+            /**
+             * Port
+             * @default 9100
+             */
+            port: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * PrinterSettingsUpdate
+         * @description Та же оговорка про `exclude_unset=True`, что у политики паролей:
+         *     `host: null` — осознанно снять адрес, а не «оставить как было».
+         */
+        PrinterSettingsUpdate: {
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Version */
+            version?: number | null;
         };
         /** SchemaColumn */
         SchemaColumn: {
@@ -4617,6 +4723,43 @@ export interface operations {
             };
         };
     };
+    print_device_label_devices__device_id__print_label_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PrintLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintLabelResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_device_qr_devices__device_id__qr_get: {
         parameters: {
             query?: never;
@@ -5683,6 +5826,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PasswordPolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_printer_settings_settings_printer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrinterSettingsOut"];
+                };
+            };
+        };
+    };
+    update_printer_settings_settings_printer_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrinterSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrinterSettingsOut"];
                 };
             };
             /** @description Validation Error */

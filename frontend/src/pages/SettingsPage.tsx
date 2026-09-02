@@ -1,19 +1,23 @@
 import { useState } from 'react';
 import {
-  Alert, Button, Card, Checkbox, Group, NumberInput, Stack, Text, Title,
+  Alert, Button, Card, Checkbox, Group, NumberInput, Stack, Text, TextInput, Title,
 } from '@mantine/core';
-import { usePasswordPolicy, useUpdatePasswordPolicy } from '../api/hooks';
+import {
+  usePasswordPolicy, useUpdatePasswordPolicy, usePrinterSettings, useUpdatePrinterSettings,
+} from '../api/hooks';
 import { notifyError, notifySuccess } from '../lib/notify';
-import type { PasswordPolicyOut } from '../api/types';
+import type { PasswordPolicyOut, PrinterSettingsOut } from '../api/types';
 
 /** Настройки, которые меняет администратор на ходу — в отличие от
  * переменных окружения (`.env`), эти правятся без перезапуска.
  *
- * Пока единственный раздел — политика паролей. Ниже появятся другие
- * такие же настройки (например, принтера этикеток), и им сюда же.
+ * Разделов два: политика паролей и адрес принтера этикеток. Общего у них
+ * только место на экране и форма хранения (таблица из одной строки) —
+ * содержание разное, поэтому и формы, и таблицы в базе разные.
  */
 export function SettingsPage() {
-  const { data: policy, isLoading, error } = usePasswordPolicy();
+  const { data: policy, isLoading: policyLoading, error: policyError } = usePasswordPolicy();
+  const { data: printer, isLoading: printerLoading, error: printerError } = usePrinterSettings();
 
   return (
     <Stack>
@@ -22,12 +26,16 @@ export function SettingsPage() {
         Меняются здесь, а не в конфигурации сервера, — правки применяются сразу, без перезапуска.
       </Text>
 
-      {error && <Alert color="red">{(error as Error).message}</Alert>}
-      {isLoading && <Text c="dimmed">Загрузка…</Text>}
+      {policyError && <Alert color="red">{(policyError as Error).message}</Alert>}
+      {policyLoading && <Text c="dimmed">Загрузка…</Text>}
       {/* key на версии: после сохранения хук перечитает политику под новым
           номером правки, и форма пересоздастся с уже сохранёнными
           значениями — без ручной синхронизации состояния с ответом сервера. */}
       {policy && <PasswordPolicyForm key={policy.version} policy={policy} />}
+
+      {printerError && <Alert color="red">{(printerError as Error).message}</Alert>}
+      {printerLoading && <Text c="dimmed">Загрузка…</Text>}
+      {printer && <PrinterSettingsForm key={printer.version} settings={printer} />}
     </Stack>
   );
 }
@@ -87,6 +95,55 @@ function PasswordPolicyForm({ policy }: { policy: PasswordPolicyOut }) {
         </Text>
         <Group justify="flex-end">
           <Button type="submit" loading={update.isPending} disabled={invalidLength || invalidAge}>
+            Сохранить
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
+  );
+}
+
+function PrinterSettingsForm({ settings }: { settings: PrinterSettingsOut }) {
+  const [host, setHost] = useState(settings.host ?? '');
+  const [port, setPort] = useState(settings.port);
+  const update = useUpdatePrinterSettings();
+
+  const trimmedHost = host.trim();
+  const invalidPort = typeof port !== 'number' || port < 1 || port > 65535;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (invalidPort) return;
+    update.mutate(
+      { version: settings.version, host: trimmedHost || null, port: port as number },
+      { onSuccess: () => notifySuccess('Настройки принтера сохранены'), onError: notifyError },
+    );
+  }
+
+  return (
+    <Card withBorder padding="md" maw={480} component="form" onSubmit={handleSubmit}>
+      <Stack>
+        <Title order={4}>Принтер этикеток</Title>
+        <Text size="xs" c="dimmed">
+          Термотрансферный принтер Godex G530 по сети (порт 9100). Один принтер на цех — адрес
+          указывается здесь один раз, печать с карточки устройства использует его без переспроса.
+        </Text>
+        <TextInput
+          label="Адрес принтера"
+          description="IP-адрес или сетевое имя. Пусто — печать недоступна, пока не указан"
+          placeholder="10.10.9.50"
+          value={host}
+          onChange={(e) => setHost(e.currentTarget.value)}
+        />
+        <NumberInput
+          label="Порт"
+          value={port}
+          onChange={(v) => setPort(v === '' ? ('' as unknown as number) : Number(v))}
+          min={1} max={65535} required
+          error={invalidPort ? 'От 1 до 65535' : null}
+        />
+        <Group justify="flex-end">
+          <Button type="submit" loading={update.isPending} disabled={invalidPort}>
             Сохранить
           </Button>
         </Group>

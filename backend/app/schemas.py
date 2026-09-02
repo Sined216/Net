@@ -112,6 +112,37 @@ class PasswordPolicyUpdate(BaseModel):
     max_age_days: Optional[int] = Field(default=None, ge=1)
 
 
+# ---------- Настройки принтера этикеток ----------
+class PrinterSettingsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    host: Optional[str] = None
+    port: int = 9100
+    version: int = 1
+
+
+class PrinterSettingsUpdate(BaseModel):
+    """Та же оговорка про `exclude_unset=True`, что у политики паролей:
+    `host: null` — осознанно снять адрес, а не «оставить как было»."""
+    version: Optional[int] = None
+    host: Optional[str] = Field(default=None, max_length=255)
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+
+
+class PrintLabelRequest(BaseModel):
+    """Пусто — печать берёт сохранённый адрес принтера. Оба поля можно
+    прислать, чтобы напечатать разово на другой, не трогая настройку."""
+    host: Optional[str] = Field(default=None, max_length=255)
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+
+
+class PrintLabelResult(BaseModel):
+    """Тот же принцип, что у SnmpProbeResult: неответивший принтер — не
+    HTTP-ошибка, а обычный исход с `ok=False` и текстом причины."""
+    ok: bool
+    elapsed_ms: int
+    error: Optional[str] = None
+
+
 # ---------- Журнал изменений ----------
 class AuditChange(BaseModel):
     """Одно изменённое поле — уже разобранное на «было» и «стало».

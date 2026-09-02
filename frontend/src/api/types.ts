@@ -28,6 +28,10 @@ export type UserOut = S['UserOut'];
 export type UserRole = UserOut['role'];
 export type PasswordPolicyOut = S['PasswordPolicyOut'];
 export type PasswordPolicyUpdate = S['PasswordPolicyUpdate'];
+export type PrinterSettingsOut = S['PrinterSettingsOut'];
+export type PrinterSettingsUpdate = S['PrinterSettingsUpdate'];
+export type PrintLabelRequest = S['PrintLabelRequest'];
+export type PrintLabelResult = S['PrintLabelResult'];
 
 // ---------- Журнал изменений ----------
 export type AuditChange = S['AuditChange'];

@@ -714,3 +714,22 @@ class PasswordPolicy(Base):
         CheckConstraint("id = 1", name="ck_password_policy_singleton"),
         CheckConstraint("min_length BETWEEN 8 AND 128", name="ck_password_policy_min_length"),
     )
+
+
+class PrinterSettings(Base):
+    """Адрес принтера этикеток — своя строка, не поле в `PasswordPolicy`:
+    формой хранения (единственная строка) эти двое совпадают случайно,
+    содержанием — нет, и правка одного не должна задевать миграцию
+    другого. Принтер физически один на цех, поэтому и настройка одна, а
+    не список; печать (`app/label_printer.py`) может передать другой
+    адрес разово, в самом запросе.
+    """
+    __tablename__ = "printer_settings"
+    id = Column(Integer, primary_key=True, server_default="1")
+    # Пусто, пока администратор не укажет, — печать тогда отвечает понятной
+    # ошибкой, а не пытается достучаться в никуда.
+    host = Column(Text)
+    port = Column(Integer, nullable=False, server_default="9100")
+    version = Column(Integer, nullable=False, server_default="1")
+
+    __table_args__ = (CheckConstraint("id = 1", name="ck_printer_settings_singleton"),)

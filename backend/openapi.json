@@ -3129,6 +3129,138 @@
         "title": "PortsBulkCreate",
         "type": "object"
       },
+      "PrintLabelRequest": {
+        "description": "Пусто — печать берёт сохранённый адрес принтера. Оба поля можно\nприслать, чтобы напечатать разово на другой, не трогая настройку.",
+        "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          }
+        },
+        "title": "PrintLabelRequest",
+        "type": "object"
+      },
+      "PrintLabelResult": {
+        "description": "Тот же принцип, что у SnmpProbeResult: неответивший принтер — не\nHTTP-ошибка, а обычный исход с `ok=False` и текстом причины.",
+        "properties": {
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "elapsed_ms"
+        ],
+        "title": "PrintLabelResult",
+        "type": "object"
+      },
+      "PrinterSettingsOut": {
+        "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "port": {
+            "default": 9100,
+            "title": "Port",
+            "type": "integer"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "PrinterSettingsOut",
+        "type": "object"
+      },
+      "PrinterSettingsUpdate": {
+        "description": "Та же оговорка про `exclude_unset=True`, что у политики паролей:\n`host: null` — осознанно снять адрес, а не «оставить как было».",
+        "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "PrinterSettingsUpdate",
+        "type": "object"
+      },
       "SchemaColumn": {
         "properties": {
           "name": {
@@ -8340,6 +8472,80 @@
         ]
       }
     },
+    "/devices/{device_id}/print-label": {
+      "post": {
+        "description": "Печать этикетки — код устройства, тот же QR, что на карточке, и\nназвание с моделью. Один встроенный макет, редактора нет.\n\nДоступ — как у SNMP-опроса (`can_edit`): запрос уходит с сервера в сеть\nпо адресу, который либо сохранён администратором, либо пришёл в теле\nзапроса, — это действие на стороне физического мира, а не просмотр.\n\nНедоступный или не настроенный принтер — не HTTP-ошибка (кроме случая\n«нет устройства» или «адрес нигде не указан»): `label_printer.\nprint_label()` сама никогда не бросает исключение на сетевой отказ, а\nвозвращает `ok=False` с текстом причины — тем же принципом, что и у\nSNMP-опроса.",
+        "operationId": "print_device_label_devices__device_id__print_label_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Site-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Site-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrintLabelRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrintLabelResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Print Device Label",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
     "/devices/{device_id}/qr": {
       "get": {
         "description": "QR-код устройства — картинкой, не JSON-полем в DeviceOut: это\nотображение по требованию, а не то, что нужно в каждом ответе со списком.\n\nКодируется `code` (например, «SW-0042»), не ссылка: сканера, который\nумел бы её открыть, в проекте пока нет ни в вебе, ни в мобильном\nприложении — значение кладётся на будущее опознание, ручное или\nавтоматическое, и `code` для этого лучше `id` — человекочитаем и не\nпривязан к конкретной базе (перенос площадки id не переживёт, код —\nпереживёт).\n\nДоступ — как у чтения самой карточки, не `can_edit`: показ кода ничего\nне меняет.",
@@ -10346,6 +10552,77 @@
           }
         ],
         "summary": "Update Password Policy",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/printer": {
+      "get": {
+        "description": "Доступна любой роли: адрес принтера в заводской сети — не секрет, а\nэкран карточки устройства должен уметь показать «принтер не настроен»,\nне будучи админом.",
+        "operationId": "read_printer_settings_settings_printer_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrinterSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Printer Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "update_printer_settings_settings_printer_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrinterSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrinterSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Printer Settings",
         "tags": [
           "settings"
         ]
