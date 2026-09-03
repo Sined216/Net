@@ -256,12 +256,14 @@ function addDevices(
 }
 
 /** Кабели: целые — между двумя карточками, повисшие концы — заглушкой под
- * своим устройством. Линия всегда прямая: связей на схеме немного, и
- * прямой отрезок между двумя точками читается короче и однозначнее ломаной,
- * которая вдобавок обходит чужие карточки стороной, петляя через всё
- * полотно. Раньше был выбор — ортогональная разводка или прямая, — но
- * ортогональную убрали: прямая читается яснее, а держать оба способа
- * разводки значило чинить схему дважды на каждую правку. */
+ * своим устройством.
+ *
+ * Как ведётся линия и чем она нарисована — две отдельные настройки вида
+ * (`edgeRouter` и `edgeConnector`), а не одна на двоих: путь и его
+ * начертание независимы, и «дуга» одинаково применима к прямой линии и к
+ * ломаной. Единственного правильного способа тут нет — на редкой схеме
+ * прямая читается короче и однозначнее, на плотной она идёт через чужие
+ * карточки, и обход становится нужнее краткости. */
 function addLinks(
   graph: dia.Graph,
   edges: TopologyEdge[],
@@ -281,10 +283,49 @@ function addLinks(
       endsOfDevice.get(deviceId)!.push(edge.link_id);
     }
   }
-  // Прямая линия узлы пересекает, поэтому идёт под карточками — иначе она
-  // легла бы поверх соседних узлов и их подписей портов.
-  const linkConnector = { name: 'rounded', args: { radius: 8 } };
-  const linkZ = 5;
+  // Разводка, обходящая карточки, кладётся поверх узлов; прямая уходит под
+  // них. Иначе прямая линия, которая узлы пересекает, легла бы поверх
+  // соседних карточек и спрятала их подписи портов.
+  const goesAround = look.edgeRouter !== 'normal';
+  const linkZ = goesAround ? 20 : 5;
+
+  // Коридоры разводки у ортогональных роутеров разные: одинаковый отступ
+  // сводит соседние кабели в одну линию ровно так же, как одинаковая точка
+  // входа. Шаг подобран так, чтобы соседние коридоры было видно как
+  // отдельные, а не как утолщённую линию.
+  const linkOrder = new Map(edges.map((edge, index) => [edge.link_id, index]));
+  const routerFor = (linkId: number) => {
+    const lane = (linkOrder.get(linkId) ?? 0) % 4;
+    switch (look.edgeRouter) {
+      case 'manhattan':
+      case 'metro':
+        return { name: look.edgeRouter, args: { step: 16, padding: 22 + lane * 18 } };
+      // У rightAngle отступ называется иначе (margin, не padding) и меряется
+      // от конца линии, а не вокруг узла, — отсюда другой шаг коридора.
+      case 'rightAngle':
+        return { name: 'rightAngle', args: { margin: 20 + lane * 14 } };
+      default:
+        return undefined;
+    }
+  };
+
+  const linkConnector = (() => {
+    switch (look.edgeConnector) {
+      case 'rounded':
+        return { name: 'rounded', args: { radius: 8 } };
+      // «Мостик» в месте пересечения: без него две пересекающиеся линии
+      // читаются как одна с ответвлением.
+      case 'jumpover':
+        return { name: 'jumpover', args: { size: 5, jump: 'arc' } };
+      // Умолчания дуги (direction: 'auto') подбирают изгиб по взаимному
+      // положению концов — это ровно то поведение, которое нужно, поэтому
+      // аргументов нет.
+      case 'curve':
+        return { name: 'curve' };
+      default:
+        return { name: 'normal' };
+    }
+  })();
 
   // «Никогда» — подписей в модели вовсе нет, как и раньше. «При наведении»
   // — они есть, но прозрачные с самого начала; полотно показывает их по
@@ -305,6 +346,7 @@ function addLinks(
         target: { id: target.id, anchor: { name: 'center' } },
         linkId: edge.link_id,
         hoverLabels: hoverOnly,
+        router: routerFor(edge.link_id),
         connector: linkConnector,
         z: linkZ,
         attrs: {
@@ -349,6 +391,10 @@ function addLinks(
       attrs: { body: { fill: paint.plate } },
     });
     graph.addCell(stub);
+    // Отвес до заглушки настройкам разводки намеренно не подчиняется: это
+    // короткий отрезок под собственной карточкой, обходить которому нечего,
+    // а ломаная или дуга на нём читались бы как настоящий кабель куда-то в
+    // сторону.
     graph.addCell(new shapes.standard.Link({
       source: { id: deviceCell.id }, target: { id: stub.id },
       linkId: edge.link_id,

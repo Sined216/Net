@@ -165,6 +165,35 @@ export function AppearanceMenu({ value, onChange }: Props) {
                 marks={[{ value: 1 }, { value: 3 }, { value: 5 }]}
               />
             </Field>
+            <Field label="Разводка">
+              <SegmentedControl
+                size="xs" fullWidth value={value.edgeRouter}
+                onChange={(v) => set('edgeRouter', v as TopologyAppearance['edgeRouter'])}
+                data={[
+                  { value: 'normal', label: 'Прямая' },
+                  { value: 'manhattan', label: 'Углами' },
+                  { value: 'metro', label: 'Метро' },
+                  { value: 'rightAngle', label: 'По отступам' },
+                ]}
+              />
+            </Field>
+            <Field label="Стиль линии">
+              <SegmentedControl
+                size="xs" fullWidth value={value.edgeConnector}
+                onChange={(v) => set('edgeConnector', v as TopologyAppearance['edgeConnector'])}
+                data={[
+                  { value: 'normal', label: 'Острые' },
+                  { value: 'rounded', label: 'Скруглить' },
+                  { value: 'curve', label: 'Дуга' },
+                  { value: 'jumpover', label: 'Мостики' },
+                ]}
+              />
+            </Field>
+            <Text size="xs" c="dimmed">
+              «Углами» и «Метро» обводят кабель вокруг чужих карточек, «По отступам» — только держит прямые
+              углы. «Скруглить» сглаживает углы разводки, поэтому на прямой линии ничего не меняет — кривизну
+              там даёт «Дуга». «Мостики» рисуют перескок в месте пересечения двух кабелей.
+            </Text>
             <Field label="Подписи портов на концах линии">
               <SegmentedControl
                 size="xs" fullWidth value={value.edgeLabels}

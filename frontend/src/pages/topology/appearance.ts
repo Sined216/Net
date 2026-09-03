@@ -44,6 +44,18 @@ export interface TopologyAppearance {
   deviceDark: boolean;
 
   edgeWidth: number;
+  /** Как кабель ищет путь между карточками. `normal` — отрезок напрямую;
+   * `manhattan` и `metro` ведут его прямыми углами в обход чужих узлов
+   * (второй позволяет себе диагонали), `rightAngle` — прямыми углами, но
+   * не обходя ничего, по одним отступам. Чем плотнее схема, тем сильнее
+   * расходятся эти способы: на десятке узлов прямая читается лучше всего,
+   * на сотне она превращается в паутину поверх карточек. */
+  edgeRouter: 'normal' | 'manhattan' | 'metro' | 'rightAngle';
+  /** Чем нарисован найденный путь. `rounded` скругляет углы маршрута — на
+   * прямой разводке ему нечего скруглять; заметную кривизну там даёт
+   * `curve`. `jumpover` — про другое: он рисует «мостик» в месте, где две
+   * линии пересекаются, иначе они читаются как одна с ответвлением. */
+  edgeConnector: 'normal' | 'rounded' | 'curve' | 'jumpover';
   /** Подписи портов на концах линии: всегда видны, появляются при
    * наведении на кабель, или не показываются вовсе. На плотной схеме
    * подписи всех кабелей разом читать так же трудно, как не иметь их —
@@ -93,6 +105,8 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   deviceDark: true,
 
   edgeWidth: 2,
+  edgeRouter: 'normal',
+  edgeConnector: 'rounded',
   edgeLabels: 'always',
   edgeLabelName: true,
   edgeLabelSize: 10,
