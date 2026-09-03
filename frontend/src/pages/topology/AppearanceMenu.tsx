@@ -270,6 +270,22 @@ export function AppearanceMenu({ value, onChange }: Props) {
                 ]}
               />
             </Field>
+            <Switch
+              size="xs" label="Привязка к сетке" checked={value.gridSnap}
+              onChange={(e) => set('gridSnap', e.currentTarget.checked)}
+            />
+            <Field label={`Шаг сетки — ${value.gridSize} px`}>
+              <Slider
+                size="sm" min={5} max={50} step={5} value={value.gridSize}
+                onChange={(v) => set('gridSize', v)}
+                marks={[{ value: 5 }, { value: 10 }, { value: 25 }, { value: 50 }]}
+              />
+            </Field>
+            <Text size="xs" c="dimmed">
+              Шаг задаёт и рисунок сетки, и привязку, поэтому меняет его один ползунок. С привязкой по
+              узлам сетки встают и положение узла, и рамка группы с её размером — включая то, что
+              расставляет «Разложить». Без привязки сетка остаётся видимой, но ничего не держит.
+            </Text>
 
             <Divider my={4} />
             <Group justify="space-between" align="center">

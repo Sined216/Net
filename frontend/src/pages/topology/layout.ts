@@ -1,6 +1,7 @@
 import { layoutLayered, type ElkAlgorithm } from '../../lib/elk';
 import type { Box, Point } from './joint/buildGraph';
 import { GROUP_MIN } from './joint/shapes';
+import { NO_SNAP, snapBoxOut, snapCenter } from './grid';
 
 /** Простая force-directed раскладка: отталкивание между всеми узлами,
  * пружина вдоль рёбер, лёгкое центрирование. Тот же алгоритм, что и в
@@ -114,6 +115,11 @@ export async function computeAutoLayout(
   gaps: { row: number; node: number },
   /** Каким алгоритмом ELK раскладывать — тоже настройка вида. */
   algorithm: ElkAlgorithm,
+  /** Шаг привязки к сетке. ELK о сетке не знает и отдаёт произвольные
+   * координаты; без округления здесь первое же перетаскивание любой карточки
+   * после «Разложить» дёргало бы её на остаток — привязка нашлась бы ровно в
+   * тот момент, когда человек её не просил. */
+  grid = NO_SNAP,
 ): Promise<{ positions: Map<number, Point>; boxes: Map<number, Box> }> {
   const busy = new Set<number>();
   for (const card of cards) {
@@ -146,17 +152,21 @@ export async function computeAutoLayout(
   for (const card of cards) {
     const at = laid.get(`d${card.id}`);
     // Схема хранит середину карточки, ELK отдаёт левый верхний угол.
-    if (at) positions.set(card.id, { x: at.x + at.width / 2, y: at.y + at.height / 2 });
+    if (at) {
+      positions.set(card.id, snapCenter(
+        { x: at.x + at.width / 2, y: at.y + at.height / 2 }, at, grid,
+      ));
+    }
   }
   const boxes = new Map<number, Box>();
   for (const group of groups) {
     const at = laid.get(`g${group.id}`);
     if (!at) continue;
-    boxes.set(group.id, {
+    boxes.set(group.id, snapBoxOut({
       x: at.x, y: at.y,
       width: Math.max(at.width, GROUP_MIN.width),
       height: Math.max(at.height, GROUP_MIN.height),
-    });
+    }, grid));
   }
   return { positions, boxes };
 }

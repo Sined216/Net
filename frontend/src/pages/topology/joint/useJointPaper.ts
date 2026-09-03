@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { dia, g, highlighters, shapes } from '@joint/core';
 import { canvasColors, loadAppearance, type TopologyAppearance } from '../appearance';
+import { NO_SNAP, snapPoint } from '../grid';
 import { deviceTools, groupTools } from './tools';
 import type { Box } from './buildGraph';
 
@@ -130,10 +131,13 @@ function gridFor(background: TopologyAppearance['background'], scheme: 'light' |
   return grid[background];
 }
 
-export function useJointPaper({ canEdit, scheme, background, actions, handlers }: {
+export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap, actions, handlers }: {
   canEdit: boolean;
   scheme: 'light' | 'dark';
   background: TopologyAppearance['background'];
+  /** Шаг сетки: и рисунка, и привязки, когда она включена. */
+  gridSize: number;
+  gridSnap: boolean;
   actions: React.RefObject<JointActions>;
   handlers: React.RefObject<PaperHandlers>;
 }): JointPaper {
@@ -150,6 +154,10 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
    * сервера граф собирается заново, ячейки — новые, и панель приходится
    * ставить снова тому же объекту. */
   const panelShown = useRef(false);
+  /** Шаг привязки — ссылкой по той же причине, что и обработчики: полотно и
+   * его подписки создаются один раз, а настройку меняют на ходу. */
+  const gridStepRef = useRef(gridSnap ? gridSize : NO_SNAP);
+  gridStepRef.current = gridSnap ? gridSize : NO_SNAP;
 
   /** Панели действий берут обработчики в момент нажатия — так в них не
    * застывает состояние того рендера, на котором рисовали узел. */
@@ -182,6 +190,7 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
     const look = {
       paint: canvasColors(scheme),
       zoom: Math.min(Math.max(1 / paper.scale().sx, 1), 4),
+      grid: gridStepRef.current,
     };
     paper.removeTools();
     highlighters.stroke.removeAll(paper);
@@ -264,7 +273,11 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
       cellViewNamespace: shapes,
       width: Math.max(element.clientWidth, 320),
       height: Math.max(element.clientHeight, 320),
-      gridSize: 10,
+      // Начальные значения читаются из настроек тем же способом, что и фон
+      // ниже: полотно пересобирается только при смене прав, а настройки к
+      // этому моменту уже сохранены. Дальше их правит отдельный эффект.
+      gridSize: loadAppearance().gridSnap ? loadAppearance().gridSize : NO_SNAP,
+      drawGridSize: loadAppearance().gridSize,
       drawGrid: gridFor(loadAppearance().background, scheme),
       // Сколько движений мыши между нажатием и отпусканием ещё считается
       // щелчком. По умолчанию — ноль: дрогнула рука на пиксель, и JointJS
@@ -601,7 +614,12 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
         // само это делает только для того узла, за который тянут; без
         // подрезки остальные выезжали за рамку, а при следующей перерисовке
         // возвращались в неё — узлы прыгали как будто сами по себе.
-        const at = insideParent(element, start.x + dx, start.y + dy);
+        // Ведущий узел полотно уже привязало к сетке, и ведомые едут за ним
+        // тем же сдвигом — но подрезка рамкой сбивает их с узлов сетки, и
+        // ровный ряд после перетаскивания оказывался неровным. Привязываем
+        // после подрезки: она сдвигает не больше чем на шаг, из рамки это не
+        // выводит.
+        const at = snapPoint(insideParent(element, start.x + dx, start.y + dy), gridStepRef.current);
         // Своё же событие сюда вернётся, но с чужим id и отсеется первой
         // строкой — рекурсии нет, а вид обновляется как обычно.
         element.position(at.x, at.y);
@@ -714,6 +732,21 @@ export function useJointPaper({ canEdit, scheme, background, actions, handlers }
   useEffect(() => {
     paperRef.current?.setGrid(gridFor(background, scheme));
   }, [background, scheme]);
+
+  // Шаг привязки и шаг рисунка сетки — тоже настройки вида. Привязку
+  // перетаскивания полотно делает само по `gridSize`, выключается она шагом в
+  // пиксель; сетка при этом должна остаться нарисованной прежним шагом,
+  // поэтому размер рисунка задаётся отдельно (`drawGridSize`).
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+    paper.options.drawGridSize = gridSize;
+    paper.setGridSize(gridSnap ? gridSize : NO_SNAP);
+    // setGridSize перерисовывает сетку сам, но только когда меняется само
+    // число: при выключении привязки шаг рисунка остаётся прежним, и без
+    // явной перерисовки сетка осталась бы с прежним шагом.
+    paper.setGrid(gridFor(background, scheme));
+  }, [gridSize, gridSnap, background, scheme]);
 
   // Delete удаляет выделенное, Escape убирает панель действий — мышью её
   // снимают щелчком мимо, но с клавиатуры это быстрее.

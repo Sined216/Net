@@ -82,6 +82,13 @@ export interface TopologyAppearance {
   layoutAlgorithm: ElkAlgorithm;
 
   background: 'dots' | 'lines' | 'cross' | 'none';
+  /** Привязка к сетке: узел, рамка и её размер встают по её узлам. Ровнять
+   * схему на глаз — работа, которую никто не доделывает до конца, и разница
+   * в три пикселя видна именно тогда, когда схему показывают другим. */
+  gridSnap: boolean;
+  /** Шаг сетки — и привязки, и рисунка. Разным схемам нужен разный: под
+   * плотную стойку шаг мельче, под цех с десятком шкафов крупнее. */
+  gridSize: number;
 }
 
 export const DEFAULT_APPEARANCE: TopologyAppearance = {
@@ -117,6 +124,10 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   layoutAlgorithm: 'layered',
 
   background: 'dots',
+  // Десять — то, чем полотно привязывало перетаскивание и до появления
+  // настройки: у тех, кто её не тронет, ничего не поменяется.
+  gridSnap: true,
+  gridSize: 10,
 };
 
 const STORAGE_KEY = 'netdoc.topology.appearance';

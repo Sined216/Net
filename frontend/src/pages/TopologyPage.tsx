@@ -29,6 +29,7 @@ import {
 } from './topology/joint/buildGraph';
 import { GROUP_MIN, nodeMetrics, nodeSizes } from './topology/joint/shapes';
 import { computeAutoLayout, type AutoCard } from './topology/layout';
+import { snapBoxOut, snapCenter, snapStep } from './topology/grid';
 import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
@@ -274,6 +275,7 @@ export function TopologyPage() {
           internalLinks,
           { row: look.layoutRowGap, node: look.layoutNodeGap },
           look.layoutAlgorithm,
+          snapStep(look),
         );
 
         // Находим размах результата в координатах ELK, чтобы сдвинуть
@@ -299,24 +301,30 @@ export function TopologyPage() {
         const ox = box.x + SIDE - minX;
         const oy = box.y + TOP - minY;
 
+        // Раскладку привязала к сетке сама computeAutoLayout, но сдвиг в
+        // координаты рамки (ox/oy) на узлах сетки не лежит — иначе пришлось
+        // бы двигать саму рамку. Поэтому привязываем ещё раз, уже после
+        // сдвига: иначе разложенное содержимое встало бы мимо сетки, по
+        // которой человек ровнял всё остальное.
+        const step = snapStep(look);
         const deviceMoves = new Map<number, Point>();
         for (const c of subtreeCards) {
           const pos = laid.positions.get(c.id);
-          if (pos) deviceMoves.set(c.id, { x: pos.x + ox, y: pos.y + oy });
+          if (pos) deviceMoves.set(c.id, snapCenter({ x: pos.x + ox, y: pos.y + oy }, c, step));
         }
         const groupMoves = new Map<number, Box>();
         for (const [gid, subBox] of laid.boxes) {
-          groupMoves.set(gid, {
+          groupMoves.set(gid, snapBoxOut({
             x: subBox.x + ox, y: subBox.y + oy,
             width: subBox.width, height: subBox.height,
-          });
+          }, step));
         }
         // Обновляем рамку самой группы по размаху её содержимого
-        groupMoves.set(groupId, {
+        groupMoves.set(groupId, snapBoxOut({
           ...box,
           width: Math.max(box.width, SIDE * 2 + (maxX - minX), GROUP_MIN.width),
           height: Math.max(box.height, TOP + (maxY - minY) + SIDE, GROUP_MIN.height),
-        });
+        }, step));
 
         history.push({
           title: 'раскладка группы',
@@ -483,6 +491,7 @@ export function TopologyPage() {
           .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! })),
         { row: look.layoutRowGap, node: look.layoutNodeGap },
         look.layoutAlgorithm,
+        snapStep(look),
       );
 
       history.push({
@@ -511,7 +520,9 @@ export function TopologyPage() {
   }, [nodes, edges, groups, look, laying, history, savePositions, saveGroupBox]);
 
   const paper = useJointPaper({
-    canEdit, scheme, background: look.background, actions: actionsRef, handlers,
+    canEdit, scheme, background: look.background,
+    gridSize: look.gridSize, gridSnap: look.gridSnap,
+    actions: actionsRef, handlers,
   });
 
   handlers.current = {
@@ -591,7 +602,7 @@ export function TopologyPage() {
     graph.clear();
     if (nodes.length === 0) return;
 
-    const positions = computePositions(nodes, edges, placed);
+    const positions = computePositions(nodes, edges, placed, look);
     const { deviceCells, boxes } = buildGraph(
       graph, { nodes, edges, groups }, { look, scheme, positions, pendingBoxes: pendingBoxes.current },
     );

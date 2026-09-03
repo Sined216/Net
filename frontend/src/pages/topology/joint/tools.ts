@@ -1,5 +1,6 @@
 import { dia, elementTools, linkTools } from '@joint/core';
 import { GROUP_MIN } from './shapes';
+import { NO_SNAP, snapValue } from '../grid';
 import type { canvasColors } from '../appearance';
 
 /** Панели действий на узле и на рамке — то же, что NodeToolbar в React Flow.
@@ -22,6 +23,9 @@ export interface ToolsLook {
   paint: Paint;
   /** 1 при обычном масштабе, больше — когда схему отдалили. */
   zoom: number;
+  /** Шаг привязки к сетке для растяжки рамки. Перетаскивание полотно
+   * привязывает само, а размер меняется через инструмент, мимо полотна. */
+  grid: number;
 }
 
 /** Иконки — контуры из того же набора, что и во всём интерфейсе (Tabler),
@@ -73,7 +77,12 @@ function button(icon: string, title: string, color: string, index: number, look:
   });
 }
 
-/** Ручка изменения размера в правом нижнем углу рамки. */
+/** Ручка изменения размера в правом нижнем углу рамки.
+ *
+ * Привязка к сетке здесь своя: полотно округляет только перетаскивание, а
+ * размер меняется отсюда. Левый верхний угол рамки при растяжке стоит на
+ * месте, поэтому округлять достаточно саму ширину с высотой — правый нижний
+ * край встаёт на узел сетки вместе с ними. */
 const ResizeControl = elementTools.Control.extend({
   children: [
     {
@@ -91,9 +100,19 @@ const ResizeControl = elementTools.Control.extend({
     return { x: width, y: height };
   },
   setPosition(view: dia.ElementView, coordinates: { x: number; y: number }) {
+    // Шаг приходит опцией инструмента: сам инструмент создаётся на каждую
+    // выделенную рамку, а настройку меняют на ходу.
+    const step = (this as unknown as { options: { grid?: number } }).options.grid ?? NO_SNAP;
+    // Наименьший размер рамки сам может не лежать на сетке — тогда берётся
+    // ближайший узел не меньше него, иначе рамка на пределе съезжала бы с
+    // сетки на каждую растяжку.
+    const atLeast = (value: number, min: number) => {
+      const snapped = snapValue(value, step);
+      return snapped >= min ? snapped : Math.ceil(min / step) * step;
+    };
     view.model.resize(
-      Math.max(coordinates.x, GROUP_MIN.width),
-      Math.max(coordinates.y, GROUP_MIN.height),
+      atLeast(coordinates.x, GROUP_MIN.width),
+      atLeast(coordinates.y, GROUP_MIN.height),
     );
   },
 });
@@ -160,7 +179,7 @@ export function groupTools(groupId: number, actions: {
   tools.push(
     button(ICONS.trash, 'Удалить группу — устройства останутся', '#e03131', isCabinet ? 3 : 4, look,
            () => actions.removeGroup(groupId)),
-    new ResizeControl({ handleAttributes: { fill: look.paint.plate, stroke: color } }),
+    new ResizeControl({ handleAttributes: { fill: look.paint.plate, stroke: color }, grid: look.grid }),
   );
   return new dia.ToolsView({ name: 'group', tools });
 }

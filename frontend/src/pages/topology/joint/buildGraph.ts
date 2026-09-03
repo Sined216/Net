@@ -5,6 +5,7 @@ import {
   STUB_SIZE, withAlpha, type NodeSize,
 } from './shapes';
 import { groupDepth } from '../groups';
+import { NO_SNAP, snapBoxOut, snapCenter, snapStep } from '../grid';
 import { computeForceLayout, type LayoutNode, type Spring } from '../layout';
 import type { TopologyEdge, TopologyGroupOut, TopologyNode } from '../../../api/types';
 
@@ -549,6 +550,11 @@ export function computePositions(
   nodes: TopologyNode[],
   edges: TopologyEdge[],
   placed: React.RefObject<Map<number, Point>>,
+  /** Настройки вида — ради шага привязки и размеров карточек. Привязываются
+   * только те узлы, место которым придумала пружинная раскладка:
+   * сохранённые позиции не трогаются, их поставил человек, и подвинуть их
+   * при открытии схемы значило бы молча переставить чужую работу. */
+  look?: TopologyAppearance,
 ): Map<number, Point> {
   const layout: LayoutNode[] = nodes.map((n) => {
     // Сложившееся в этой сессии важнее сохранённого: запись позиции нарочно
@@ -577,11 +583,24 @@ export function computePositions(
   }
   if (layout.some((n) => !n.fixed)) computeForceLayout(layout, springs, 1100, 750);
 
+  // Привязывается угол карточки, а не её середина, — тем же краем, каким её
+  // привязывает перетаскивание в полотне. Иначе выходит хуже, чем без
+  // привязки вовсе: карточки шириной 179 с серединами по сетке встают
+  // краями вразнобой, а первое же перетаскивание любой из них сдвигает её
+  // на пол-ширины, потому что полотно ровняет уже угол.
+  const step = look ? snapStep(look) : NO_SNAP;
+  const sizes = look ? nodeSizes(nodes.map((n) => cardText(n, look)), look) : undefined;
+  const metrics = look ? nodeMetrics(look) : undefined;
+
   const result = new Map<number, Point>();
   for (const node of layout) {
-    const at = { x: node.x, y: node.y };
-    result.set(parseInt(node.id, 10), at);
-    placed.current!.set(parseInt(node.id, 10), at);
+    const id = parseInt(node.id, 10);
+    const size = sizes?.get(id) ?? metrics;
+    const at = node.fixed || !size
+      ? { x: node.x, y: node.y }
+      : snapCenter({ x: node.x, y: node.y }, size, step);
+    result.set(id, at);
+    placed.current!.set(id, at);
   }
   return result;
 }
@@ -656,11 +675,16 @@ export function computeBoxes(
     const minY = Math.min(...parts.map((p) => p.y)) - GROUP_PADDING;
     const maxX = Math.max(...parts.map((p) => p.x + p.width)) + GROUP_PADDING;
     const maxY = Math.max(...parts.map((p) => p.y + p.height)) + GROUP_PADDING;
-    const box = {
+    // Посчитанная рамка тоже ложится на сетку: она один раз сохраняется на
+    // сервер (см. `autoSaved` в TopologyPage) и с этого мгновения живёт как
+    // заданная руками — начать эту жизнь мимо сетки значит поймать рывок при
+    // первой же растяжке. Наружу, а не к ближайшему узлу: рамка обводит
+    // содержимое, и округление внутрь подрезало бы крайнюю карточку.
+    const box = snapBoxOut({
       x: minX, y: minY,
       width: Math.max(maxX - minX, GROUP_MIN.width),
       height: Math.max(maxY - minY, GROUP_MIN.height),
-    };
+    }, snapStep(look));
     boxes.set(group.id, box);
     return box;
   };
