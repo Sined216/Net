@@ -310,6 +310,16 @@ function addLinks(
     }
   };
 
+  // Кабель цепляется к середине той стороны карточки, что обращена к другому
+  // концу связи, а не к середине самой карточки. Дело не только в том, что
+  // линия перестаёт выползать из-под карточки: от якоря роутеры берут
+  // сторону выхода. `rightAngle` с направлением `auto` спрашивает у
+  // прямоугольника сторону, ближайшую к якорю, — а середина карточки 179×57
+  // ближе всего к верху и низу всегда, куда бы ни стояло второе устройство,
+  // и кабель принудительно уходил вертикально. С серединой стороны сторона
+  // считается по взаимному положению устройств, как и должна.
+  const endAnchor = { name: 'midSide', args: { mode: 'auto' } };
+
   const linkConnector = (() => {
     switch (look.edgeConnector) {
       case 'rounded':
@@ -343,8 +353,8 @@ function addLinks(
       const target = deviceCells.get(edge.device_b_id);
       if (!source || !target) continue;
       graph.addCell(new shapes.standard.Link({
-        source: { id: source.id, anchor: { name: 'center' } },
-        target: { id: target.id, anchor: { name: 'center' } },
+        source: { id: source.id, anchor: endAnchor },
+        target: { id: target.id, anchor: endAnchor },
         linkId: edge.link_id,
         hoverLabels: hoverOnly,
         router: routerFor(edge.link_id),
@@ -397,7 +407,7 @@ function addLinks(
     // а ломаная или дуга на нём читались бы как настоящий кабель куда-то в
     // сторону.
     graph.addCell(new shapes.standard.Link({
-      source: { id: deviceCell.id }, target: { id: stub.id },
+      source: { id: deviceCell.id, anchor: endAnchor }, target: { id: stub.id, anchor: endAnchor },
       linkId: edge.link_id,
       hoverLabels: hoverOnly,
       z: linkZ,
