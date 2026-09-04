@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { dia, g, highlighters, shapes } from '@joint/core';
 import { canvasColors, loadAppearance, type TopologyAppearance } from '../appearance';
-import { NO_SNAP, snapPoint } from '../grid';
+import { NO_SNAP, snapCornerToCenteredGrid, snapPoint, snapValue } from '../grid';
 import { deviceTools, groupTools } from './tools';
 import type { Box } from './buildGraph';
 
@@ -129,6 +129,30 @@ function gridFor(background: TopologyAppearance['background'], scheme: 'light' |
     none: false,
   };
   return grid[background];
+}
+
+/** Вид ячейки со своей привязкой к сетке.
+ *
+ * Полотно привязывает перетаскивание само, но по левому верхнему углу
+ * (`ElementView.prototype.drag` зовёт `snapToGrid` и кладёт результат в
+ * `position`). Нам нужна середина — к ней цепляется кабель, — поэтому
+ * встроенная привязка выключена (`gridSize: 1`), а округляет этот метод.
+ * Это штатная точка расширения библиотеки: переписывать её цикл
+ * перетаскивания или доводить карточку рывком после `pointerup` не нужно.
+ *
+ * Рамка группы — исключение: её ровняют по контуру, кабели к ней не
+ * цепляются, а размер округляет ручка растяжки (`tools.ts`).
+ */
+function snappingElementView(step: () => number) {
+  return dia.ElementView.extend({
+    snapToGrid(this: dia.ElementView, _event: unknown, x: number, y: number) {
+      const grid = step();
+      if (this.model.get('kind') === 'group') {
+        return { x: snapValue(x, grid), y: snapValue(y, grid) };
+      }
+      return snapCornerToCenteredGrid(x, y, this.model.size(), grid);
+    },
+  });
 }
 
 export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap, actions, handlers }: {
@@ -273,10 +297,15 @@ export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap,
       cellViewNamespace: shapes,
       width: Math.max(element.clientWidth, 320),
       height: Math.max(element.clientHeight, 320),
-      // Начальные значения читаются из настроек тем же способом, что и фон
-      // ниже: полотно пересобирается только при смене прав, а настройки к
-      // этому моменту уже сохранены. Дальше их правит отдельный эффект.
-      gridSize: loadAppearance().gridSnap ? loadAppearance().gridSize : NO_SNAP,
+      // Встроенная привязка выключена совсем: она ровняет угол, а нам нужна
+      // середина — этим занят свой вид ячейки ниже. Осталась бы включённой —
+      // округляла бы результат вторым проходом, уже по углу.
+      gridSize: NO_SNAP,
+      elementView: snappingElementView(() => gridStepRef.current),
+      // Шаг рисунка сетки живёт отдельно от шага привязки. Начальное значение
+      // читается из настроек тем же способом, что и фон ниже: полотно
+      // пересобирается только при смене прав, а настройки к этому моменту уже
+      // сохранены. Дальше его правит отдельный эффект.
       drawGridSize: loadAppearance().gridSize,
       drawGrid: gridFor(loadAppearance().background, scheme),
       // Сколько движений мыши между нажатием и отпусканием ещё считается
@@ -614,12 +643,15 @@ export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap,
         // само это делает только для того узла, за который тянут; без
         // подрезки остальные выезжали за рамку, а при следующей перерисовке
         // возвращались в неё — узлы прыгали как будто сами по себе.
-        // Ведущий узел полотно уже привязало к сетке, и ведомые едут за ним
-        // тем же сдвигом — но подрезка рамкой сбивает их с узлов сетки, и
-        // ровный ряд после перетаскивания оказывался неровным. Привязываем
-        // после подрезки: она сдвигает не больше чем на шаг, из рамки это не
-        // выводит.
-        const at = snapPoint(insideParent(element, start.x + dx, start.y + dy), gridStepRef.current);
+        // Ведущий узел уже привязан, и ведомые едут за ним тем же сдвигом —
+        // но подрезка рамкой сбивает их с узлов сетки, и ровный ряд после
+        // перетаскивания оказывался неровным. Привязываем после подрезки: она
+        // сдвигает не больше чем на шаг, из рамки это не выводит. Округляется
+        // середина — тем же краем, что и у ведущего узла.
+        const clipped = insideParent(element, start.x + dx, start.y + dy);
+        const at = element.get('kind') === 'group'
+          ? snapPoint(clipped, gridStepRef.current)
+          : snapCornerToCenteredGrid(clipped.x, clipped.y, element.size(), gridStepRef.current);
         // Своё же событие сюда вернётся, но с чужим id и отсеется первой
         // строкой — рекурсии нет, а вид обновляется как обычно.
         element.position(at.x, at.y);
@@ -733,18 +765,15 @@ export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap,
     paperRef.current?.setGrid(gridFor(background, scheme));
   }, [background, scheme]);
 
-  // Шаг привязки и шаг рисунка сетки — тоже настройки вида. Привязку
-  // перетаскивания полотно делает само по `gridSize`, выключается она шагом в
-  // пиксель; сетка при этом должна остаться нарисованной прежним шагом,
-  // поэтому размер рисунка задаётся отдельно (`drawGridSize`).
+  // Шаг рисунка сетки — настройка вида, и полотну её надо переставить на
+  // ходу. Сам шаг привязки полотну не нужен: он живёт в `gridStepRef`, откуда
+  // его читает вид ячейки на каждое перетаскивание.
   useEffect(() => {
     const paper = paperRef.current;
     if (!paper) return;
     paper.options.drawGridSize = gridSize;
-    paper.setGridSize(gridSnap ? gridSize : NO_SNAP);
-    // setGridSize перерисовывает сетку сам, но только когда меняется само
-    // число: при выключении привязки шаг рисунка остаётся прежним, и без
-    // явной перерисовки сетка осталась бы с прежним шагом.
+    // Перерисовка сетки — своим вызовом: менялось не то число, за которым
+    // полотно следит само.
     paper.setGrid(gridFor(background, scheme));
   }, [gridSize, gridSnap, background, scheme]);
 

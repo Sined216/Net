@@ -1,7 +1,7 @@
 import { layoutLayered, type ElkAlgorithm } from '../../lib/elk';
 import type { Box, Point } from './joint/buildGraph';
 import { GROUP_MIN } from './joint/shapes';
-import { NO_SNAP, snapBoxOut, snapCenter } from './grid';
+import { NO_SNAP, snapBoxOut, snapPoint } from './grid';
 
 /** Простая force-directed раскладка: отталкивание между всеми узлами,
  * пружина вдоль рёбер, лёгкое центрирование. Тот же алгоритм, что и в
@@ -152,11 +152,9 @@ export async function computeAutoLayout(
   for (const card of cards) {
     const at = laid.get(`d${card.id}`);
     // Схема хранит середину карточки, ELK отдаёт левый верхний угол.
-    if (at) {
-      positions.set(card.id, snapCenter(
-        { x: at.x + at.width / 2, y: at.y + at.height / 2 }, at, grid,
-      ));
-    }
+    // Наружу отдаётся середина карточки — её и округляем: к середине
+    // цепляется кабель, и от неё зависит, пойдёт он прямо или с изломом.
+    if (at) positions.set(card.id, snapPoint({ x: at.x + at.width / 2, y: at.y + at.height / 2 }, grid));
   }
   const boxes = new Map<number, Box>();
   for (const group of groups) {

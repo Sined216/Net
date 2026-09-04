@@ -29,7 +29,7 @@ import {
 } from './topology/joint/buildGraph';
 import { GROUP_MIN, nodeMetrics, nodeSizes } from './topology/joint/shapes';
 import { computeAutoLayout, type AutoCard } from './topology/layout';
-import { snapBoxOut, snapCenter, snapStep } from './topology/grid';
+import { snapBoxOut, snapPoint, snapStep } from './topology/grid';
 import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHistory';
 import {
   useJointPaper, type JointActions, type PaperHandlers,
@@ -310,7 +310,7 @@ export function TopologyPage() {
         const deviceMoves = new Map<number, Point>();
         for (const c of subtreeCards) {
           const pos = laid.positions.get(c.id);
-          if (pos) deviceMoves.set(c.id, snapCenter({ x: pos.x + ox, y: pos.y + oy }, c, step));
+          if (pos) deviceMoves.set(c.id, snapPoint({ x: pos.x + ox, y: pos.y + oy }, step));
         }
         const groupMoves = new Map<number, Box>();
         for (const [gid, subBox] of laid.boxes) {

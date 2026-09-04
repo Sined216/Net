@@ -5,7 +5,7 @@ import {
   STUB_SIZE, withAlpha, type NodeSize,
 } from './shapes';
 import { groupDepth } from '../groups';
-import { NO_SNAP, snapBoxOut, snapCenter, snapStep } from '../grid';
+import { NO_SNAP, snapBoxOut, snapPoint, snapStep } from '../grid';
 import { computeForceLayout, type LayoutNode, type Spring } from '../layout';
 import type { TopologyEdge, TopologyGroupOut, TopologyNode } from '../../../api/types';
 
@@ -550,10 +550,10 @@ export function computePositions(
   nodes: TopologyNode[],
   edges: TopologyEdge[],
   placed: React.RefObject<Map<number, Point>>,
-  /** Настройки вида — ради шага привязки и размеров карточек. Привязываются
-   * только те узлы, место которым придумала пружинная раскладка:
-   * сохранённые позиции не трогаются, их поставил человек, и подвинуть их
-   * при открытии схемы значило бы молча переставить чужую работу. */
+  /** Настройки вида — ради шага привязки. Привязываются только те узлы,
+   * место которым придумала пружинная раскладка: сохранённые позиции не
+   * трогаются, их поставил человек, и подвинуть их при открытии схемы
+   * значило бы молча переставить чужую работу. */
   look?: TopologyAppearance,
 ): Map<number, Point> {
   const layout: LayoutNode[] = nodes.map((n) => {
@@ -583,22 +583,15 @@ export function computePositions(
   }
   if (layout.some((n) => !n.fixed)) computeForceLayout(layout, springs, 1100, 750);
 
-  // Привязывается угол карточки, а не её середина, — тем же краем, каким её
-  // привязывает перетаскивание в полотне. Иначе выходит хуже, чем без
-  // привязки вовсе: карточки шириной 179 с серединами по сетке встают
-  // краями вразнобой, а первое же перетаскивание любой из них сдвигает её
-  // на пол-ширины, потому что полотно ровняет уже угол.
+  // Здесь координата — середина карточки, её и округляем: к середине
+  // цепляется кабель, и от неё зависит, пойдёт он между двумя устройствами
+  // прямо или с изломом.
   const step = look ? snapStep(look) : NO_SNAP;
-  const sizes = look ? nodeSizes(nodes.map((n) => cardText(n, look)), look) : undefined;
-  const metrics = look ? nodeMetrics(look) : undefined;
 
   const result = new Map<number, Point>();
   for (const node of layout) {
     const id = parseInt(node.id, 10);
-    const size = sizes?.get(id) ?? metrics;
-    const at = node.fixed || !size
-      ? { x: node.x, y: node.y }
-      : snapCenter({ x: node.x, y: node.y }, size, step);
+    const at = node.fixed ? { x: node.x, y: node.y } : snapPoint({ x: node.x, y: node.y }, step);
     result.set(id, at);
     placed.current!.set(id, at);
   }
