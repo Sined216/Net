@@ -1,17 +1,19 @@
 import {
-  Button, Chip, Divider, Group, Modal, NumberInput, SegmentedControl, Slider, Stack, Switch, Text,
+  Button, Chip, Divider, Drawer, Group, NumberInput, SegmentedControl, Select, Slider, Stack,
+  Switch, Text,
 } from '@mantine/core';
 import { IconRotate } from '@tabler/icons-react';
 import { DEFAULT_APPEARANCE, type LinkSide, type TopologyAppearance } from './appearance';
 
 /** Разводка кабелей и начертание линии — всё, что даёт роутер JointJS.
  *
- * Отдельным окном, а не в общем меню вида, по двум причинам. Ручек много, и
- * в выпадающем меню они не помещаются, не превращая его в простыню. А
- * главное — подбирать их приходится, глядя на свою схему: на редкой сети и
- * на плотном цехе выигрывают разные значения, и угадать их за человека
- * нельзя. Поэтому окно не модальное по духу: применяется всё сразу, схема
- * видна рядом, закрывать для проверки не нужно.
+ * Панель сбоку, а не окно посреди экрана, и это не вкусовщина. Ручки здесь
+ * крутят десятками раз подряд, глядя на схему: на редкой сети и на плотном
+ * цехе выигрывают разные значения, и угадать их за человека нельзя. Окно
+ * закрывало собой ровно то, что настраивается, — подвинул ползунок и не
+ * видишь результата, пока не закроешь. Поэтому `Drawer` без затемнения и
+ * без перехвата щелчков: схема слева остаётся видимой и живой, каждый шаг
+ * ползунка перерисовывает её на глазах.
  */
 
 /** Поля, которые сбрасывает кнопка внизу. Перечислены явно: сбрасывать весь
@@ -23,6 +25,27 @@ const ROUTING_KEYS = [
   'curveDirection', 'curveTension', 'anchorMode', 'anchorPadding', 'connectionPoint',
 ] as const satisfies readonly (keyof TopologyAppearance)[];
 
+/** Открыта ли панель — своим ключом, отдельно от настроек вида: это
+ * состояние экрана, а не оформление схемы. Запись в приватном режиме
+ * браузера запрещена, поэтому обе стороны молча переживают отказ. */
+const OPEN_KEY = 'netdoc.topology.routingOpen';
+
+export function loadRoutingOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveRoutingOpen(open: boolean): void {
+  try {
+    localStorage.setItem(OPEN_KEY, open ? '1' : '0');
+  } catch {
+    // Приватный режим — панель просто не переживёт перезагрузку.
+  }
+}
+
 const SIDES: { value: LinkSide; label: string }[] = [
   { value: 'top', label: 'Сверху' },
   { value: 'right', label: 'Справа' },
@@ -30,7 +53,7 @@ const SIDES: { value: LinkSide; label: string }[] = [
   { value: 'left', label: 'Слева' },
 ];
 
-export function LinkRoutingModal({ value, onChange, onClose }: {
+export function LinkRoutingPanel({ value, onChange, onClose }: {
   value: TopologyAppearance;
   onChange: (next: TopologyAppearance) => void;
   onClose: () => void;
@@ -47,8 +70,16 @@ export function LinkRoutingModal({ value, onChange, onClose }: {
   const routes = value.edgeRouter === 'metro';
 
   return (
-    <Modal opened onClose={onClose} title="Разводка и линии" size="lg">
-      <Stack gap="xs">
+    <Drawer
+      opened onClose={onClose} position="right" size={360} title="Разводка и линии"
+      // Полотно видно и остаётся рабочим: затемнение сняли, прокрутку не
+      // блокируем, щелчок мимо панели её не закрывает — по схеме в это время
+      // как раз и щёлкают.
+      withOverlay={false}
+      lockScroll={false}
+      closeOnClickOutside={false}
+    >
+      <Stack gap="xs" pb="md">
         <Text size="xs" c="dimmed">
           Всё применяется сразу — схема видна за окном, и подбирать значения имеет смысл, глядя на неё.
           Настройки личные и хранятся в браузере.
@@ -70,16 +101,20 @@ export function LinkRoutingModal({ value, onChange, onClose }: {
           чужие карточки: чем плотнее схема, тем нужнее.
         </Text>
 
-        <Field label="Наибольший угол поворота">
+        <Field label="Форма кабеля">
           <SegmentedControl
             size="xs" fullWidth value={String(value.routerMaxTurn)} disabled={!routes}
             onChange={(v) => set('routerMaxTurn', Number(v) as TopologyAppearance['routerMaxTurn'])}
             data={[
-              { value: '45', label: '45° — с диагоналями' },
-              { value: '90', label: '90° — только прямые углы' },
+              { value: '90', label: 'Прямые углы' },
+              { value: '45', label: 'С диагоналями' },
             ]}
           />
         </Field>
+        <Text size="xs" c="dimmed">
+          «Прямые углы» — кабель идёт только по горизонтали и вертикали, как на схемах от руки.
+          «С диагоналями» разрешает косые куски: путь короче, но картинка беспокойнее.
+        </Text>
 
         <Field label={`Отступ от карточек — ${value.routerPadding} px`}>
           <Slider
@@ -154,20 +189,21 @@ export function LinkRoutingModal({ value, onChange, onClose }: {
 
         <Divider my={4} />
         <Section title="Стиль линии" />
-        <Field label="Начертание">
-          <SegmentedControl
-            size="xs" fullWidth value={value.edgeConnector}
-            onChange={(v) => set('edgeConnector', v as TopologyAppearance['edgeConnector'])}
-            data={[
-              { value: 'normal', label: 'Острые' },
-              { value: 'rounded', label: 'Скруглить' },
-              { value: 'smooth', label: 'Плавная' },
-              { value: 'curve', label: 'Дуга' },
-              { value: 'straight', label: 'Углы' },
-              { value: 'jumpover', label: 'Мостики' },
-            ]}
-          />
-        </Field>
+        {/* Список, а не переключатель в строку: шесть подписей в полосу панели
+            не влезают и режутся на середине слова. */}
+        <Select
+          size="xs" label="Начертание" allowDeselect={false} comboboxProps={{ withinPortal: false }}
+          value={value.edgeConnector}
+          onChange={(v) => v && set('edgeConnector', v as TopologyAppearance['edgeConnector'])}
+          data={[
+            { value: 'normal', label: 'Острые углы' },
+            { value: 'rounded', label: 'Скруглить углы' },
+            { value: 'smooth', label: 'Плавная кривая' },
+            { value: 'curve', label: 'Дуга' },
+            { value: 'straight', label: 'Отрезки с обработкой угла' },
+            { value: 'jumpover', label: 'Мостики на пересечениях' },
+          ]}
+        />
 
         {(value.edgeConnector === 'rounded' || value.edgeConnector === 'straight') && (
           <Field label={`Радиус скругления — ${value.connectorRadius} px`}>
@@ -244,19 +280,23 @@ export function LinkRoutingModal({ value, onChange, onClose }: {
           Кабель цепляется к середине стороны, обращённой к другому концу. От этого же выбора роутер берёт
           сторону выхода, поэтому он меняет картинку сильнее, чем кажется.
         </Text>
-        <Field label="Какую сторону выбирать">
-          <SegmentedControl
-            size="xs" fullWidth value={value.anchorMode}
-            onChange={(v) => set('anchorMode', v as TopologyAppearance['anchorMode'])}
-            data={[
-              { value: 'auto', label: 'Ближайшую' },
-              { value: 'prefer-horizontal', label: 'Чаще бока' },
-              { value: 'prefer-vertical', label: 'Чаще верх-низ' },
-              { value: 'horizontal', label: 'Только бока' },
-              { value: 'vertical', label: 'Только верх-низ' },
-            ]}
-          />
-        </Field>
+        <Select
+          size="xs" label="Какую сторону выбирать" allowDeselect={false}
+          comboboxProps={{ withinPortal: false }} value={value.anchorMode}
+          onChange={(v) => v && set('anchorMode', v as TopologyAppearance['anchorMode'])}
+          data={[
+            { value: 'auto', label: 'Ближайшую к другому концу' },
+            { value: 'prefer-vertical', label: 'Верх-низ, бока — если рядом' },
+            { value: 'prefer-horizontal', label: 'Бока, верх-низ — если рядом' },
+            { value: 'horizontal', label: 'Только бока' },
+            { value: 'vertical', label: 'Только верх и низ' },
+          ]}
+        />
+        <Text size="xs" c="dimmed">
+          «Ближайшую» библиотека считает по расстоянию со знаком: партнёр ниже на 60 px, но в стороне на
+          110 — и ближайшей окажется боковая сторона, кабель выйдет вбок и сразу свернёт вниз. «Верх-низ»
+          отдаёт бок только когда партнёр и правда сбоку.
+        </Text>
         <Field label={`Отступ точки крепления — ${value.anchorPadding} px`}>
           <Slider
             size="sm" min={0} max={20} step={1} value={value.anchorPadding}
@@ -285,7 +325,7 @@ export function LinkRoutingModal({ value, onChange, onClose }: {
           <Button size="xs" onClick={onClose}>Закрыть</Button>
         </Group>
       </Stack>
-    </Modal>
+    </Drawer>
   );
 }
 

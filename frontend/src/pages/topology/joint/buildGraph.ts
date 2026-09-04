@@ -66,6 +66,40 @@ export function cardText(node: TopologyNode, look: TopologyAppearance) {
   };
 }
 
+/** Сторона карточки, к которой прицепится кабель, — по тому же правилу,
+ * что и якорь `midSide` в библиотеке. «Ближайшая» там считается по
+ * расстоянию со знаком: партнёр ниже на 60 px, но в стороне на 110 — и
+ * ближайшей окажется боковая сторона. Повторяем это здесь, чтобы роутер и
+ * якорь говорили об одной и той же стороне.
+ */
+function anchorSide(from: Box, to: Box, mode: TopologyAppearance['anchorMode']): LinkSide {
+  const point = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
+  const cx = from.x + from.width / 2;
+  const cy = from.y + from.height / 2;
+  const beside = point.y > from.y && point.y < from.y + from.height;
+  const above = point.x > from.x && point.x < from.x + from.width;
+  switch (mode) {
+    case 'horizontal':
+      return point.x < cx ? 'left' : 'right';
+    case 'vertical':
+      return point.y < cy ? 'top' : 'bottom';
+    case 'prefer-horizontal':
+      return above ? (point.y < cy ? 'top' : 'bottom') : (point.x < cx ? 'left' : 'right');
+    case 'prefer-vertical':
+      return beside ? (point.x < cx ? 'left' : 'right') : (point.y < cy ? 'top' : 'bottom');
+    default: {
+      const distance: Record<LinkSide, number> = {
+        left: point.x - from.x,
+        right: from.x + from.width - point.x,
+        top: point.y - from.y,
+        bottom: from.y + from.height - point.y,
+      };
+      return (Object.keys(distance) as LinkSide[])
+        .reduce((best, side) => (distance[side] < distance[best] ? side : best), 'left');
+    }
+  }
+}
+
 /** Отступ от содержимого до рамки группы, посчитанной по нему. */
 const GROUP_PADDING = 34;
 type CanvasPaint = ReturnType<typeof canvasColors>;
@@ -310,11 +344,31 @@ function addLinks(
   // величину отступа, и слишком большой закрывает проход между двумя
   // карточками совсем.
   const linkOrder = new Map(edges.map((edge, index) => [edge.link_id, index]));
-  const routerFor = (linkId: number) => {
+  const routerFor = (linkId: number, from?: dia.Element, to?: dia.Element) => {
     if (look.edgeRouter !== 'metro') return undefined;
     const lane = (linkOrder.get(linkId) ?? 0) % 4;
+    // Сторона выхода и сторона крепления считаются в библиотеке порознь:
+    // якорь `midSide` берёт свою, роутер — свою из разрешённого набора, и
+    // они расходятся. Видно это как «кабель вышел справа и сразу свернул
+    // вниз»: нарисован он от правой стороны, а ведёт его роутер от нижней.
+    // Поэтому, пока человек не задал стороны сам, выдаём роутеру ровно ту,
+    // к которой прицепится кабель.
+    const start = look.routerStartSides.length || !from || !to
+      ? sidesOrAll(look.routerStartSides)
+      : [anchorSide(from.getBBox(), to.getBBox(), look.anchorMode)];
+    const end = look.routerEndSides.length || !from || !to
+      ? sidesOrAll(look.routerEndSides)
+      : [anchorSide(to.getBBox(), from.getBBox(), look.anchorMode)];
     return {
-      name: 'metro',
+      // Один обходчик на выбор человека, но под капотом их два, и это не
+      // придирка к названиям. `metro` — не «`manhattan` с углом 45°»: он
+      // подменяет набор шагов поиска, добавляя к четырём прямым четыре
+      // косых (joint.js, config у metro), и запасной путь у него тоже
+      // ломается под 45°. Поэтому одним `maxAllowedDirectionChange` косые
+      // не убрать — угол лишь ограничивает поворот между шагами, а сами
+      // косые шаги остаются в наборе. Нужны прямые углы — нужен
+      // `manhattan`, у которого в наборе только четыре направления.
+      name: look.routerMaxTurn === 90 ? 'manhattan' : 'metro',
       args: {
         step: look.routerStep,
         padding: look.routerPadding + lane * look.routerLaneSpread,
@@ -324,8 +378,8 @@ function addLinks(
         // карточки) переключение не меняет ни одного пути. Ручка, которая
         // ничего не делает, хуже её отсутствия.
         perpendicular: true,
-        startDirections: sidesOrAll(look.routerStartSides),
-        endDirections: sidesOrAll(look.routerEndSides),
+        startDirections: start,
+        endDirections: end,
         maximumLoops: look.routerMaxLoops,
         excludeTypes: notObstacles,
       },
@@ -387,7 +441,7 @@ function addLinks(
         target: { id: target.id, anchor: endAnchor },
         linkId: edge.link_id,
         hoverLabels: hoverOnly,
-        router: routerFor(edge.link_id),
+        router: routerFor(edge.link_id, source, target),
         connector: linkConnector,
         z: linkZ,
         attrs: {

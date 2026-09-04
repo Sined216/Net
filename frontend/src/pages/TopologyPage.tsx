@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import {
   IconArrowBackUp, IconArrowForwardUp, IconDeviceFloppy, IconFocusCentered, IconHelp,
-  IconLayoutDistributeHorizontal, IconPlus, IconUsersGroup, IconX,
+  IconLayoutDistributeHorizontal, IconPlus, IconRoute, IconUsersGroup, IconX,
 } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,7 +23,7 @@ import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 import { DeviceModalById, LinkModalById } from './topology/OpenById';
 import { DeviceFormModal, type DeviceDraft } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
-import { LinkRoutingModal } from './topology/LinkRoutingModal';
+import { LinkRoutingPanel, loadRoutingOpen, saveRoutingOpen } from './topology/LinkRoutingPanel';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
   buildGraph, cardText, computePositions, storedBox, type Box, type Point,
@@ -115,7 +115,14 @@ export function TopologyPage() {
   const [editingGroup, setEditingGroup] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
   const [regrouping, setRegrouping] = useState<number | null>(null);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
-  const [routingOpen, setRoutingOpen] = useState(false);
+  /** Открыта ли панель разводки. Переживает перезагрузку: параметры
+   * подбирают подолгу и с перезагрузками, и закрывать её каждый раз заново
+   * — то же неудобство, от которого панель и заводилась. */
+  const [routingOpen, setRoutingOpen] = useState(loadRoutingOpen);
+  const toggleRouting = useCallback((open: boolean) => {
+    setRoutingOpen(open);
+    saveRoutingOpen(open);
+  }, []);
   const [searchParams, setSearchParams] = useSearchParams();
 
   /** Раскладка, сложившаяся в этой сессии: пересчитывать симуляцию на каждое
@@ -804,7 +811,16 @@ export function TopologyPage() {
               </Text>
             </Popover.Dropdown>
           </Popover>
-          <AppearanceMenu value={look} onChange={changeLook} onOpenRouting={() => setRoutingOpen(true)} />
+          <AppearanceMenu value={look} onChange={changeLook} />
+          {/* Своей кнопкой, а не пунктом в меню вида: ручки разводки крутят
+              десятками раз подряд, и три шага до них — это три шага каждый
+              раз. */}
+          <Button
+            variant={routingOpen ? 'filled' : 'light'} leftSection={<IconRoute size={16} />}
+            onClick={() => toggleRouting(!routingOpen)}
+          >
+            Разводка
+          </Button>
           {/* Разложить и вписать — разные жесты: первое пересчитывает
               расположение узлов, второе только подгоняет масштаб под то,
               что уже разложено. Раньше это была одна кнопка, и вписать
@@ -849,7 +865,7 @@ export function TopologyPage() {
 
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
       {routingOpen && (
-        <LinkRoutingModal value={look} onChange={changeLook} onClose={() => setRoutingOpen(false)} />
+        <LinkRoutingPanel value={look} onChange={changeLook} onClose={() => toggleRouting(false)} />
       )}
       {addingDevice && (
         <DeviceFormModal
