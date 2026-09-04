@@ -23,6 +23,7 @@ import { TopologyGroupsModal } from './topology/TopologyGroupsModal';
 import { DeviceModalById, LinkModalById } from './topology/OpenById';
 import { DeviceFormModal, type DeviceDraft } from './devices/DeviceFormModal';
 import { AppearanceMenu } from './topology/AppearanceMenu';
+import { LinkRoutingModal } from './topology/LinkRoutingModal';
 import { loadAppearance, saveAppearance, type TopologyAppearance } from './topology/appearance';
 import {
   buildGraph, cardText, computePositions, storedBox, type Box, type Point,
@@ -114,6 +115,7 @@ export function TopologyPage() {
   const [editingGroup, setEditingGroup] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
   const [regrouping, setRegrouping] = useState<number | null>(null);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
+  const [routingOpen, setRoutingOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
   /** Раскладка, сложившаяся в этой сессии: пересчитывать симуляцию на каждое
@@ -521,7 +523,7 @@ export function TopologyPage() {
 
   const paper = useJointPaper({
     canEdit, scheme, background: look.background,
-    gridSize: look.gridSize, gridSnap: look.gridSnap,
+    gridSize: look.gridSize, gridSnap: look.gridSnap, connectionPoint: look.connectionPoint,
     actions: actionsRef, handlers,
   });
 
@@ -802,7 +804,7 @@ export function TopologyPage() {
               </Text>
             </Popover.Dropdown>
           </Popover>
-          <AppearanceMenu value={look} onChange={changeLook} />
+          <AppearanceMenu value={look} onChange={changeLook} onOpenRouting={() => setRoutingOpen(true)} />
           {/* Разложить и вписать — разные жесты: первое пересчитывает
               расположение узлов, второе только подгоняет масштаб под то,
               что уже разложено. Раньше это была одна кнопка, и вписать
@@ -846,6 +848,9 @@ export function TopologyPage() {
       )}
 
       {groupsModalOpen && <TopologyGroupsModal onClose={() => setGroupsModalOpen(false)} />}
+      {routingOpen && (
+        <LinkRoutingModal value={look} onChange={changeLook} onClose={() => setRoutingOpen(false)} />
+      )}
       {addingDevice && (
         <DeviceFormModal
           device={null} draft={addingDevice.draft}

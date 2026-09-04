@@ -1,6 +1,9 @@
 import type { ElkAlgorithm } from '../../lib/elk';
 import { CANVAS } from '../../theme';
 
+/** Сторона карточки — ими роутер описывает, куда можно выходить. */
+export type LinkSide = 'top' | 'right' | 'bottom' | 'left';
+
 /** Внешний вид схемы связей.
  *
  * Настройка личная и лежит в браузере, а не в базе: это вкус, а не данные.
@@ -44,18 +47,69 @@ export interface TopologyAppearance {
   deviceDark: boolean;
 
   edgeWidth: number;
-  /** Как кабель ищет путь между карточками. `normal` — отрезок напрямую;
-   * `manhattan` и `metro` ведут его прямыми углами в обход чужих узлов
-   * (второй позволяет себе диагонали), `rightAngle` — прямыми углами, но
-   * не обходя ничего, по одним отступам. Чем плотнее схема, тем сильнее
-   * расходятся эти способы: на десятке узлов прямая читается лучше всего,
-   * на сотне она превращается в паутину поверх карточек. */
-  edgeRouter: 'normal' | 'manhattan' | 'metro' | 'rightAngle';
+  /** Как кабель ищет путь между карточками. `normal` — отрезок напрямую,
+   * ничего не обходит; `metro` ведёт его прямыми углами (и диагоналями,
+   * если разрешён угол 45°) в обход чужих карточек.
+   *
+   * Обходчик намеренно один. `manhattan` — это `metro` с `routerMaxTurn`
+   * 90°: в самой библиотеке `metro` только и делает, что зовёт `manhattan`
+   * со своим углом. А `rightAngle` держал прямые углы, но препятствий не
+   * разбирал вовсе и потому спокойно проходил по чужим карточкам. Держать
+   * три пункта, два из которых — одно и то же с другой цифрой, значило
+   * объяснять разницу там, где её нет. */
+  edgeRouter: 'normal' | 'metro';
+  /** Шаг сетки поиска пути. Мельче — путь точнее ложится между карточками,
+   * но искать дольше. */
+  routerStep: number;
+  /** На сколько раздувается карточка, прежде чем роутер начнёт искать путь.
+   * Мало — линия жмётся к карточкам, много — коридор между двумя близкими
+   * карточками закрывается совсем, и кабель уходит в обход через всю схему
+   * (так и было: при 76 пикселях пара в одном шкафу разводилась петлёй в
+   * 1903 пикселя вместо 123). */
+  routerPadding: number;
+  /** Насколько разносить соседние кабели по разным коридорам. Ноль —
+   * не разносить: параллельные кабели лягут одной линией. */
+  routerLaneSpread: number;
+  /** Наибольший угол поворота: 45° разрешает диагонали, 90° оставляет
+   * только прямые углы. */
+  routerMaxTurn: 45 | 90;
+  /** С каких сторон кабелю разрешено выходить и в какие входить. Пустой
+   * набор равносилен всем четырём. */
+  routerStartSides: LinkSide[];
+  routerEndSides: LinkSide[];
+  /** Считать ли рамки групп препятствием. По умолчанию нет: рамка
+   * обозначает область, а не стену, и обход по её контуру гонит кабель
+   * вокруг соседних шкафов. */
+  routerFramesAreObstacles: boolean;
+  /** Предел перебора при поиске пути. Не нашёл за столько шагов — отдаёт
+   * запасной путь, не разбирая препятствий. */
+  routerMaxLoops: number;
+
   /** Чем нарисован найденный путь. `rounded` скругляет углы маршрута — на
    * прямой разводке ему нечего скруглять; заметную кривизну там даёт
    * `curve`. `jumpover` — про другое: он рисует «мостик» в месте, где две
    * линии пересекаются, иначе они читаются как одна с ответвлением. */
-  edgeConnector: 'normal' | 'rounded' | 'curve' | 'jumpover';
+  edgeConnector: 'normal' | 'rounded' | 'smooth' | 'jumpover' | 'straight' | 'curve';
+  /** Радиус скругления углов — у `rounded` и у `straight`. */
+  connectorRadius: number;
+  /** Размер и вид «мостика» на пересечении — у `jumpover`. */
+  jumpSize: number;
+  jumpKind: 'arc' | 'gap' | 'cubic';
+  /** Чем обрабатывается угол у `straight`. */
+  cornerType: 'point' | 'cubic' | 'line' | 'gap';
+  /** Направление и натяжение дуги — у `curve`. */
+  curveDirection: 'auto' | 'horizontal' | 'vertical' | 'closest-point' | 'outwards';
+  curveTension: number;
+
+  /** Какой стороной карточки кабель к ней цепляется: `auto` — ближайшей к
+   * другому концу, остальные режимы принуждают к горизонтали или
+   * вертикали. От этого же выбора роутер берёт сторону выхода. */
+  anchorMode: 'auto' | 'prefer-horizontal' | 'prefer-vertical' | 'horizontal' | 'vertical';
+  /** Насколько отодвинуть точку крепления от края карточки. */
+  anchorPadding: number;
+  /** Где кончается нарисованная линия: в самой точке крепления или на
+   * границе карточки. */
+  connectionPoint: 'anchor' | 'boundary';
   /** Подписи портов на концах линии: всегда видны, появляются при
    * наведении на кабель, или не показываются вовсе. На плотной схеме
    * подписи всех кабелей разом читать так же трудно, как не иметь их —
@@ -113,7 +167,32 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
 
   edgeWidth: 2,
   edgeRouter: 'normal',
+  // Значения подобраны на живой схеме, а не взяты из головы. Шаг 16 —
+  // компромисс между точностью пути и скоростью поиска. Отступ маленький
+  // намеренно: препятствие раздувается на его величину, и при прежних
+  // 22–76 пикселях коридор между двумя карточками в одном шкафу
+  // закрывался — кабель уходил петлёй в 1903 пикселя вместо 123.
+  routerStep: 16,
+  routerPadding: 10,
+  routerLaneSpread: 6,
+  routerMaxTurn: 45,
+  // Пустые наборы — «все четыре стороны», как и в самой библиотеке.
+  routerStartSides: [],
+  routerEndSides: [],
+  routerFramesAreObstacles: false,
+  routerMaxLoops: 2000,
+
   edgeConnector: 'rounded',
+  connectorRadius: 8,
+  jumpSize: 5,
+  jumpKind: 'arc',
+  cornerType: 'point',
+  curveDirection: 'auto',
+  curveTension: 0.5,
+
+  anchorMode: 'auto',
+  anchorPadding: 0,
+  connectionPoint: 'anchor',
   edgeLabels: 'always',
   edgeLabelName: true,
   edgeLabelSize: 10,
@@ -145,6 +224,21 @@ export function loadAppearance(): TopologyAppearance {
     // раньше было взять неоткуда.
     if (typeof saved.edgeLabels === 'boolean') {
       saved.edgeLabels = saved.edgeLabels ? 'always' : 'never';
+    }
+    // Роутеров было четыре, стало два. `manhattan` — это `metro` с прямым
+    // углом поворота, и он переносится без потери вида; `rightAngle`
+    // потерян осознанно (он не обходил чужие карточки), поэтому просто
+    // становится обходчиком. Без перевода у человека в настройках остался
+    // бы роутер, которого больше нет.
+    // Сравнение через строку: снятых значений в типе уже нет, и компилятор
+    // справедливо считает такое сравнение бессмысленным — а в чужом
+    // localStorage они лежат до сих пор.
+    const savedRouter = saved.edgeRouter as string | undefined;
+    if (savedRouter === 'manhattan') {
+      saved.edgeRouter = 'metro';
+      saved.routerMaxTurn = saved.routerMaxTurn ?? 90;
+    } else if (savedRouter === 'rightAngle') {
+      saved.edgeRouter = 'metro';
     }
     return { ...DEFAULT_APPEARANCE, ...saved } as TopologyAppearance;
   } catch {

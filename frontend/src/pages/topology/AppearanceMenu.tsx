@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import {
   Button, Divider, Group, Popover, ScrollArea, SegmentedControl, Slider, Stack, Switch, Text,
 } from '@mantine/core';
-import { IconPalette, IconRotate } from '@tabler/icons-react';
+import { IconPalette, IconRotate, IconRoute } from '@tabler/icons-react';
 import { DEFAULT_APPEARANCE, type TopologyAppearance } from './appearance';
 
 interface Props {
   value: TopologyAppearance;
   onChange: (value: TopologyAppearance) => void;
+  /** Разводка живёт в своём окне — меню только уводит туда. */
+  onOpenRouting: () => void;
 }
 
 /** Настройки внешнего вида схемы.
@@ -14,14 +17,25 @@ interface Props {
  * Всё применяется сразу, без кнопки «Применить»: схема видна за окном
  * настроек, и подбирать вид имеет смысл, глядя на неё, а не вслепую.
  */
-export function AppearanceMenu({ value, onChange }: Props) {
+export function AppearanceMenu({ value, onChange, onOpenRouting }: Props) {
   const set = <K extends keyof TopologyAppearance>(key: K, next: TopologyAppearance[K]) =>
     onChange({ ...value, [key]: next });
+  // Состояние своё, а не встроенное в Popover: окно разводки открывается
+  // поверх, и меню надо закрыть — иначе оно висит на нём.
+  const [opened, setOpened] = useState(false);
 
   return (
-    <Popover width={330} position="bottom-end" shadow="md" withArrow trapFocus={false}>
+    <Popover
+      width={330} position="bottom-end" shadow="md" withArrow trapFocus={false}
+      opened={opened} onChange={setOpened}
+    >
       <Popover.Target>
-        <Button variant="light" leftSection={<IconPalette size={16} />}>Вид</Button>
+        <Button
+          variant="light" leftSection={<IconPalette size={16} />}
+          onClick={() => setOpened((o) => !o)}
+        >
+          Вид
+        </Button>
       </Popover.Target>
       <Popover.Dropdown p="sm">
         <ScrollArea.Autosize mah={540} type="hover" offsetScrollbars>
@@ -165,36 +179,17 @@ export function AppearanceMenu({ value, onChange }: Props) {
                 marks={[{ value: 1 }, { value: 3 }, { value: 5 }]}
               />
             </Field>
-            <Field label="Разводка">
-              <SegmentedControl
-                size="xs" fullWidth value={value.edgeRouter}
-                onChange={(v) => set('edgeRouter', v as TopologyAppearance['edgeRouter'])}
-                data={[
-                  { value: 'normal', label: 'Прямая' },
-                  { value: 'manhattan', label: 'Углами' },
-                  { value: 'metro', label: 'Метро' },
-                  { value: 'rightAngle', label: 'По отступам' },
-                ]}
-              />
-            </Field>
-            <Field label="Стиль линии">
-              <SegmentedControl
-                size="xs" fullWidth value={value.edgeConnector}
-                onChange={(v) => set('edgeConnector', v as TopologyAppearance['edgeConnector'])}
-                data={[
-                  { value: 'normal', label: 'Острые' },
-                  { value: 'rounded', label: 'Скруглить' },
-                  { value: 'curve', label: 'Дуга' },
-                  { value: 'jumpover', label: 'Мостики' },
-                ]}
-              />
-            </Field>
+            <Button
+              size="compact-xs" variant="light" leftSection={<IconRoute size={14} />}
+              onClick={() => { setOpened(false); onOpenRouting(); }}
+            >
+              Разводка и линии…
+            </Button>
             <Text size="xs" c="dimmed">
-              «Углами» и «Метро» обводят кабель вокруг чужих карточек; «По отступам» держит прямые углы, но
-              карточки не обходит — на плотной схеме линия может пройти прямо по ним. Рамки групп разводке не
-              мешают: кабель идёт сквозь них. «Скруглить» сглаживает углы разводки, поэтому на прямой линии
-              ничего не меняет — кривизну там даёт «Дуга». «Мостики» рисуют перескок в месте пересечения.
+              Как ведётся кабель, чем нарисован и чем цепляется к карточке — в отдельном окне: ручек там
+              много, и подбирать их надо, глядя на схему.
             </Text>
+
             <Field label="Подписи портов на концах линии">
               <SegmentedControl
                 size="xs" fullWidth value={value.edgeLabels}

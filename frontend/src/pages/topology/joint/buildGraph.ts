@@ -1,5 +1,5 @@
 import { dia, shapes } from '@joint/core';
-import { canvasColors, nodeColors, tint, type TopologyAppearance } from '../appearance';
+import { canvasColors, nodeColors, tint, type LinkSide, type TopologyAppearance } from '../appearance';
 import {
   CARD_LINES, DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, nodeMetrics, nodeSizes,
   STUB_SIZE, withAlpha, type NodeSize,
@@ -290,68 +290,79 @@ function addLinks(
   const goesAround = look.edgeRouter !== 'normal';
   const linkZ = goesAround ? 20 : 5;
 
-  // Рамка группы и заглушка повисшего конца — не препятствия. Рамка
-  // обозначает область, а не стену: кабель через неё и должен проходить, а
-  // обход по контуру гонит линию вокруг соседних шкафов. Сам JointJS
-  // исключает только те рамки, внутри которых лежат концы этого кабеля
-  // (`excludedAncestors` в его сборщике препятствий), — чужие без этого
-  // списка остаются сплошными. Замерено на схеме из трёх шкафов: кабель от
-  // шкафа до коммутатора справа стал 962 вместо 1172, соседний — 642 вместо
-  // 852. Заглушка же и вовсе декорация под своей карточкой.
-  const notObstacles = ['netdoc.Group', 'netdoc.Stub'];
-
-  // Коридоры разводки у ортогональных роутеров разные: одинаковый отступ
-  // сводит соседние кабели в одну линию ровно так же, как одинаковая точка
-  // входа.
+  // Разводка и начертание собираются из настроек вида: числа, которые
+  // раньше стояли здесь, переехали в умолчания (`appearance.ts`), а сами
+  // ручки — в окно «Разводка и линии». Подбирать их всё равно приходится
+  // глядя на свою схему, и делать это должен тот, кто на неё смотрит.
   //
-  // Отступ маленький, и это важнее, чем кажется: перед поиском пути
-  // препятствие раздувается на его величину. При прежних 22 + lane * 18 (до
-  // 76 пикселей) у пары карточек, стоящих в одном шкафу на 123 пикселя друг
-  // от друга, раздутые прямоугольники смыкались, коридор между ними
-  // закрывался — и роутер уводил кабель в обход на 1903 пикселя вместо 123.
-  // Со стороны это выглядело необъяснимо: две одинаковые пары в соседних
-  // шкафах разводились по-разному, потому что им доставались разные номера
-  // коридора, и одной отступа хватало, а другой нет.
+  // Рамка группы и заглушка повисшего конца по умолчанию не препятствия:
+  // рамка обозначает область, а не стену, и обход по её контуру гонит линию
+  // вокруг соседних шкафов. Сам JointJS исключает только те рамки, внутри
+  // которых лежат концы этого кабеля (`excludedAncestors` в его сборщике
+  // препятствий), — чужие без этого списка остаются сплошными.
+  const notObstacles = look.routerFramesAreObstacles ? ['netdoc.Stub'] : ['netdoc.Group', 'netdoc.Stub'];
+  // Пустой набор сторон библиотека понимает как «ни одной», а человек в
+  // окне — как «любая»; переводим.
+  const sidesOrAll = (sides: LinkSide[]) => (sides.length ? sides : ['top', 'right', 'bottom', 'left']);
+
+  // Соседние кабели разносятся по разным коридорам: с одинаковым отступом
+  // они лягут одной линией. Разброс маленький — препятствие раздувается на
+  // величину отступа, и слишком большой закрывает проход между двумя
+  // карточками совсем.
   const linkOrder = new Map(edges.map((edge, index) => [edge.link_id, index]));
   const routerFor = (linkId: number) => {
+    if (look.edgeRouter !== 'metro') return undefined;
     const lane = (linkOrder.get(linkId) ?? 0) % 4;
-    switch (look.edgeRouter) {
-      case 'manhattan':
-      case 'metro':
-        return { name: look.edgeRouter, args: { step: 16, padding: 10 + lane * 6, excludeTypes: notObstacles } };
-      // У rightAngle отступ называется иначе (margin, не padding) и меряется
-      // от конца линии, а не вокруг узла, — отсюда другой шаг коридора. Список
-      // препятствий ему не нужен: он их не разбирает вовсе, только свои концы.
-      case 'rightAngle':
-        return { name: 'rightAngle', args: { margin: 12 + lane * 6 } };
-      default:
-        return undefined;
-    }
+    return {
+      name: 'metro',
+      args: {
+        step: look.routerStep,
+        padding: look.routerPadding + lane * look.routerLaneSpread,
+        maxAllowedDirectionChange: look.routerMaxTurn,
+        // Библиотечное умолчание, наружу не вынесено: проверено на живой
+        // схеме — с нашими якорями (`midSide`, точка уже на стороне
+        // карточки) переключение не меняет ни одного пути. Ручка, которая
+        // ничего не делает, хуже её отсутствия.
+        perpendicular: true,
+        startDirections: sidesOrAll(look.routerStartSides),
+        endDirections: sidesOrAll(look.routerEndSides),
+        maximumLoops: look.routerMaxLoops,
+        excludeTypes: notObstacles,
+      },
+    };
   };
 
   // Кабель цепляется к середине той стороны карточки, что обращена к другому
   // концу связи, а не к середине самой карточки. Дело не только в том, что
-  // линия перестаёт выползать из-под карточки: от якоря роутеры берут
-  // сторону выхода. `rightAngle` с направлением `auto` спрашивает у
-  // прямоугольника сторону, ближайшую к якорю, — а середина карточки 179×57
-  // ближе всего к верху и низу всегда, куда бы ни стояло второе устройство,
-  // и кабель принудительно уходил вертикально. С серединой стороны сторона
-  // считается по взаимному положению устройств, как и должна.
-  const endAnchor = { name: 'midSide', args: { mode: 'auto' } };
+  // линия перестаёт выползать из-под карточки: от якоря роутер берёт сторону
+  // выхода — он спрашивает у прямоугольника сторону, ближайшую к якорю, а
+  // середина карточки 179×57 ближе всего к верху и низу всегда, куда бы ни
+  // стояло второе устройство.
+  const endAnchor = {
+    name: 'midSide',
+    args: { mode: look.anchorMode, padding: look.anchorPadding },
+  };
 
   const linkConnector = (() => {
     switch (look.edgeConnector) {
       case 'rounded':
-        return { name: 'rounded', args: { radius: 8 } };
+        return { name: 'rounded', args: { radius: look.connectorRadius } };
       // «Мостик» в месте пересечения: без него две пересекающиеся линии
       // читаются как одна с ответвлением.
       case 'jumpover':
-        return { name: 'jumpover', args: { size: 5, jump: 'arc' } };
-      // Умолчания дуги (direction: 'auto') подбирают изгиб по взаимному
-      // положению концов — это ровно то поведение, которое нужно, поэтому
-      // аргументов нет.
+        return { name: 'jumpover', args: { size: look.jumpSize, jump: look.jumpKind } };
+      case 'straight':
+        return {
+          name: 'straight',
+          args: { cornerType: look.cornerType, cornerRadius: look.connectorRadius },
+        };
       case 'curve':
-        return { name: 'curve' };
+        return {
+          name: 'curve',
+          args: { direction: look.curveDirection, tension: look.curveTension },
+        };
+      case 'smooth':
+        return { name: 'smooth' };
       default:
         return { name: 'normal' };
     }

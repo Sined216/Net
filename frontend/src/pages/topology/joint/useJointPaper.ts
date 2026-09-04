@@ -155,10 +155,15 @@ function snappingElementView(step: () => number) {
   });
 }
 
-export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap, actions, handlers }: {
+export function useJointPaper({
+  canEdit, scheme, background, gridSize, gridSnap, connectionPoint, actions, handlers,
+}: {
   canEdit: boolean;
   scheme: 'light' | 'dark';
   background: TopologyAppearance['background'];
+  /** Задаётся при создании полотна, поэтому его смена пересобирает полотно
+   * целиком — как и смена прав. */
+  connectionPoint: TopologyAppearance['connectionPoint'];
   /** Шаг сетки: и рисунка, и привязки, когда она включена. */
   gridSize: number;
   gridSnap: boolean;
@@ -345,11 +350,14 @@ export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap,
         // сохранение позиции.
         return parent ? parent.getBBox().toJSON() : false;
       },
-      // Конец линии — там, где стоит якорь, без дополнительной обрезки.
-      // Обрезка о границу карточки нужна была, пока кабель шёл из середины
-      // узла; теперь якорь (`midSide`, см. `buildGraph.ts`) и так стоит на
-      // стороне карточки, и вторая обрезка только утащила бы конец внутрь.
-      defaultConnectionPoint: { name: 'anchor' },
+      // Конец линии — там, где стоит якорь, либо на границе карточки: это
+      // настройка окна «Разводка и линии». Обрезка о границу нужна была,
+      // пока кабель шёл из середины узла; теперь якорь (`midSide`, см.
+      // `buildGraph.ts`) и так стоит на стороне, и обрезка только утащила бы
+      // конец внутрь — поэтому по умолчанию её нет.
+      defaultConnectionPoint: loadAppearance().connectionPoint === 'boundary'
+        ? { name: 'boundary', args: { offset: 2 } }
+        : { name: 'anchor' },
       // Средняя кнопка — только панорама, объект под курсором ею не двигают.
       // JointJS начинает перетаскивание с любого нажатия на ячейку, не
       // разбирая кнопку; `guard` — единственное место, где нажатие можно
@@ -758,7 +766,7 @@ export function useJointPaper({ canEdit, scheme, background, gridSize, gridSnap,
     // сетки при самом создании — дальше её меняет отдельный эффект ниже
     // через setGrid, не трогая paper/graph; handlers — ref, читается как
     // handlers.current в момент события, а не в момент подписки.
-  }, [canEdit]);
+  }, [canEdit, connectionPoint]);
 
   // Фон полотна меняется настройкой вида и темой интерфейса, а полотно
   // создаётся один раз.
