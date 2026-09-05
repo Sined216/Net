@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { API_URL } from '../playwright.config';
-import { ensureUiUser, seedTopology } from './fixtures';
+import { ensureUiUser, seedTopology, seedTwoShops } from './fixtures';
 
 /**
  * Схема связей на медленном API.
@@ -106,4 +106,92 @@ test('устройства и связи открываются на медле�
   await expect(page.getByRole('heading', { name: 'Связи между портами' })).toBeVisible();
 
   expect(errors).toEqual([]);
+});
+
+
+/**
+ * Схема, которую ещё никто не расставлял руками, раскладывается при
+ * открытии — а не показывается пружинным клубком.
+ *
+ * До этой правки положение узлов на такой схеме считала только пружинная
+ * симуляция, а она про рамки групп не знает вовсе: карточки разных цехов
+ * ложились вперемешку в один круг, а рамки, посчитанные по их содержимому,
+ * оказывались одна поверх другой. На заводской сети из двух сотен железок
+ * читать там было нечего.
+ */
+test('схема без сохранённых позиций открывается разложенной, а не клубком', async ({ page }) => {
+  const errors = await collectPageErrors(page);
+  const { groups, tag } = await seedTwoShops();
+  await signIn(page);
+
+  await page.goto('/topology');
+  await expect(page.locator('[data-type="netdoc.Device"]').first()).toBeVisible();
+  await pickTag(page, tag.name);
+  // Раскладка асинхронная (ELK считает в отдельном потоке), поэтому ждём
+  // именно её результата, а не просто появления карточек.
+  await expect.poll(async () => framesOverlap(page, groups.map((g) => g.name)), {
+    timeout: 30_000,
+    message: 'рамки групп так и остались друг на друге',
+  }).toBe(false);
+
+  expect(errors).toEqual([]);
+});
+
+/** Оставить на схеме только устройства с этим тегом. Отбор считает сервер,
+ * поэтому схема после него состоит ровно из заведённого тестом. */
+async function pickTag(page: Page, name: string) {
+  await page.getByPlaceholder('Все теги').click();
+  await page.getByRole('option', { name }).click();
+  await expect(page.locator('[data-type="netdoc.Device"]')).toHaveCount(12);
+}
+
+/** Пересекаются ли рамки перечисленных групп на экране. */
+async function framesOverlap(page: Page, names: string[]): Promise<boolean> {
+  return page.evaluate((wanted) => {
+    const boxes = [...document.querySelectorAll('[data-type="netdoc.Group"]')]
+      .filter((cell) => wanted.some((name) => (cell.textContent ?? '').includes(name)))
+      .map((cell) => cell.getBoundingClientRect());
+    if (boxes.length < wanted.length) return true;  // рамок меньше, чем групп, — считать нечего
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) return true;
+      }
+    }
+    return false;
+  }, names);
+}
+
+/**
+ * Чем дальше отодвинули схему, тем меньше на ней написано.
+ *
+ * Двести устройств в окно целиком не помещаются: вписать их значит
+ * уменьшить схему вчетверо, и подписи превращаются в серую рябь — буква в
+ * четыре пиксела не читается, но рисуется и мешает смотреть на то, что ещё
+ * различимо.
+ */
+test('на отдалении подписи карточек уступают место рамкам', async ({ page }) => {
+  const { tag } = await seedTwoShops();
+  await signIn(page);
+  await page.goto('/topology');
+  await expect(page.locator('[data-type="netdoc.Device"]').first()).toBeVisible();
+  await pickTag(page, tag.name);
+
+  const paper = page.locator('.joint-paper');
+  const title = page.locator('[data-type="netdoc.Device"] [joint-selector="title"]').first();
+  const detail = () => paper.getAttribute('data-detail');
+
+  // Уровень проставляется сразу, а не только после первого щелчка колесом.
+  expect(await detail()).not.toBeNull();
+
+  // Отъезжаем до упора: колесо от себя уменьшает.
+  await page.mouse.move(700, 400);
+  for (let i = 0; i < 40; i++) await page.mouse.wheel(0, 200);
+  await expect.poll(detail, { timeout: 10_000 }).toBe('blocks');
+  await expect(title).toBeHidden();
+
+  // И обратно: подписи возвращаются.
+  for (let i = 0; i < 40; i++) await page.mouse.wheel(0, -200);
+  await expect.poll(detail, { timeout: 10_000 }).toBe('full');
+  await expect(title).toBeVisible();
 });

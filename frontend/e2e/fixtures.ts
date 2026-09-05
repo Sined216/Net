@@ -21,9 +21,40 @@ async function login(username: string, password: string): Promise<string> {
   return token;
 }
 
+/**
+ * Площадка, на которой живут тестовые данные, — первая из имеющихся.
+ *
+ * В CI база чистая и площадка одна, поэтому раньше её никто не указывал. У
+ * разработчика же база своя, и вторая площадка там заводится за минуту —
+ * после чего весь прогон падал на первой же записи: «Не выбрана площадка: у
+ * вас их несколько, укажите нужную заголовком X-Site-Id». Указываем всегда:
+ * на одной площадке заголовок ничего не меняет, а на нескольких делает
+ * прогон определённым — данные и смотрят, и заводят на одной и той же.
+ */
+let primarySite: number | null | undefined;
+
+async function primarySiteId(token: string): Promise<number | null> {
+  if (primarySite !== undefined) return primarySite;
+  const bare = await request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+  const response = await bare.get('/sites');
+  // Не ответил — значит выбирать не из чего (роль без доступа к списку);
+  // тогда и заголовок не нужен, сервер разберётся сам.
+  const sites: { id: number }[] = response.ok() ? await response.json() : [];
+  primarySite = sites[0]?.id ?? null;
+  await bare.dispose();
+  return primarySite;
+}
+
 async function contextFor(username: string, password: string): Promise<APIRequestContext> {
   const token = await login(username, password);
-  return request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+  const site = await primarySiteId(token);
+  return request.newContext({
+    baseURL: API_URL,
+    extraHTTPHeaders: {
+      Authorization: `Bearer ${token}`,
+      ...(site != null ? { 'X-Site-Id': String(site) } : {}),
+    },
+  });
 }
 
 async function json(api: APIRequestContext, method: 'post' | 'patch' | 'put', path: string, data: unknown) {
@@ -111,21 +142,21 @@ async function createUserWithSiteAccess(
   const username = `e2e-${role}-${Date.now()}`;
   const temporary = 'e2e-vremennyj-parol';
 
-  const created = await json(admin, 'post', '/auth/users', {
-    full_name: fullName, username, password: temporary, role,
-  });
-
   // Площадки нужно выдать явно: по роли их видит только администратор, а
   // всем остальным без площадки показывать нечего — вместо схемы страница
-  // сообщает, что доступа нет. Появилось это вместе с изоляцией площадок,
-  // уже после самих тестов.
-  const sites = await (await admin.get('/sites')).json();
-  for (const site of sites) {
-    const access: number[] = await (await admin.get(`/sites/${site.id}/access`)).json();
-    await json(admin, 'put', `/sites/${site.id}/access`, {
-      user_ids: [...new Set([...access, created.id])],
-    });
-  }
+  // сообщает, что доступа нет. Отдаются они прямо при заведении: с тех пор
+  // как площадку стало можно выбрать в том же окне, сервер и требует её
+  // здесь же — заведение не-админа без единой площадки отбивается 422
+  // «Выберите хотя бы одну площадку», и весь прогон падал на первой же
+  // фикстуре.
+  // Ровно одна площадка, та же, на которой заводятся данные: с несколькими
+  // интерфейс показал бы переключатель, и на какой из них смотрит тест,
+  // зависело бы от того, какую он выберет по умолчанию.
+  const site = await primarySiteId(await login(ADMIN_USERNAME, adminPassword));
+  const created = await json(admin, 'post', '/auth/users', {
+    full_name: fullName, username, password: temporary, role,
+    site_ids: site != null ? [site] : [],
+  });
   await admin.dispose();
 
   return { username, temporaryPassword: temporary, id: created.id };
@@ -209,6 +240,54 @@ export async function seedTopology() {
 
   await api.dispose();
   return { first, second, group };
+}
+
+/**
+ * Две группы, в каждой коммутатор и пять железок на нём, — тот вид сети, на
+ * котором и видно, разложена схема или свалена в кучу: рамки групп должны
+ * стоять рядом, а не одна поверх другой.
+ */
+export async function seedTwoShops() {
+  const api = await adminContext();
+  const stamp = Date.now();
+
+  const types = await (await api.get('/device-types')).json();
+  const template = await json(api, 'post', '/device-templates', {
+    name: `E2E цеховой ${stamp}`,
+    device_type_id: types[0].id,
+    interfaces: Array.from({ length: 8 }, (_, i) => ({ label: `Порт ${i + 1}`, port_number: i + 1 })),
+  });
+
+  // Общий тег на всё заведённое: схема отбирается по нему, и тогда проверка
+  // не зависит от того, что ещё лежит в базе разработчика — а лежать там
+  // может и расставленная руками сеть на две сотни железок, на которой
+  // раскладка при открытии не работает и не должна.
+  const tag = await json(api, 'post', '/tags', { name: `E2E схема ${stamp}`, color: '#4dabf7' });
+
+  const groups = [];
+  for (const shop of [1, 2]) {
+    const group = await json(api, 'post', '/topology-groups', {
+      name: `E2E цех ${shop} · ${stamp}`, color: '#4dabf7',
+    });
+    const hub = await json(api, 'post', '/devices', {
+      template_id: template.id, name: `E2E коммутатор ${shop}`,
+      topology_group_id: group.id, tag_ids: [tag.id],
+    });
+    for (let n = 1; n <= 5; n++) {
+      const leaf = await json(api, 'post', '/devices', {
+        template_id: template.id, name: `E2E станок ${shop}.${n}`,
+        topology_group_id: group.id, tag_ids: [tag.id],
+      });
+      await json(api, 'post', '/links', {
+        interface_a_id: hub.interfaces[n].id,
+        interface_b_id: leaf.interfaces[0].id,
+      });
+    }
+    groups.push(group);
+  }
+
+  await api.dispose();
+  return { groups, tag };
 }
 
 /**

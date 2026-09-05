@@ -452,7 +452,11 @@ export function TopologyPage() {
     pendingBoxes.current.clear();
     setDirtyCount(0);
     history.clear();
-    setRedraw((n) => n + 1);
+    // Откат снимает и раскладку, посчитанную при открытии, — она лежала в
+    // тех же накопителях. Значит, её нужно посчитать заново: без этого
+    // схема вернулась бы не «как открылась», а в пружинный клубок.
+    arranged.current.clear();
+    setRelayout((n) => n + 1);
   }, [dirtyCount, history]);
 
   /** Записать перемещение и разослать его. «Откуда» берётся из раскладки,
@@ -480,6 +484,103 @@ export function TopologyPage() {
    * карточки из-под неё.
    */
   const [laying, setLaying] = useState(false);
+
+  /** Схема, которую ещё никто не раскладывал руками.
+   *
+   * Пружинная симуляция (`computePositions`) существует ради другого: она
+   * пристраивает одну-две новые железки между уже расставленными, не трогая
+   * чужую работу. Раскладывать ею всю схему с нуля она не умеет и никогда
+   * не умела — про рамки групп симуляция не знает вовсе, поэтому на
+   * заводской сети из двух сотен железок в пяти цехах первое же открытие
+   * давало клубок: карточки разных цехов вперемешку, а рамки, посчитанные
+   * по их содержимому, — пять прямоугольников друг поверх друга.
+   *
+   * Поэтому на схеме, которую ещё не расставляли, та же раскладка, что и по
+   * кнопке «Разложить». «Ещё не расставляли» — это когда узлов без
+   * сохранённого положения больше, чем с ним: одна железка, заведённая на
+   * такой схеме (её положение записывается сразу, см. `placeNewDevice`),
+   * не должна отменять раскладку остальным двумстам, а три новых среди
+   * двухсот расставленных — наоборот, не повод переставлять чужую работу,
+   * там своё место им подберёт пружинная симуляция.
+   *
+   * Результат кладётся туда же, куда попадает всё несохранённое, — но
+   * `markDirty` при этом не зовётся: кнопка «Сохранить» не загорается, пока
+   * человек ничего не двигал, а если он что-то подвинет и сохранит, уедет
+   * вся раскладка целиком, а не одна подвинутая карточка. Иначе схема после
+   * такого сохранения открылась бы наполовину расставленной: одна железка на
+   * своём месте, остальные — грудой у края рамки.
+   */
+  /** Схемы, которые уже пробовали разложить при открытии, — по устройствам
+   * в них. Не флажок «было»: страница не перемонтируется при смене площадки,
+   * и с флажком вторая площадка так и осталась бы клубком. Не «получилось»,
+   * а «пробовали»: если ELK не справился, повторять на тех же данных нечего,
+   * иначе эффект уходил бы на второй круг после каждой неудачи. */
+  const arranged = useRef(new Set<number>());
+  /** Идёт ли та самая раскладка при открытии. Пока идёт, посчитанные рамки
+   * групп на сервер не уходят: сохранилась бы рамка вокруг клубка, который
+   * через полсекунды сменится нормальной раскладкой. */
+  const [arrangingFirst, setArrangingFirst] = useState(false);
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    if (nodes.every((n) => arranged.current.has(n.id))) return;
+    // «Расставленное» — это то, что задал человек: сохранённое на сервере
+    // или ещё не отправленное туда. Не `placed`: там лежит и то, что
+    // насчитала пружинная симуляция при первой отрисовке, то есть ровно тот
+    // клубок, от которого мы уходим, — и по нему схема считалась бы уже
+    // расставленной всегда.
+    const known = nodes.filter(
+      (n) => (n.topology_x != null && n.topology_y != null) || pendingDevices.current.has(n.id),
+    ).length;
+    if (known * 2 >= nodes.length) return;
+    // Отметка ставится до запроса, а не после: ELK асинхронный, и без неё
+    // второй рендер, случившийся за время расчёта, запустил бы вторую
+    // раскладку поверх первой.
+    for (const node of nodes) arranged.current.add(node.id);
+    setArrangingFirst(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
+        const card = nodeMetrics(look);
+        const laid = await computeAutoLayout(
+          nodes.map((n) => ({
+            id: n.id,
+            width: sizes.get(n.id)?.width ?? card.width,
+            height: sizes.get(n.id)?.height ?? card.height,
+            group: n.topology_group_id ?? null,
+          })),
+          groups,
+          edges
+            .filter((e) => e.device_a_id != null && e.device_b_id != null)
+            .map((e) => ({ a: e.device_a_id!, b: e.device_b_id! })),
+          { row: look.layoutRowGap, node: look.layoutNodeGap },
+          look.layoutAlgorithm,
+          snapStep(look),
+        );
+        if (cancelled) return;
+        for (const [id, at] of laid.positions) {
+          placed.current.set(id, at);
+          pendingDevices.current.set(id, at);
+        }
+        for (const [id, box] of laid.boxes) pendingBoxes.current.set(id, box);
+        // Ни `markDirty`, ни `savePositions` — только сами накопители: см.
+        // объяснение выше.
+        //
+        // Счётчик раскладок, а не простой перерисовки: схема только что
+        // уехала целиком, и масштаб надо подогнать под новое (см. `fitted`).
+        setRelayout((n) => n + 1);
+      } catch (error) {
+        // Не сложилось — остаётся прежняя пружинная раскладка. Ругаться
+        // на это окном незачем: человек ничего не просил, он просто открыл
+        // страницу.
+        console.warn('Не удалось разложить схему при открытии', error);
+      } finally {
+        if (!cancelled) setArrangingFirst(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [nodes, edges, groups, look]);
+
   const relayoutAll = useCallback(async () => {
     if (nodes.length === 0 || laying) return;
     if (!(await confirmAction('Разложить схему по связям? Расположение узлов и рамки групп будут пересчитаны.'))) return;
@@ -613,7 +714,9 @@ export function TopologyPage() {
 
     const positions = computePositions(nodes, edges, placed, look);
     const { deviceCells, boxes } = buildGraph(
-      graph, { nodes, edges, groups }, { look, scheme, positions, pendingBoxes: pendingBoxes.current },
+      graph,
+      { nodes, edges, groups, filtered: tagFilter != null },
+      { look, scheme, positions, pendingBoxes: pendingBoxes.current },
     );
     boxesRef.current = boxes;
 
@@ -622,6 +725,12 @@ export function TopologyPage() {
     for (const group of groups) {
       const box = boxes.get(group.id);
       if (!box || storedBox(group) || autoSaved.current.has(group.id) || !canEdit) continue;
+      if (arrangingFirst) continue;
+      // Отбор по тегу прячет часть железок, и посчитанная рамка обводит
+      // только оставшиеся. Записать её значит навсегда сузить рамку цеха до
+      // тех устройств, что попались под сегодняшний отбор, — а рамка
+      // сохраняется один раз и с этого мгновения считается заданной руками.
+      if (tagFilter != null) continue;
       autoSaved.current.add(group.id);
       setGroupBox.mutate({
         id: group.id,
@@ -668,7 +777,7 @@ export function TopologyPage() {
     // paperRef/graphRef — ref'ы из useJointPaper; setGroupBox.mutate и
     // refreshTools — тоже стабильны (первое разобрано у saveLayout выше,
     // второе — useCallback с пустым списком зависимостей в useJointPaper.ts).
-  }, [nodes, edges, groups, look, relayout, redraw, canEdit, scheme]);
+  }, [nodes, edges, groups, look, relayout, redraw, canEdit, scheme, arrangingFirst, tagFilter]);
 
   // Ctrl+Z и Ctrl+Shift+Z — там же, где они везде. Внутри полей ввода не
   // перехватываются: там своя отмена, и она нужнее.

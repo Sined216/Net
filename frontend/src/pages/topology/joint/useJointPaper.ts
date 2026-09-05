@@ -155,6 +155,67 @@ function snappingElementView(step: () => number) {
   });
 }
 
+/** Что видно на схеме при таком масштабе.
+ *
+ * Двести устройств в окно целиком не помещаются никогда: карточка 178×62,
+ * а окно — 1340×820. Вписать такую схему значит уменьшить её раза в четыре,
+ * и подписи превращаются в серую рябь: буква в четыре пиксела не читается,
+ * но рисуется, мешает смотреть на то, что при этом ещё различимо, и стоит
+ * браузеру полторы тысячи текстовых элементов.
+ *
+ * Поэтому чем дальше отодвинули, тем меньше на схеме написано:
+ *
+ * - `full` — всё, как задумано: название, строки под ним, счётчик портов,
+ *   номера портов у концов кабелей;
+ * - `compact` — только название карточки. Номера портов и строки под
+ *   названием при таком масштабе всё равно нечитаемы;
+ * - `blocks` — на карточках не написано ничего, они читаются цветными
+ *   плашками по модели техники. Зато подписи рамок наоборот укрупняются
+ *   (см. `FRAME_LABEL_ON_SCREEN`): на этом масштабе схему читают по цехам
+ *   и шкафам, а не по железкам.
+ *
+ * Границы — это размер буквы на экране, а не круглые числа: название
+ * набрано 14-м кеглем, и на 0.55 от него остаётся восемь пикселов — предел,
+ * за которым слово уже не слово. */
+export type DetailLevel = 'full' | 'compact' | 'blocks';
+
+export function detailFor(scale: number): DetailLevel {
+  if (scale >= 0.55) return 'full';
+  if (scale >= 0.3) return 'compact';
+  return 'blocks';
+}
+
+/** Каким кеглем подпись рамки должна выходить на экран, когда карточки уже
+ * ничего не говорят. Двенадцать — тот же размер, каким набран интерфейс. */
+const FRAME_LABEL_ON_SCREEN = 12;
+
+/** Проставить полотну уровень детализации и размер подписи рамки под
+ * текущий масштаб. Само оформление — в `index.css`: правила по
+ * `data-detail` перекрывают атрибуты SVG, которые расставил JointJS. */
+function applyDetail(paper: dia.Paper) {
+  const scale = paper.scale().sx;
+  const level = detailFor(scale);
+  const changed = paper.el.dataset.detail !== level;
+  if (changed) paper.el.dataset.detail = level;
+  // В единицах схемы: полотно масштабирует всё, что на нём, поэтому кегль
+  // делится на масштаб. Верхняя граница — чтобы на совсем далёком отъезде
+  // подпись цеха не легла поперёк всей схемы.
+  const size = Math.min(FRAME_LABEL_ON_SCREEN / Math.max(scale, 0.02), 90);
+  paper.el.style.setProperty('--wm-frame-label', `${Math.round(size)}px`);
+
+  // Подложка под подписью рамки меряется по самой подписи (`ref` + `calc` в
+  // `shapes.ts`), а меряет её JointJS по живому DOM — то есть с тем кеглем,
+  // какой стоит в этот момент. Сменив уровень, мы меняем кегль из CSS, и
+  // подложка остаётся от прежнего: посчитанная под крупную подпись обзора,
+  // она на обычном масштабе торчит белым прямоугольником в полкадра.
+  // Поэтому рамки перемеряются — их два десятка, это дёшево.
+  if (!changed) return;
+  for (const cell of paper.model.getElements()) {
+    if (cell.get('kind') !== 'group') continue;
+    (paper.findViewByModel(cell) as dia.ElementView | undefined)?.update();
+  }
+}
+
 export function useJointPaper({
   canEdit, scheme, background, gridSize, gridSnap, connectionPoint, actions, handlers,
 }: {
@@ -375,6 +436,7 @@ export function useJointPaper({
     });
     element.appendChild(paper.el);
     paper.unfreeze();
+    applyDetail(paper);
 
     const observer = new ResizeObserver(() => {
       paper.setDimensions(Math.max(element.clientWidth, 320), Math.max(element.clientHeight, 320));
@@ -533,8 +595,12 @@ export function useJointPaper({
       paper.scale(to);
       paper.translate(screenX - x * to, screenY - y * to);
     });
-    // Масштаб изменился — панель действий пересобирается с новой поправкой.
-    paper.on('scale', () => showToolsRef.current(paper, selection.current));
+    // Масштаб изменился — панель действий пересобирается с новой поправкой,
+    // а схема заодно решает, что на ней при таком масштабе ещё написано.
+    paper.on('scale', () => {
+      applyDetail(paper);
+      showToolsRef.current(paper, selection.current);
+    });
 
     // Выделение по клику левой кнопкой.
     paper.on('element:pointerclick', (view: dia.ElementView, event: dia.Event) => {

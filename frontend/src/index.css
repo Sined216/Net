@@ -16,3 +16,44 @@ html, body, #root {
   vertical-align: middle;
 }
 
+
+/* ---------- схема связей: что видно при каком масштабе ----------
+ *
+ * Уровень проставляет полотно (`data-detail`, см. `detailFor` в
+ * `pages/topology/joint/useJointPaper.ts`). Правила здесь, а не в
+ * атрибутах фигур, ровно потому, что при отъезде и наезде меняться
+ * должно только оформление: пересобирать граф на каждый щелчок колеса —
+ * это полторы тысячи элементов заново, вместо смены одного атрибута.
+ *
+ * `display` у текста JointJS ставит атрибутом (`display="block"`), а
+ * атрибут перебивается любым правилом CSS — `!important` здесь не нужен.
+ */
+
+/* Отодвинули так, что буквы уже не буквы: номера портов у концов кабелей,
+   строки под названием и счётчик портов уходят первыми. */
+.joint-paper[data-detail='compact'] .joint-link .labels,
+.joint-paper[data-detail='blocks'] .joint-link .labels,
+.joint-paper[data-detail='compact'] .joint-type-netdoc-device [joint-selector^='line'],
+.joint-paper[data-detail='blocks'] .joint-type-netdoc-device [joint-selector^='line'],
+.joint-paper[data-detail='compact'] .joint-type-netdoc-device [joint-selector='ports'],
+.joint-paper[data-detail='blocks'] .joint-type-netdoc-device [joint-selector='ports'] {
+  display: none;
+}
+
+/* Ещё дальше — карточка читается цветной плашкой по модели техники, а
+   схема целиком — картой цехов и шкафов. */
+.joint-paper[data-detail='blocks'] .joint-type-netdoc-device [joint-selector='title'],
+.joint-paper[data-detail='blocks'] .joint-type-netdoc-stub [joint-selector='label'] {
+  display: none;
+}
+
+/* Подпись рамки, наоборот, укрупняется до читаемой на экране: размер
+   считает полотно и кладёт в переменную. Подложку под ней при этом
+   убираем — она мерялась по прежнему кеглю и оказалась бы мала. */
+.joint-paper[data-detail='blocks'] .joint-type-netdoc-group [joint-selector='label'] {
+  font-size: var(--wm-frame-label, 12px);
+  font-weight: 700;
+}
+.joint-paper[data-detail='blocks'] .joint-type-netdoc-group [joint-selector='labelBack'] {
+  display: none;
+}

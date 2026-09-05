@@ -162,6 +162,8 @@ export interface DeviceQuery {
 
 export interface LinkQuery {
   device_id?: number;
+  /** Кусок кода или названия железки на любом из концов кабеля. */
+  device?: string;
   dangling?: boolean;
   limit?: number;
   offset?: number;

@@ -30,12 +30,15 @@ export function SettingsPage() {
       {policyLoading && <Text c="dimmed">Загрузка…</Text>}
       {/* key на версии: после сохранения хук перечитает политику под новым
           номером правки, и форма пересоздастся с уже сохранёнными
-          значениями — без ручной синхронизации состояния с ответом сервера. */}
-      {policy && <PasswordPolicyForm key={policy.version} policy={policy} />}
+          значениями — без ручной синхронизации состояния с ответом сервера.
+          Имя настройки в ключе — потому что соседей двое и номер правки у
+          них свой: на свежей базе обе первой версии, и React ругался на
+          двух детей с ключом «1». */}
+      {policy && <PasswordPolicyForm key={`policy-${policy.version}`} policy={policy} />}
 
       {printerError && <Alert color="red">{(printerError as Error).message}</Alert>}
       {printerLoading && <Text c="dimmed">Загрузка…</Text>}
-      {printer && <PrinterSettingsForm key={printer.version} settings={printer} />}
+      {printer && <PrinterSettingsForm key={`printer-${printer.version}`} settings={printer} />}
     </Stack>
   );
 }

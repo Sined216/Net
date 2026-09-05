@@ -20,3 +20,35 @@ export function orderedGroups(groups: TopologyGroupOut[], parentId: number | nul
     .filter((g) => (g.parent_id ?? null) === parentId)
     .flatMap((group) => [{ group, depth }, ...orderedGroups(groups, group.id, depth + 1)]);
 }
+
+/** Сколько устройств в группе вместе с её подгруппами.
+ *
+ * Считать только прямых жильцов бессмысленно ровно там, где вложенность и
+ * заводится: у цеха, всё содержимое которого разложено по шкафам, прямым
+ * жильцом остаётся один агрегирующий коммутатор — и на рамке цеха с сорока
+ * железками писалось «Цех 1 · 1».
+ */
+export function groupSize(
+  groups: TopologyGroupOut[],
+  nodes: { topology_group_id?: number | null }[],
+  groupId: number,
+): number {
+  const childrenOf = new Map<number, number[]>();
+  for (const group of groups) {
+    if (group.parent_id == null) continue;
+    const list = childrenOf.get(group.parent_id);
+    if (list) list.push(group.id);
+    else childrenOf.set(group.parent_id, [group.id]);
+  }
+  const inside = new Set<number>();
+  // Обход в ширину, а не рекурсия: кольцо во вложенности сервер не
+  // пропускает, но данные приходят и из чужой сессии, а `Set` из него
+  // просто выйдет.
+  for (const queue = [groupId]; queue.length > 0;) {
+    const at = queue.pop()!;
+    if (inside.has(at)) continue;
+    inside.add(at);
+    queue.push(...(childrenOf.get(at) ?? []));
+  }
+  return nodes.filter((n) => n.topology_group_id != null && inside.has(n.topology_group_id)).length;
+}

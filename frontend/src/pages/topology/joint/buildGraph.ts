@@ -4,7 +4,7 @@ import {
   CARD_LINES, DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, nodeMetrics, nodeSizes,
   STUB_SIZE, withAlpha, type NodeSize,
 } from './shapes';
-import { groupDepth } from '../groups';
+import { groupDepth, groupSize } from '../groups';
 import { NO_SNAP, snapBoxOut, snapPoint, snapStep } from '../grid';
 import { computeForceLayout, type LayoutNode, type Spring } from '../layout';
 import type { TopologyEdge, TopologyGroupOut, TopologyNode } from '../../../api/types';
@@ -27,6 +27,13 @@ export interface GraphData {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   groups: TopologyGroupOut[];
+  /** Схема отобрана по тегу, то есть часть устройств спрятана нарочно.
+   * Тогда прячутся и рамки, внутри которых не осталось ничего видимого:
+   * два десятка пустых прямоугольников с подписью «· 0» поверх десятка
+   * оставшихся карточек — это не схема, а помеха. Без отбора пустая рамка
+   * остаётся: её завели, чтобы класть в неё железки, и исчезнуть она не
+   * должна. */
+  filtered?: boolean;
 }
 
 /** Как рисуем: настройки вида, тема интерфейса и расположение узлов. */
@@ -112,7 +119,7 @@ export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): 
   const paint = canvasColors(scheme);
   const card = nodeMetrics(look);
   const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
-  const boxes = computeBoxes(groups, nodes, positions, look, sizes, pendingBoxes);
+  const boxes = computeBoxes(groups, nodes, positions, look, sizes, pendingBoxes, data.filtered);
 
   const groupCells = addGroups(graph, groups, nodes, boxes, look, paint);
   const deviceCells = addDevices(graph, nodes, positions, boxes, groupCells, look, colors, card, sizes);
@@ -148,7 +155,7 @@ function addGroups(
     if (!box) continue;
     const accent = group.color ?? '#4dabf7';
     const fade = frameFade(groupDepth(groups, group.id));
-    const inside = nodes.filter((n) => n.topology_group_id === group.id).length;
+    const inside = groupSize(groups, nodes, group.id);
     const title = look.groupCount ? `${group.name} · ${inside}` : group.name;
     const isCabinet = group.kind === 'cabinet';
     const titleY = look.groupTitle === 'onFrame' ? 0 : look.groupTitleSize;
@@ -715,6 +722,9 @@ export function computeBoxes(
   look: TopologyAppearance,
   sizes?: Map<number, NodeSize>,
   pendingBoxes?: Map<number, Box>,
+  /** Прятать рамки, в которых не осталось видимых устройств, — см.
+   * `GraphData.filtered`. */
+  hideEmpty = false,
 ): Map<number, Box> {
   const card = nodeMetrics(look);
   const boxes = new Map<number, Box>();
@@ -729,6 +739,12 @@ export function computeBoxes(
     for (const child of groups.filter((g) => g.parent_id === group.id)) {
       const box = measure(child, visited);
       if (box) inner.push(box);
+    }
+
+    // Отбор спрятал всё, что было внутри, — прячем и саму рамку, даже если
+    // её положение задано руками: рисовать её не вокруг чего.
+    if (hideEmpty && inner.length === 0 && !nodes.some((n) => n.topology_group_id === group.id)) {
+      return null;
     }
 
     const stored = pendingBoxes?.get(group.id) ?? storedBox(group);

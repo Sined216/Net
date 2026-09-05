@@ -43,12 +43,32 @@ def _busy(db: Session, interface_ids: list[int], exclude_link_id: int | None = N
 
 @router.get("", response_model=schemas.LinkPage)
 def list_links(device_id: int | None = None, dangling: bool | None = None,
+                device: str | None = None,
                 limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0),
                 db: Session = Depends(get_db), site_id: int = Depends(sites.current_site_id)):
-    """Кабели — страницами и сразу с подписями концов."""
+    """Кабели — страницами и сразу с подписями концов.
+
+    `device` — кусок кода или названия железки на любом из концов. Отбор
+    считает база, а не браузер: на тысяче устройств кабелей около десяти
+    тысяч, и «показать ещё» сотню раз подряд — это не отбор.
+    """
     query = db.query(models.Link).filter(models.Link.site_id == site_id)
     if device_id is not None:
         ends = select(models.Interface.id).where(models.Interface.device_id == device_id)
+        query = query.filter(or_(models.Link.interface_a_id.in_(ends),
+                                 models.Link.interface_b_id.in_(ends)))
+    if device:
+        escaped = device.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
+        ends = (
+            select(models.Interface.id)
+            .join(models.Device, models.Interface.device_id == models.Device.id)
+            .where(models.Device.site_id == site_id,
+                   or_(models.Device.code.ilike(like), models.Device.name.ilike(like)))
+        )
+        # Подвешенный конец ничьим устройством не является: кабель, у
+        # которого искомая железка на живом конце, найдётся по второму
+        # условию, а два пустых конца в базе невозможны.
         query = query.filter(or_(models.Link.interface_a_id.in_(ends),
                                  models.Link.interface_b_id.in_(ends)))
     if dangling is not None:

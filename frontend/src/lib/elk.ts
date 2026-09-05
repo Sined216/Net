@@ -137,10 +137,26 @@ export async function layoutLayered(
   const spacing: Record<string, string> = {
     'elk.algorithm': options.algorithm,
     'elk.direction': options.direction,
-    // Без этого связь через рамку группы раскладке не видна: слои
-    // считаются отдельно внутри каждой рамки, и ряды соседних цехов
-    // выходят несогласованными.
-    'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+    // Каждая рамка раскладывается отдельной задачей.
+    //
+    // Раньше здесь стояло `INCLUDE_CHILDREN` — одна общая задача на всю
+    // схему, чтобы ряды соседних цехов считались согласованно. На сети из
+    // двух десятков железок разницы не видно, а на заводской — видно
+    // слишком хорошо: 206 устройств в пяти цехах по три шкафа ложились
+    // полосой 1667×19616, то есть один к двадцати. Вписать такое в окно
+    // значит уменьшить в двадцать пять раз — карточка превращается в
+    // штрих 7×3 пиксела. Причина не в настройке зазоров: в шкафу с одного
+    // коммутатора висит дюжина железок, все они попадают в один слой, а
+    // слой ELK выкладывает в колонку и переносить не умеет — `layered`
+    // переносит последовательность слоёв, а не длинный слой.
+    //
+    // Отдельная задача на рамку разрывает эту колонку: шкаф ложится
+    // блоком, цех — блоком из шкафов, и та же сеть занимает 5066×4106 —
+    // вписывается в окно вчетверо крупнее (замерено на тех же данных).
+    // Цена — ряды в соседних цехах больше не выравниваются между собой;
+    // на схеме, где цех и так читается как отдельный блок, это дешевле
+    // нечитаемой полосы.
+    'elk.hierarchyHandling': 'SEPARATE_CHILDREN',
     'elk.layered.spacing.nodeNodeBetweenLayers': String(options.layerGap),
     'elk.spacing.nodeNode': String(options.nodeGap),
     // Линии не должны идти вплотную к карточкам: у них по концам подписи
@@ -167,6 +183,39 @@ export async function layoutLayered(
     spacing['elk.stress.desiredEdgeLength'] = String(Math.round(avgSize + options.layerGap));
   }
 
+  // Рамка, внутри которой одна железка раздаёт связь всем остальным, —
+  // это шкаф: коммутатор доступа и висящие на нём станки, камеры, АРМы.
+  // Рядами такое не раскладывается: все висящие попадают в один слой, а
+  // слой — это колонка, которую ELK не переносит. Пятнадцать шкафов по
+  // дюжине железок и дают ту самую полосу.
+  //
+  // Внутри такой рамки читать нечего: связь у каждой ровно одна и ведёт
+  // она в одно и то же место. Поэтому содержимое просто плотно
+  // укладывается прямоугольниками (`rectpacking`) — шкаф выходит блоком
+  // четыре на четыре вместо колонки в тринадцать карточек.
+  //
+  // Условие узкое намеренно. Два коммутатора в шкафу — это уже не звезда,
+  // и какой из них кого кормит, по схеме должно быть видно: такая рамка
+  // раскладывается рядами, как и раньше. `rectpacking` про связи не знает
+  // вовсе и в остальных случаях потерял бы смысл схемы.
+  const starHub = (id: string): boolean => {
+    const inner = childrenOf.get(id);
+    if (!inner || inner.length < STAR_MIN) return false;
+    // Только листья: рамка с подрамками — это цех, а не шкаф.
+    if (inner.some((child) => childrenOf.has(child.id))) return false;
+    const mine = new Set(inner.map((child) => child.id));
+    const internal = links.filter((link) => mine.has(link.from) && mine.has(link.to));
+    // Связей внутри нет вовсе — раскладывать по ним нечего, тем более
+    // укладываем плотно.
+    if (internal.length === 0) return true;
+    // Звезда — это когда один и тот же узел стоит на каждом кабеле внутри
+    // рамки. Кандидатов ровно два: концы первого же кабеля.
+    const [first] = internal;
+    return [first.from, first.to].some(
+      (hub) => internal.every((link) => link.from === hub || link.to === hub),
+    );
+  };
+
   const build = (box: ElkBox): ElkNode => {
     const inner = childrenOf.get(box.id);
     if (!inner) return { id: box.id, width: box.width ?? 1, height: box.height ?? 1 };
@@ -175,6 +224,13 @@ export async function layoutLayered(
       children: inner.map(build),
       layoutOptions: {
         ...spacing,
+        ...(starHub(box.id) ? {
+          'elk.algorithm': 'rectpacking',
+          // Целевая пропорция блока — под экран, а не под квадрат: схему
+          // смотрят в широком окне.
+          'elk.aspectRatio': '1.7',
+          'elk.spacing.nodeNode': String(Math.round(options.nodeGap * 0.6)),
+        } : null),
         'elk.padding': `[top=${pad.top},left=${pad.side},bottom=${pad.side},right=${pad.side}]`,
       },
     };
@@ -227,3 +283,7 @@ export async function layoutLayered(
 }
 
 const ROOT = 'elk-root';
+
+/** С какого числа железок в шкафу колонка становится проблемой. Пять-шесть
+ * карточек в столбик читаются нормально и остаются рядами. */
+const STAR_MIN = 7;

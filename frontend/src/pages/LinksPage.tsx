@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert, Badge, Button, ColorInput, Group, Modal, Select,
   Stack, Table, Text, TextInput, Title,
 } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { useDebouncedValue } from '@mantine/hooks';
+import { IconFilterOff, IconPlus } from '@tabler/icons-react';
 import { DeleteAction, EditAction } from '../components/RowAction';
 import {
   useCreateLinkTemplate, useDeleteLink, useDeleteLinkTemplate,
@@ -28,7 +29,21 @@ export function LinksPage() {
   // Концы приходят уже с подписями: раньше страница везла все устройства со
   // всеми портами только ради того, чтобы вместо номера порта показать «Gi0/2».
   const [shown, setShown] = useState(PAGE);
-  const { data: linkPage, error: linksError } = useLinks({ limit: shown });
+  /** Отбор кабелей. Считает его база — как и на списке устройств: кабелей
+   * на тысяче железок около десяти тысяч, и найти среди них тот, что идёт
+   * от SW-0003, нажимая «показать ещё», нельзя. */
+  const [deviceFilter, setDeviceFilter] = useState('');
+  const [danglingOnly, setDanglingOnly] = useState<string | null>(null);
+  const [debouncedDevice] = useDebouncedValue(deviceFilter, 300);
+  // Сменили условия — показываем список сначала, иначе «показать ещё»
+  // продолжало бы уже несуществующий.
+  useEffect(() => setShown(PAGE), [debouncedDevice, danglingOnly]);
+  const { data: linkPage, error: linksError } = useLinks({
+    device: debouncedDevice.trim() || undefined,
+    dangling: danglingOnly == null ? undefined : danglingOnly === 'yes',
+    limit: shown,
+  });
+  const filtered = deviceFilter.trim().length > 0 || danglingOnly != null;
   const links = linkPage?.items ?? [];
   const total = linkPage?.total ?? 0;
   const [ltModalOpen, setLtModalOpen] = useState(false);
@@ -101,7 +116,20 @@ export function LinksPage() {
         </Table>
       </Table.ScrollContainer>
 
-      <Title order={2}>Связи между портами</Title>
+      <Group justify="space-between" wrap="wrap">
+        <Group gap="xs">
+          <Title order={2}>Связи между портами</Title>
+          <Text c="dimmed">{total}</Text>
+        </Group>
+        {filtered && (
+          <Button
+            variant="subtle" leftSection={<IconFilterOff size={16} />}
+            onClick={() => { setDeviceFilter(''); setDanglingOnly(null); }}
+          >
+            Сбросить отбор
+          </Button>
+        )}
+      </Group>
       <Text c="dimmed" size="sm">
         Новую связь создавайте перетаскиванием на схеме или прямо у порта устройства — здесь можно назначить
         шаблон, уточнить длину/разъём или удалить связь. «Подвешен» означает, что порт на этом конце удалили
@@ -119,6 +147,29 @@ export function LinksPage() {
               <Table.Th>Шаблон</Table.Th><Table.Th>Разъём</Table.Th><Table.Th>Длина, м</Table.Th>
               <Table.Th>Источник</Table.Th><Table.Th>Состояние</Table.Th><Table.Th w={80} />
             </Table.Tr>
+            {/* Поля отбора под заголовками — там же, где их ищут на списке
+                устройств. Отбор по железке общий на оба конца: кабель ищут
+                по тому, что на нём висит, а не по тому, какой конец записан
+                стороной A. */}
+            <Table.Tr>
+              <Table.Th colSpan={4}>
+                <TextInput
+                  size="xs" placeholder="код или название железки на любом конце"
+                  aria-label="Отбор по устройству"
+                  value={deviceFilter} onChange={(e) => setDeviceFilter(e.currentTarget.value)}
+                />
+              </Table.Th>
+              <Table.Th colSpan={4} />
+              <Table.Th>
+                <Select
+                  size="xs" placeholder="все" clearable
+                  aria-label="Отбор по состоянию"
+                  data={[{ value: 'yes', label: 'подвешен' }, { value: 'no', label: 'оба конца на месте' }]}
+                  value={danglingOnly} onChange={setDanglingOnly}
+                />
+              </Table.Th>
+              <Table.Th />
+            </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {links.map((l) => {
@@ -130,9 +181,13 @@ export function LinksPage() {
             const lt = l.template_id ? linkTemplates.find((t) => t.id === l.template_id) : null;
             return (
               <Table.Tr key={l.id}>
-                <Table.Td>{a?.device_code ?? <DanglingEnd />}</Table.Td>
+                {/* Код и название вместе: код опознают по наклейке на
+                    корпусе, а глазами ищут «станок 1.2.3». Раньше в колонке
+                    стоял один код, и понять, что за железка SW-0009, можно
+                    было только уйдя на её страницу. */}
+                <Table.Td>{a ? <EndDevice code={a.device_code} name={a.device_name} /> : <DanglingEnd />}</Table.Td>
                 <Table.Td>{a ? `№${a.port_number} · ${a.interface_label}` : '—'}</Table.Td>
-                <Table.Td>{b?.device_code ?? <DanglingEnd />}</Table.Td>
+                <Table.Td>{b ? <EndDevice code={b.device_code} name={b.device_name} /> : <DanglingEnd />}</Table.Td>
                 <Table.Td>{b ? `№${b.port_number} · ${b.interface_label}` : '—'}</Table.Td>
                 <Table.Td>
                   {lt ? (<><span className="tag-badge-dot" style={{ background: lt.color }} />{lt.name}</>) : <Text c="dimmed">— без шаблона —</Text>}
@@ -172,7 +227,11 @@ export function LinksPage() {
             );
           })}
           {links.length === 0 && (
-            <Table.Tr><Table.Td colSpan={10}><Text c="dimmed">Связей ещё нет</Text></Table.Td></Table.Tr>
+            <Table.Tr>
+              <Table.Td colSpan={10}>
+                <Text c="dimmed">{filtered ? 'Под условия отбора ничего не подошло' : 'Связей ещё нет'}</Text>
+              </Table.Td>
+            </Table.Tr>
           )}
           </Table.Tbody>
         </Table>
@@ -190,6 +249,16 @@ export function LinksPage() {
       )}
       {editingLink && <LinkFormModal link={editingLink} templates={linkTemplates} onClose={() => setEditingLink(null)} />}
     </Stack>
+  );
+}
+
+/** Железка на конце кабеля: код сверху, название под ним. */
+function EndDevice({ code, name }: { code: string; name?: string | null }) {
+  return (
+    <>
+      {code}
+      {name && <Text c="dimmed" size="xs">{name}</Text>}
+    </>
   );
 }
 
