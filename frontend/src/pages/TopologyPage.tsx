@@ -5,13 +5,14 @@ import {
 } from '@mantine/core';
 import {
   IconArrowBackUp, IconArrowForwardUp, IconDeviceFloppy, IconFocusCentered, IconHelp,
-  IconLayoutDistributeHorizontal, IconPlus, IconRoute, IconX,
+  IconLayoutDistributeHorizontal, IconListTree, IconPlus, IconRoute, IconX,
 } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { highlighters, type dia } from '@joint/core';
 import {
-  useDeleteDevice, useTags, useTopology, useUpdateDevicePosition, useUpdateDevicePositions,
+  useDeleteDevice, useTags, useTopology, useTopologyGroups, useUpdateDevicePosition,
+  useUpdateDevicePositions, useVlans,
 } from '../api/hooks';
 import * as apiEndpoints from '../api/endpoints';
 import { ConnectPortsModal } from './topology/ConnectPortsModal';
@@ -31,6 +32,9 @@ import { useLayoutHistory, type LayoutStep } from './topology/joint/useLayoutHis
 import {
   useJointPaper, type JointActions, type PaperHandlers,
 } from './topology/joint/useJointPaper';
+import { applyHighlight } from './topology/joint/highlight';
+import { loadTreeOpen, saveTreeOpen, TreePanel } from './topology/TreePanel';
+import { highlightFor, type TreeSelection } from './topology/tree';
 import { flattenTagsOrdered } from '../lib/utils';
 import { notifyError, notifySuccess } from '../lib/notify';
 import { confirmAction } from '../lib/confirm';
@@ -63,6 +67,13 @@ import { useCan } from '../auth/permissions';
  * Здесь остались только три вещи: что показывать, что делают кнопки и какие
  * окна открыты. Полотно с его событиями живёт в `joint/useJointPaper`, а
  * превращение присланной схемы в ячейки — в `joint/buildGraph`.
+ *
+ * Слева — панель с деревьями (`topology/TreePanel`): группы, теги, типы,
+ * модели, VLAN, у каждого пять веток свой источник данных, но ни один не
+ * тяжелее того, что уже загружено для самой схемы (`topology/tree.ts`).
+ * Выбор ветки не трогает граф — только красит виды ячеек классом `picked`
+ * (`joint/highlight.ts`), поэтому маршруты кабелей от переключения веток не
+ * пересчитываются.
  */
 
 const EMPTY: never[] = [];
@@ -76,8 +87,21 @@ export function TopologyPage() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const { data: topology } = useTopology(tagFilter ? parseInt(tagFilter, 10) : null);
   const { data: tags = EMPTY } = useTags();
+  const { data: groups = EMPTY } = useTopologyGroups();
+  const { data: vlans = EMPTY } = useVlans();
   const nodes = topology?.nodes ?? EMPTY;
   const edges = topology?.edges ?? EMPTY;
+
+  const [treeOpen, setTreeOpen] = useState(loadTreeOpen);
+  const [picked, setPicked] = useState<TreeSelection | null>(null);
+  const toggleTree = useCallback((open: boolean) => {
+    setTreeOpen(open);
+    saveTreeOpen(open);
+    // Закрыли панель — подсветка на схеме больше не от чего объяснить,
+    // снимаем её вместе с панелью, а не оставляем схему приглушённой без
+    // видимой причины.
+    if (!open) setPicked(null);
+  }, []);
 
   const canEdit = useCan('edit');
   const queryClient = useQueryClient();
@@ -338,6 +362,18 @@ export function TopologyPage() {
     }
   }, [nodes, edges, look, relayout, redraw, canEdit, scheme]);
 
+  // Подсветка выбранной ветки дерева. Отдельным эффектом от наполнения
+  // графа выше, но зависит от тех же данных и объявлен позже него — граф
+  // успевает пересобраться первым, и виды ячеек, которым эта подсветка
+  // расставляет классы, уже существуют. При смене только выбора (без
+  // пересборки графа) эффект тоже сработает — виды к тому моменту никуда
+  // не делись, пересоздавать граф ради этого незачем.
+  useEffect(() => {
+    const view = paperRef.current;
+    if (!view) return;
+    applyHighlight(view, picked ? highlightFor(picked, nodes, edges, groups, tags) : null);
+  }, [picked, nodes, edges, groups, tags, look, relayout, redraw, canEdit, scheme]);
+
   useEffect(() => {
     if (!canEdit) return;
     function onKey(event: KeyboardEvent) {
@@ -450,6 +486,12 @@ export function TopologyPage() {
           </Popover>
           <AppearanceMenu value={look} onChange={changeLook} />
           <Button
+            variant={treeOpen ? 'filled' : 'light'} leftSection={<IconListTree size={16} />}
+            onClick={() => toggleTree(!treeOpen)}
+          >
+            Дерево
+          </Button>
+          <Button
             variant={routingOpen ? 'filled' : 'light'} leftSection={<IconRoute size={16} />}
             onClick={() => toggleRouting(!routingOpen)}
           >
@@ -479,9 +521,17 @@ export function TopologyPage() {
         </Group>
       </Group>
 
-      <Paper withBorder style={{ flex: 1, minHeight: 320, overflow: 'hidden' }}>
-        <div ref={holder} style={{ width: '100%', height: '100%' }} />
-      </Paper>
+      <Group align="stretch" gap="sm" wrap="nowrap" style={{ flex: 1, minHeight: 320 }}>
+        {treeOpen && (
+          <TreePanel
+            nodes={nodes} groups={groups} tags={tags} vlans={vlans}
+            onSelect={setPicked} onClose={() => toggleTree(false)}
+          />
+        )}
+        <Paper withBorder style={{ flex: 1, minHeight: 320, overflow: 'hidden' }}>
+          <div ref={holder} style={{ width: '100%', height: '100%' }} />
+        </Paper>
+      </Group>
       {paper.markedCount > 0 && (
         <Group gap="xs">
           <Text size="sm">Выделено: {paper.markedCount}</Text>
