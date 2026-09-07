@@ -1389,8 +1389,9 @@ export interface paths {
          *     кабеля номер порта. Здесь то же самое считает база: карточке достаётся
          *     пара чисел, кабелю — номер и подпись его портов.
          *
-         *     Три запроса на весь ответ: устройства, кабели и подсчёт портов. Ни один
-         *     из них не растёт от количества портов.
+         *     Пять запросов на весь ответ: устройства, кабели, подсчёт портов и два
+         *     на VLAN (`_port_vlans` — по устройству и по порту разом, см. её
+         *     комментарий). Ни один не растёт от количества портов.
          */
         get: operations["get_topology_topology_get"];
         put?: never;
@@ -3142,6 +3143,11 @@ export interface components {
             port_a_number?: number | null;
             /** Port B Number */
             port_b_number?: number | null;
+            /**
+             * Vlan Ids
+             * @default []
+             */
+            vlan_ids: number[];
         };
         /**
          * TopologyGroupBox
@@ -3270,6 +3276,11 @@ export interface components {
             topology_x?: number | null;
             /** Topology Y */
             topology_y?: number | null;
+            /**
+             * Vlan Ids
+             * @default []
+             */
+            vlan_ids: number[];
         };
         /** TopologyOut */
         TopologyOut: {

@@ -158,3 +158,57 @@ def test_link_can_be_fetched_one_at_a_time(client, headers, linked_pair):
     assert body["end_a"]["device_code"], "концы приходят с подписями — их показывает окно"
 
     assert client.get("/links/999999", headers=headers["viewer"]).status_code == 404
+
+
+@pytest.fixture
+def two_vlans(client, headers, site):
+    """Два VLAN на одной площадке — access и то, что кладут в транк."""
+    v1 = client.post("/vlans", json={"vlan_number": 10, "name": "Данные"}, headers=headers["editor"]).json()
+    v2 = client.post("/vlans", json={"vlan_number": 20, "name": "Голос"}, headers=headers["editor"]).json()
+    return v1, v2
+
+
+def test_node_vlan_ids_union_access_and_trunk(client, headers, linked_pair, two_vlans):
+    """VLAN узла — объединение по всем его портам: access на одном порту,
+    транк на другом, а карточке нужен один общий список."""
+    one, _two, _link = linked_pair
+    v1, v2 = two_vlans
+    port_a, port_b = one["interfaces"][0], one["interfaces"][1]
+
+    resp = client.patch(f"/interfaces/{port_a['id']}", json={"vlan_id": v1["id"]}, headers=headers["editor"])
+    assert resp.status_code == 200, resp.text
+    resp = client.patch(f"/interfaces/{port_b['id']}", json={"trunk_vlan_ids": [v2["id"]]}, headers=headers["editor"])
+    assert resp.status_code == 200, resp.text
+
+    body = client.get("/topology", headers=headers["viewer"]).json()
+    node = next(n for n in body["nodes"] if n["id"] == one["id"])
+    assert node["vlan_ids"] == sorted([v1["id"], v2["id"]])
+
+
+def test_edge_vlan_ids_is_union_not_intersection(client, headers, linked_pair, two_vlans):
+    """Кабель несёт VLAN обоих концов — объединением, а не общей частью:
+    транк с разных сторон может нести разные наборы, и связь стоит
+    подсветить в каждом из них."""
+    one, two, link = linked_pair
+    v1, v2 = two_vlans
+    iface_a = one["interfaces"][0]["id"]
+    iface_b = two["interfaces"][0]["id"]
+
+    assert client.patch(f"/interfaces/{iface_a}", json={"vlan_id": v1["id"]},
+                        headers=headers["editor"]).status_code == 200
+    assert client.patch(f"/interfaces/{iface_b}", json={"vlan_id": v2["id"]},
+                        headers=headers["editor"]).status_code == 200
+
+    body = client.get("/topology", headers=headers["viewer"]).json()
+    edge = next(e for e in body["edges"] if e["link_id"] == link["id"])
+    assert edge["vlan_ids"] == sorted([v1["id"], v2["id"]]), \
+        "объединение обоих концов, а не пересечение (у концов нет общего VLAN)"
+
+
+def test_vlan_ids_empty_when_no_vlan_set(client, headers, linked_pair):
+    """Без единого VLAN на площадке список пуст, а не отсутствует и не null —
+    так проще фильтровать на клиенте."""
+    one, _two, _link = linked_pair
+    body = client.get("/topology", headers=headers["viewer"]).json()
+    node = next(n for n in body["nodes"] if n["id"] == one["id"])
+    assert node["vlan_ids"] == []

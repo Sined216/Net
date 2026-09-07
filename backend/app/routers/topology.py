@@ -1,11 +1,60 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from sqlalchemy import distinct, func, select, union_all
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app import models, schemas, sites
 
 router = APIRouter(tags=["topology"])
+
+
+def _port_vlans(db: Session, device_ids: set[int]):
+    """VLAN по портам устройств из `device_ids` — access и транк разом.
+
+    Один подзапрос вместо двух раздельных: `interfaces.vlan_id` (access) и
+    `interface_trunk_vlans` (транк) объединяются `UNION ALL` в общий набор
+    строк «устройство — порт — VLAN», а дальше из него агрегацией в базе,
+    не в питоне, получаются два готовых словаря — по устройству (для узла)
+    и по порту (для конца кабеля). Строк в самом подзапросе столько,
+    сколько у площадки пар «порт — VLAN» — с транком в несколько VLAN их
+    будет больше одной на порт, но расти от общего числа портов (как боялись
+    в комментарии к `/topology` выше) он не может: у порта без VLAN строки
+    вовсе нет.
+    """
+    if not device_ids:
+        return {}, {}
+
+    access = select(
+        models.Interface.device_id.label("device_id"),
+        models.Interface.id.label("interface_id"),
+        models.Interface.vlan_id.label("vlan_id"),
+    ).where(
+        models.Interface.device_id.in_(device_ids),
+        models.Interface.vlan_id.isnot(None),
+    )
+    trunk = select(
+        models.Interface.device_id.label("device_id"),
+        models.InterfaceTrunkVlan.interface_id.label("interface_id"),
+        models.InterfaceTrunkVlan.vlan_id.label("vlan_id"),
+    ).select_from(models.InterfaceTrunkVlan).join(
+        models.Interface, models.Interface.id == models.InterfaceTrunkVlan.interface_id,
+    ).where(models.Interface.device_id.in_(device_ids))
+
+    port_vlans = union_all(access, trunk).subquery("port_vlans")
+
+    by_device: dict[int, list[int]] = {
+        device_id: sorted(vlan_ids)
+        for device_id, vlan_ids in db.query(
+            port_vlans.c.device_id, func.array_agg(distinct(port_vlans.c.vlan_id)),
+        ).group_by(port_vlans.c.device_id).all()
+    }
+    by_interface: dict[int, list[int]] = {
+        interface_id: sorted(vlan_ids)
+        for interface_id, vlan_ids in db.query(
+            port_vlans.c.interface_id, func.array_agg(distinct(port_vlans.c.vlan_id)),
+        ).group_by(port_vlans.c.interface_id).all()
+    }
+    return by_device, by_interface
 
 
 @router.get("/topology", response_model=schemas.TopologyOut)
@@ -20,8 +69,9 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
     кабеля номер порта. Здесь то же самое считает база: карточке достаётся
     пара чисел, кабелю — номер и подпись его портов.
 
-    Три запроса на весь ответ: устройства, кабели и подсчёт портов. Ни один
-    из них не растёт от количества портов.
+    Пять запросов на весь ответ: устройства, кабели, подсчёт портов и два
+    на VLAN (`_port_vlans` — по устройству и по порту разом, см. её
+    комментарий). Ни один не растёт от количества портов.
     """
     devices_q = db.query(models.Device).options(
         joinedload(models.Device.template).joinedload(models.DeviceTemplate.device_type),
@@ -61,6 +111,8 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
                 continue
             ports_connected[iface.device_id] = ports_connected.get(iface.device_id, 0) + 1
 
+    vlans_by_device, vlans_by_interface = _port_vlans(db, device_ids)
+
     nodes = [
         schemas.TopologyNode(
             id=d.id, code=d.code, name=d.name,
@@ -76,6 +128,7 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
             topology_y=d.topology_y,
             ports_total=ports_total.get(d.id, 0),
             ports_connected=ports_connected.get(d.id, 0),
+            vlan_ids=vlans_by_device.get(d.id, []),
         )
         for d in devices
     ]
@@ -92,6 +145,11 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
         live = [d for d in (dev_a, dev_b) if d is not None]
         if not live or any(d not in device_ids for d in live):
             continue
+        # Объединение, не пересечение — см. комментарий у TopologyEdge.vlan_ids.
+        edge_vlans = sorted(set(
+            vlans_by_interface.get(link.interface_a_id, [])
+            + vlans_by_interface.get(link.interface_b_id, [])
+        ))
         edges.append(
             schemas.TopologyEdge(
                 link_id=link.id,
@@ -107,6 +165,7 @@ def get_topology(tag_id: int | None = None, db: Session = Depends(get_db),
                 color=link.template.color if link.template else None,
                 line_style=link.template.line_style if link.template else None,
                 confirmed=link.confirmed,
+                vlan_ids=edge_vlans,
             )
         )
 

@@ -947,6 +947,11 @@ class TopologyNode(BaseModel):
     topology_y: Optional[float] = None
     ports_total: int = 0
     ports_connected: int = 0
+    # VLAN по всем портам устройства разом — и access (`interfaces.vlan_id`),
+    # и транковые (`interface_trunk_vlans`), объединением. Список, а не
+    # раскладка по портам: карточке всё равно, на каком именно порту какой
+    # VLAN, только «этот VLAN где-то тут есть».
+    vlan_ids: List[int] = []
 
 
 class TopologyEdge(BaseModel):
@@ -969,6 +974,11 @@ class TopologyEdge(BaseModel):
     color: Optional[str] = None
     line_style: Optional[str] = None
     confirmed: bool
+    # VLAN кабеля — объединение VLAN двух его портов, не пересечение: транк
+    # с двух разных сторон обычно несёт разный набор, и связь стоит
+    # подсветить в VLAN, для которого она несёт хоть какой-то трафик, а не
+    # только в общем для обоих концов.
+    vlan_ids: List[int] = []
 
 
 class TopologyOut(BaseModel):
