@@ -38,74 +38,6 @@ export function AppearanceMenu({ value, onChange }: Props) {
       <Popover.Dropdown p="sm">
         <ScrollArea.Autosize mah={540} type="hover" offsetScrollbars>
           <Stack gap="xs" pr={6}>
-            <Section title="Рамки групп" />
-
-            <Field label="Контур">
-              <SegmentedControl
-                size="xs" fullWidth value={value.groupBorder}
-                onChange={(v) => set('groupBorder', v as TopologyAppearance['groupBorder'])}
-                data={[
-                  { value: 'solid', label: 'Сплошной' },
-                  { value: 'dashed', label: 'Пунктир' },
-                  { value: 'dotted', label: 'Точки' },
-                  { value: 'none', label: 'Нет' },
-                ]}
-              />
-            </Field>
-
-            <Field label={`Толщина контура — ${value.groupBorderWidth} px`}>
-              <Slider
-                size="sm" min={1} max={4} step={0.5} value={value.groupBorderWidth}
-                disabled={value.groupBorder === 'none'}
-                onChange={(v) => set('groupBorderWidth', v)}
-                marks={[{ value: 1 }, { value: 2 }, { value: 3 }, { value: 4 }]}
-              />
-            </Field>
-
-            <Field label={`Скругление — ${value.groupRadius} px`}>
-              <Slider
-                size="sm" min={0} max={24} step={2} value={value.groupRadius}
-                onChange={(v) => set('groupRadius', v)}
-                marks={[{ value: 0 }, { value: 12 }, { value: 24 }]}
-              />
-            </Field>
-
-            <Field label={`Заливка — ${value.groupFill}%`}>
-              <Slider
-                size="sm" min={0} max={25} step={1} value={value.groupFill}
-                onChange={(v) => set('groupFill', v)}
-                marks={[{ value: 0 }, { value: 6 }, { value: 25 }]}
-              />
-            </Field>
-
-            <Field label="Подпись группы">
-              <SegmentedControl
-                size="xs" fullWidth value={value.groupTitle}
-                onChange={(v) => set('groupTitle', v as TopologyAppearance['groupTitle'])}
-                data={[
-                  { value: 'onFrame', label: 'Врезкой' },
-                  { value: 'inside', label: 'Внутри' },
-                  { value: 'hidden', label: 'Скрыть' },
-                ]}
-              />
-            </Field>
-
-            <Switch
-              size="xs" label="Число устройств рядом с названием" checked={value.groupCount}
-              disabled={value.groupTitle === 'hidden'}
-              onChange={(e) => set('groupCount', e.currentTarget.checked)}
-            />
-
-            <Field label={`Размер подписи группы — ${value.groupTitleSize} px`}>
-              <Slider
-                size="sm" min={8} max={20} step={1} value={value.groupTitleSize}
-                disabled={value.groupTitle === 'hidden'}
-                onChange={(v) => set('groupTitleSize', v)}
-                marks={[{ value: 8 }, { value: 12 }, { value: 20 }]}
-              />
-            </Field>
-
-            <Divider my={4} />
             <Section title="Узлы устройств" />
             <Text size="xs" c="dimmed">
               Строки под названием: включённые идут сверху вниз в этом порядке, карточка растёт и сжимается сама.
@@ -222,7 +154,7 @@ export function AppearanceMenu({ value, onChange }: Props) {
             <Text size="xs" c="dimmed">
               «Слоями» — ряды сверху вниз или слева направо, как сеть рисуют от руки. «Деревом» — от корня
               веером. «Силой» и «Кластером» — органическая раскладка без выраженных рядов, ближе к тому, как
-              узлы расталкивались раньше, но с учётом рамок групп.
+              узлы расталкивались раньше.
             </Text>
             <Field label={`Между рядами — ${value.layoutRowGap} px`}>
               <Slider
@@ -266,8 +198,8 @@ export function AppearanceMenu({ value, onChange }: Props) {
             </Field>
             <Text size="xs" c="dimmed">
               Шаг задаёт и рисунок сетки, и привязку, поэтому меняет его один ползунок. С привязкой по
-              узлам сетки встают и положение узла, и рамка группы с её размером — включая то, что
-              расставляет «Разложить». Без привязки сетка остаётся видимой, но ничего не держит.
+              узлам сетки встаёт положение узла — включая то, что расставляет «Разложить». Без привязки
+              сетка остаётся видимой, но ничего не держит.
             </Text>
 
             <Divider my={4} />

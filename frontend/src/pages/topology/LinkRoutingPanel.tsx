@@ -1,6 +1,5 @@
 import {
-  Button, Chip, Divider, Drawer, Group, NumberInput, SegmentedControl, Select, Slider, Stack,
-  Switch, Text,
+  Button, Chip, Divider, Drawer, Group, NumberInput, SegmentedControl, Select, Slider, Stack, Text,
 } from '@mantine/core';
 import { IconRotate } from '@tabler/icons-react';
 import { DEFAULT_APPEARANCE, type LinkSide, type TopologyAppearance } from './appearance';
@@ -25,7 +24,7 @@ import { DEFAULT_APPEARANCE, type LinkSide, type TopologyAppearance } from './ap
  * вид целиком человек не просил — он пришёл за разводкой. */
 const ROUTING_KEYS = [
   'routerStep', 'routerPadding', 'routerLaneSpread',
-  'routerStartSides', 'routerEndSides', 'routerFramesAreObstacles', 'routerMaxLoops',
+  'routerStartSides', 'routerEndSides', 'routerMaxLoops',
   'anchorMode', 'anchorPadding', 'connectionPoint',
 ] as const satisfies readonly (keyof TopologyAppearance)[];
 
@@ -147,14 +146,6 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
           Ничего не выбрано — разрешены все четыре стороны.
         </Text>
 
-        <Switch
-          size="xs" label="Рамки групп — препятствия" checked={value.routerFramesAreObstacles}
-          onChange={(e) => set('routerFramesAreObstacles', e.currentTarget.checked)}
-        />
-        <Text size="xs" c="dimmed">
-          По умолчанию выключено: рамка обозначает область, а не стену, и обход по её контуру уводит кабель
-          вокруг соседних шкафов.
-        </Text>
         <Field label="Предел перебора при поиске пути">
           <NumberInput
             size="xs" min={100} max={20000} step={100} value={value.routerMaxLoops}

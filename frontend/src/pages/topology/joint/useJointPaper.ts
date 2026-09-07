@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { dia, g, highlighters, shapes } from '@joint/core';
 import { canvasColors, loadAppearance, type TopologyAppearance } from '../appearance';
-import { NO_SNAP, snapCornerToCenteredGrid, snapPoint, snapValue } from '../grid';
-import { deviceTools, groupTools } from './tools';
-import type { Box } from './buildGraph';
+import { NO_SNAP, snapCornerToCenteredGrid } from '../grid';
+import { deviceTools } from './tools';
 
 /** Полотно JointJS и всё, что на нём происходит мышью: панорама, масштаб,
  * выделение, перетаскивание, протягивание кабеля, Delete.
@@ -29,38 +28,26 @@ import type { Box } from './buildGraph';
  * - левая — только работа с объектами: выделить, потянуть, обвести рамкой
  *   пачку. За пустое место левой сразу начинается рамка выделения — раньше
  *   для неё требовался Shift, потому что жест был занят панорамой.
- * - правая — панель действий у узла и у рамки. Раньше она появлялась по
- *   левому щелчку и тем самым мешалась: выделить объект, чтобы потянуть
- *   его, было нельзя, не получив панель поверх соседей.
+ * - правая — панель действий у узла. Раньше она появлялась по левому
+ *   щелчку и тем самым мешалась: выделить объект, чтобы потянуть его, было
+ *   нельзя, не получив панель поверх соседей.
  */
 
-export type Selection = { kind: 'device' | 'group'; id: number } | null;
+export type Selection = { id: number } | null;
 
-/** Выделенное рамкой. Устройства и группы держатся раздельно: рамка может
- * захватить и то и другое, а обходятся с ними по-разному — у группы своя
- * геометрия и своё удаление. */
+/** Выделенное рамкой. */
 export interface Marked {
   devices: Set<number>;
-  groups: Set<number>;
 }
 
-const emptyMarked = (): Marked => ({ devices: new Set(), groups: new Set() });
-const markedSize = (marked: Marked) => marked.devices.size + marked.groups.size;
+const emptyMarked = (): Marked => ({ devices: new Set() });
+const markedSize = (marked: Marked) => marked.devices.size;
 
-/** Что панель действий умеет делать с узлом и с рамкой. */
+/** Что панель действий умеет делать с узлом. */
 export interface JointActions {
   edit: (deviceId: number) => void;
   copy: (deviceId: number) => void;
-  regroup: (deviceId: number) => void;
   remove: (deviceId: number) => void;
-  editGroup: (groupId: number) => void;
-  addSubgroup: (groupId: number) => void;
-  /** Завести устройство прямо в этой группе — не заводить отдельно и потом
-   * перекладывать. */
-  addDeviceToGroup: (groupId: number) => void;
-  removeGroup: (groupId: number) => void;
-  /** Разложить содержимое группы рядами внутри её рамки. */
-  layoutGroup: (groupId: number) => void;
 }
 
 /** Что полотно сообщает странице. */
@@ -68,14 +55,10 @@ export interface PaperHandlers {
   /** Протянули кабель от одной ячейки к другой. */
   onConnect: (source: dia.Element, target: dia.Element) => void;
   onLinkClick: (linkId: number) => void;
-  /** Устройства, переехавшие одним жестом. Списком, а не по одному: за
-   * рамку группы уезжает всё её содержимое, а выделенную рамкой пачку тянут
-   * целиком — и отменять такое движение надо тоже целиком. */
+  /** Устройства, переехавшие одним жестом. Списком, а не по одному:
+   * выделенную рамкой пачку тянут целиком — и отменять такое движение надо
+   * тоже целиком. */
   onDevicesMoved: (moves: { id: number; x: number; y: number }[]) => void;
-  /** Рамки, переехавшие одним жестом. Списком по той же причине, что и
-   * устройства: за рамкой группы едут и рамки подгрупп, и записать надо все
-   * — иначе подгруппы возвращаются на прежнее место при первой перерисовке. */
-  onGroupsMoved: (frames: { id: number; box: Box }[]) => void;
   /** Delete по выделенному. Когда рамкой выделено хоть что-то, `selection`
    * не в счёт: удаляется пачка. */
   onDelete: (selection: Selection, marked: Marked) => void;
@@ -97,20 +80,6 @@ export interface JointPaper {
    * наполнения графа: ячейки создаются заново, а выделенным остаётся тот же
    * объект. */
   refreshTools: () => void;
-}
-
-/** Загнать узел внутрь рамки его группы. Отступы те же, что при сборке
- * схемы: сверху больше, там подпись группы. */
-function insideParent(element: dia.Element, x: number, y: number): { x: number; y: number } {
-  const parent = element.getParentCell() as dia.Element | null;
-  if (!parent) return { x, y };
-  const box = parent.getBBox();
-  const size = element.size();
-  const pad = 8;
-  return {
-    x: Math.min(Math.max(x, box.x + pad), Math.max(box.x + pad, box.x + box.width - size.width - pad)),
-    y: Math.min(Math.max(y, box.y + 24), Math.max(box.y + 24, box.y + box.height - size.height - pad)),
-  };
 }
 
 /** Фон полотна из настроек вида — своими именами JointJS.
@@ -139,25 +108,17 @@ function gridFor(background: TopologyAppearance['background'], scheme: 'light' |
  * встроенная привязка выключена (`gridSize: 1`), а округляет этот метод.
  * Это штатная точка расширения библиотеки: переписывать её цикл
  * перетаскивания или доводить карточку рывком после `pointerup` не нужно.
- *
- * Рамка группы — исключение: её ровняют по контуру, кабели к ней не
- * цепляются, а размер округляет ручка растяжки (`tools.ts`).
  */
 function snappingElementView(step: () => number) {
   return dia.ElementView.extend({
     snapToGrid(this: dia.ElementView, _event: unknown, x: number, y: number) {
-      const grid = step();
-      if (this.model.get('kind') === 'group') {
-        return { x: snapValue(x, grid), y: snapValue(y, grid) };
-      }
-      return snapCornerToCenteredGrid(x, y, this.model.size(), grid);
+      return snapCornerToCenteredGrid(x, y, this.model.size(), step());
     },
   });
 }
 
 export function useJointPaper({
   canEdit, scheme, background, gridSize, gridSnap, connectionPoint, actions, handlers,
-  groupsEnabled,
 }: {
   canEdit: boolean;
   scheme: 'light' | 'dark';
@@ -170,20 +131,11 @@ export function useJointPaper({
   gridSnap: boolean;
   actions: React.RefObject<JointActions>;
   handlers: React.RefObject<PaperHandlers>;
-  /** Есть ли на странице группы вообще. По умолчанию — да: тестовая страница
-   * без единой группы (`TopologyTestPage.tsx`) передаёт `false`, и панель
-   * узла остаётся без кнопки «В группу» — на странице, где рамок нет
-   * физически, эта кнопка была бы единственной дверью, через которую группа
-   * всё же могла бы появиться (модалка смены группы сама читает и пишет
-   * `/topology-groups`, минуя пустой список `groups` этой страницы). */
-  groupsEnabled?: boolean;
 }): JointPaper {
   const holder = useRef<HTMLDivElement>(null);
   const paperRef = useRef<dia.Paper | null>(null);
   const graphRef = useRef<dia.Graph | null>(null);
   const selection = useRef<Selection>(null);
-  const groupsEnabledRef = useRef(groupsEnabled ?? true);
-  groupsEnabledRef.current = groupsEnabled ?? true;
   /** Выделенное рамкой. Держится ссылкой, потому что читается из
    * обработчиков полотна, поставленных один раз; счётчик рядом — чтобы
    * страница могла показать, сколько выделено. */
@@ -203,13 +155,7 @@ export function useJointPaper({
   const toolActions = useCallback((): JointActions => ({
     edit: (id) => actions.current.edit(id),
     copy: (id) => actions.current.copy(id),
-    regroup: (id) => actions.current.regroup(id),
     remove: (id) => actions.current.remove(id),
-    editGroup: (id) => actions.current.editGroup(id),
-    addSubgroup: (id) => actions.current.addSubgroup(id),
-    addDeviceToGroup: (id) => actions.current.addDeviceToGroup(id),
-    removeGroup: (id) => actions.current.removeGroup(id),
-    layoutGroup: (id) => actions.current.layoutGroup(id),
     // Пустой список — не недосмотр: `actions` это ref, его идентичность не
     // меняется никогда, а свежее значение — `actions.current` — берётся в
     // момент вызова, а не в момент создания этих обёрток.
@@ -229,7 +175,6 @@ export function useJointPaper({
     const look = {
       paint: canvasColors(scheme),
       zoom: Math.min(Math.max(1 / paper.scale().sx, 1), 4),
-      grid: gridStepRef.current,
     };
     paper.removeTools();
     highlighters.stroke.removeAll(paper);
@@ -244,39 +189,28 @@ export function useJointPaper({
       });
     };
 
-    // Выделенные рамкой обводятся все: по обводке и видно, что подвинется
-    // и что удалится. Рамки групп обводятся так же, как устройства, — с той
-    // же поры, как рамка выделения научилась их захватывать.
+    // Выделенные рамкой обводятся все: по обводке видно, что подвинется и
+    // что удалится.
     for (const element of paper.model.getElements()) {
-      const kind = element.get('kind');
-      const id = kind === 'device' ? element.get('deviceId')
-        : kind === 'group' ? element.get('groupId') : null;
-      if (id == null) continue;
-      const set = kind === 'device' ? marked.current.devices : marked.current.groups;
-      if (!set.has(id)) continue;
+      if (element.get('kind') !== 'device') continue;
+      const id = element.get('deviceId');
+      if (!marked.current.devices.has(id)) continue;
       const view = element.findView(paper) as dia.ElementView | undefined;
-      if (view) outline(view, `marked-${kind}-${id}`, true);
+      if (view) outline(view, `marked-device-${id}`, true);
     }
 
     // Обводка одиночного выделения — когда рамкой не выделено ничего:
     // иначе на схеме были бы две разные подсветки об одном и том же.
     if (markedSize(marked.current) > 0) return;
     if (!target) return;
-    const key = target.kind === 'device' ? 'deviceId' : 'groupId';
     const cell = paper.model.getElements().find(
-      (el) => el.get('kind') === target.kind && el.get(key) === target.id,
+      (el) => el.get('kind') === 'device' && el.get('deviceId') === target.id,
     );
     const view = cell?.findView(paper) as dia.ElementView | undefined;
     if (!cell || !view) return;
-    if (target.kind === 'device') outline(view, 'selected', false);
+    outline(view, 'selected', false);
     if (!withPanel || !canEdit) return;
-    if (target.kind === 'device') {
-      view.addTools(deviceTools(target.id, toolActions(), look, { regroup: groupsEnabledRef.current }));
-    } else {
-      view.addTools(groupTools(
-        target.id, toolActions(), cell.get('accent') ?? '#4dabf7', look, cell.get('variant') === 'cabinet',
-      ));
-    }
+    view.addTools(deviceTools(target.id, toolActions(), look));
   }, [canEdit, scheme, toolActions]);
 
   /** Обработчики полотна ставятся один раз, а показ панели зависит от темы
@@ -344,21 +278,9 @@ export function useJointPaper({
         const source = sourceView?.model as dia.Element | undefined;
         const target = targetView?.model as dia.Element | undefined;
         if (!source || !target || source === target) return false;
-        const kinds = [source.get('kind'), target.get('kind')];
         // Кабель соединяет два устройства либо повисший конец с устройством.
-        if (kinds.includes('group')) return false;
+        const kinds = [source.get('kind'), target.get('kind')];
         return kinds.filter((k) => k === 'device').length >= 1;
-      },
-      // Узел не выходит за рамку своей группы: состав группы меняется только
-      // явно, а не перетаскиванием.
-      restrictTranslate: (elementView) => {
-        const parent = elementView.model.getParentCell() as dia.Element | null;
-        // `false` — «двигай куда хочешь»: у узла без группы ограничений нет.
-        // Именно false, а не true: возвращённое из функции значение JointJS
-        // берёт как готовую рамку и на `true` считает координаты из
-        // несуществующих полей — узел уезжал в NaN, а сервер отбивал
-        // сохранение позиции.
-        return parent ? parent.getBBox().toJSON() : false;
       },
       // Конец линии — там, где стоит якорь, либо на границе карточки: это
       // настройка окна «Разводка кабелей». Обрезка о границу нужна была,
@@ -468,25 +390,7 @@ export function useJointPaper({
       const caught = graph.findElementsInArea(area);
       const next = emptyMarked();
       for (const cell of caught) {
-        if (cell.get('kind') === 'group') next.groups.add(cell.get('groupId') as number);
-      }
-      // Устройство, попавшее в захваченную группу, отдельно не отмечается:
-      // двигая группу, её содержимое едет само, и пометить его вторично
-      // значило бы сдвинуть дважды. По той же причине не отмечаются и
-      // вложенные рамки захваченной группы.
-      const insideCaughtGroup = (cell: dia.Cell) => {
-        for (let at = cell.getParentCell(); at; at = at.getParentCell()) {
-          if (at.get('kind') === 'group' && next.groups.has(at.get('groupId'))) return true;
-        }
-        return false;
-      };
-      for (const cell of caught) {
-        if (insideCaughtGroup(cell)) continue;
         if (cell.get('kind') === 'device') next.devices.add(cell.get('deviceId') as number);
-      }
-      for (const groupId of [...next.groups]) {
-        const cell = caught.find((c) => c.get('kind') === 'group' && c.get('groupId') === groupId);
-        if (cell && insideCaughtGroup(cell)) next.groups.delete(groupId);
       }
 
       marked.current = next;
@@ -499,11 +403,8 @@ export function useJointPaper({
     // дела сразу: выделял объект и вешал над ним панель, которая на плотной
     // схеме перекрывала соседей.
     paper.on('element:contextmenu', (view: dia.ElementView) => {
-      const kind = view.model.get('kind');
-      const target: Selection = kind === 'device' ? { kind: 'device', id: view.model.get('deviceId') }
-        : kind === 'group' ? { kind: 'group', id: view.model.get('groupId') }
-          : null;
-      if (!target) return;
+      if (view.model.get('kind') !== 'device') return;
+      const target: Selection = { id: view.model.get('deviceId') };
       // Панель показывается по тому, на чём стоит курсор, — и это же
       // становится выделенным: иначе кнопки панели относились бы к одному
       // объекту, а подсветка показывала другой.
@@ -551,13 +452,12 @@ export function useJointPaper({
       const model = view.model;
       const kind = model.get('kind');
 
-      // Shift по узлу или рамке добавляет их к выделенным рамкой или
-      // убирает — дособрать пачку из разных углов схемы иначе нечем.
-      if (canEdit && event.shiftKey && (kind === 'device' || kind === 'group')) {
-        const set = kind === 'device' ? marked.current.devices : marked.current.groups;
-        const id = (kind === 'device' ? model.get('deviceId') : model.get('groupId')) as number;
-        if (set.has(id)) set.delete(id);
-        else set.add(id);
+      // Shift по узлу добавляет его к выделенным рамкой или убирает —
+      // дособрать пачку из разных углов схемы иначе нечем.
+      if (canEdit && event.shiftKey && kind === 'device') {
+        const id = model.get('deviceId') as number;
+        if (marked.current.devices.has(id)) marked.current.devices.delete(id);
+        else marked.current.devices.add(id);
         setMarkedCount(markedSize(marked.current));
         selection.current = null;
         panelShown.current = false;
@@ -572,9 +472,7 @@ export function useJointPaper({
         marked.current = emptyMarked();
         setMarkedCount(0);
       }
-      selection.current = kind === 'device' ? { kind: 'device', id: model.get('deviceId') }
-        : kind === 'group' ? { kind: 'group', id: model.get('groupId') }
-          : null;
+      selection.current = kind === 'device' ? { id: model.get('deviceId') } : null;
       panelShown.current = false;
       showToolsRef.current(paper, selection.current, false);
     });
@@ -620,12 +518,8 @@ export function useJointPaper({
     // событиями мыши они не управляются, поэтому их положение меняется прямо.
     let lead: { id: string; at: g.Point; others: Map<string, g.Point> } | null = null;
     /** Выделен ли рамкой этот узел или эта рамка. */
-    const isMarked = (element: dia.Element) => {
-      const kind = element.get('kind');
-      if (kind === 'device') return marked.current.devices.has(element.get('deviceId'));
-      if (kind === 'group') return marked.current.groups.has(element.get('groupId'));
-      return false;
-    };
+    const isMarked = (element: dia.Element) =>
+      element.get('kind') === 'device' && marked.current.devices.has(element.get('deviceId'));
     paper.on('element:pointerdown', (view: dia.ElementView) => {
       lead = null;
       if (!canEdit) return;
@@ -633,13 +527,6 @@ export function useJointPaper({
       const others = new Map<string, g.Point>();
       for (const element of graph.getElements()) {
         if (element === view.model || !isMarked(element)) continue;
-        // Содержимое выделенной рамки едет за ней само — вести его отдельно
-        // значило бы сдвинуть дважды.
-        let inside = false;
-        for (let at = element.getParentCell(); at; at = at.getParentCell()) {
-          if (at === view.model || isMarked(at as dia.Element)) { inside = true; break; }
-        }
-        if (inside) continue;
         others.set(String(element.id), element.position().clone());
       }
       lead = { id: String(view.model.id), at: view.model.position().clone(), others };
@@ -652,25 +539,10 @@ export function useJointPaper({
       for (const [id, start] of lead.others) {
         const element = graph.getCell(id) as dia.Element | undefined;
         if (!element) continue;
-        if (element.get('kind') === 'group') {
-          // Рамка едет со всем, что внутри: `deep` переносит и вложенные
-          // ячейки, иначе содержимое осталось бы на месте, а рамка уехала.
-          element.position(start.x + dx, start.y + dy, { deep: true });
-          continue;
-        }
-        // Ведомые узлы подрезаются рамкой своей группы прямо на ходу. Полотно
-        // само это делает только для того узла, за который тянут; без
-        // подрезки остальные выезжали за рамку, а при следующей перерисовке
-        // возвращались в неё — узлы прыгали как будто сами по себе.
         // Ведущий узел уже привязан, и ведомые едут за ним тем же сдвигом —
-        // но подрезка рамкой сбивает их с узлов сетки, и ровный ряд после
-        // перетаскивания оказывался неровным. Привязываем после подрезки: она
-        // сдвигает не больше чем на шаг, из рамки это не выводит. Округляется
-        // середина — тем же краем, что и у ведущего узла.
-        const clipped = insideParent(element, start.x + dx, start.y + dy);
-        const at = element.get('kind') === 'group'
-          ? snapPoint(clipped, gridStepRef.current)
-          : snapCornerToCenteredGrid(clipped.x, clipped.y, element.size(), gridStepRef.current);
+        // привязываем и их, иначе ровный ряд после перетаскивания оказывался
+        // неровным. Округляется середина — тем же краем, что и у ведущего.
+        const at = snapCornerToCenteredGrid(start.x + dx, start.y + dy, element.size(), gridStepRef.current);
         // Своё же событие сюда вернётся, но с чужим id и отсеется первой
         // строкой — рекурсии нет, а вид обновляется как обычно.
         element.position(at.x, at.y);
@@ -682,72 +554,20 @@ export function useJointPaper({
       if (!canEdit) return;
       const model = view.model;
       const moves: { id: number; x: number; y: number }[] = [];
-      const frames: { id: number; box: Box }[] = [];
       const remember = (element: dia.Element) => {
         const center = element.getBBox().center();
         moves.push({ id: element.get('deviceId'), x: center.x, y: center.y });
-      };
-      const rememberFrame = (element: dia.Element) => {
-        const box = element.getBBox();
-        frames.push({
-          id: element.get('groupId'),
-          box: { x: box.x, y: box.y, width: box.width, height: box.height },
-        });
-      };
-
-      /** Записать ячейку и всё, что уехало вместе с ней. */
-      const rememberDeep = (element: dia.Element) => {
-        if (element.get('kind') === 'device') { remember(element); return; }
-        if (element.get('kind') !== 'group') return;
-        rememberFrame(element);
-        // Содержимое уехало вместе с рамкой — его новое положение тоже нужно
-        // записать: в базе координаты абсолютные. Это касается и подгрупп:
-        // их рамки хранятся своими, и без записи они возвращались на прежнее
-        // место, стоило отпустить мышь.
-        for (const child of element.getEmbeddedCells({ deep: true })) {
-          if (child.get('kind') === 'device') remember(child as dia.Element);
-          else if (child.get('kind') === 'group') rememberFrame(child as dia.Element);
-        }
       };
 
       if (lead && String(model.id) === lead.id) {
         for (const id of lead.others.keys()) {
           const element = graph.getCell(id) as dia.Element | undefined;
-          if (element) rememberDeep(element);
+          if (element && element.get('kind') === 'device') remember(element);
         }
         lead = null;
       }
-      if (model.get('kind') === 'device') {
-        remember(model as dia.Element);
-      } else if (model.get('kind') === 'group') {
-        rememberFrame(model as dia.Element);
-        // Содержимое уехало вместе с рамкой — его новое положение тоже нужно
-        // записать: в базе координаты абсолютные. Это касается и подгрупп:
-        // их рамки хранятся своими, и без записи они возвращались на прежнее
-        // место, стоило отпустить мышь.
-        for (const child of model.getEmbeddedCells({ deep: true })) {
-          if (child.get('kind') === 'device') remember(child as dia.Element);
-          else if (child.get('kind') === 'group') rememberFrame(child as dia.Element);
-        }
-      }
+      if (model.get('kind') === 'device') remember(model as dia.Element);
       if (moves.length) handlers.current.onDevicesMoved(moves);
-      if (frames.length) handlers.current.onGroupsMoved(frames);
-    });
-
-    // Растянули рамку за угол. Размер меняется на каждое движение мыши, а
-    // записывать его на каждый пиксель — сотня запросов на одно движение;
-    // поэтому сохраняем, когда рука остановилась.
-    let resizeTimer: number | undefined;
-    graph.on('change:size', (cell: dia.Cell) => {
-      if (!canEdit || cell.get('kind') !== 'group') return;
-      window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(() => {
-        const box = (cell as dia.Element).getBBox();
-        handlers.current.onGroupsMoved([{
-          id: cell.get('groupId'),
-          box: { x: box.x, y: box.y, width: box.width, height: box.height },
-        }]);
-      }, 350);
     });
 
     // Протянули кабель: временная линия не остаётся на схеме — вместо неё
@@ -762,7 +582,6 @@ export function useJointPaper({
     paperRef.current = paper;
     graphRef.current = graph;
     return () => {
-      window.clearTimeout(resizeTimer);
       observer.disconnect();
       onPanEnd();
       paper.el.removeEventListener('mousedown', onPanStart);
@@ -771,8 +590,8 @@ export function useJointPaper({
       graphRef.current = null;
     };
     // canEdit — единственная настоящая зависимость: он запечён в
-    // interactive/restrictTranslate при создании paper, и полотно приходится
-    // пересобирать целиком, чтобы её сменить. scheme читается только для
+    // `interactive` при создании paper, и полотно приходится пересобирать
+    // целиком, чтобы её сменить. scheme читается только для
     // сетки при самом создании — дальше её меняет отдельный эффект ниже
     // через setGrid, не трогая paper/graph; handlers — ref, читается как
     // handlers.current в момент события, а не в момент подписки.

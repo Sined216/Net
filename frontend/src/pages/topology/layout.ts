@@ -1,7 +1,6 @@
 import { layoutLayered, type ElkAlgorithm } from '../../lib/elk';
-import type { Box, Point } from './joint/buildGraph';
-import { GROUP_MIN } from './joint/shapes';
-import { NO_SNAP, snapBoxOut, snapPoint } from './grid';
+import type { Point } from './joint/buildGraph';
+import { NO_SNAP, snapPoint } from './grid';
 
 /** Простая force-directed раскладка: отталкивание между всеми узлами,
  * пружина вдоль рёбер, лёгкое центрирование. Тот же алгоритм, что и в
@@ -12,12 +11,7 @@ import { NO_SNAP, snapBoxOut, snapPoint } from './grid';
  * приехали из БД (устройство перетащили руками в прошлый раз) — но
  * по-прежнему отталкивают остальные узлы, чтобы новые не легли поверх них.
  * Ради этого свойства симуляция и осталась в системе: разложить пару новых
- * железок, не тронув всё остальное, слоями нельзя.
- *
- * Группировка отдельным проходом в своих координатах не считается — это
- * усложнило бы хранение позиций (сохранённая позиция всегда абсолютная, вне
- * зависимости от группы). Рамка группы рисуется постфактум вокруг уже
- * сложившегося кластера. */
+ * железок, не тронув всё остальное, слоями нельзя. */
 export interface LayoutNode {
   id: string;
   x: number;
@@ -81,16 +75,12 @@ export function computeForceLayout(nodes: LayoutNode[], springs: Spring[], width
   }
 }
 
-/** Карточка глазами раскладки: свой размер, своя группа. */
+/** Карточка глазами раскладки: только свой размер. */
 export interface AutoCard {
   id: number;
   width: number;
   height: number;
-  group: number | null;
 }
-
-/** Отступ от карточек до рамки группы. Сверху больше: там подпись. */
-const FRAME_PADDING = { top: 46, side: 26 };
 
 /** Автоматическая раскладка всей схемы по связям.
  *
@@ -99,16 +89,9 @@ const FRAME_PADDING = { top: 46, side: 26 };
  * пружинная симуляция, и картинка выходила круглой — ядро в середине,
  * остальное венком вокруг, уровней не видно. Ряды сверху вниз — то, как эту
  * же схему рисуют от руки.
- *
- * Группы участвуют раскладкой, а не заливкой поверх: цех — настоящая рамка,
- * его содержимое раскладывается внутри неё, подцех внутри цеха, а размер
- * рамок считается по тому, что в них поместилось. Поэтому наружу отдаются и
- * рамки тоже: оставить их на прежних местах значит увезти карточки из своих
- * же рамок.
  */
 export async function computeAutoLayout(
   cards: AutoCard[],
-  groups: { id: number; parent_id?: number | null }[],
   links: { a: number; b: number }[],
   /** Расстояние между рядами и между узлами в ряду — настройка вида, чтобы
    * можно было раздвинуть тесную схему без правки кода. */
@@ -120,32 +103,11 @@ export async function computeAutoLayout(
    * после «Разложить» дёргало бы её на остаток — привязка нашлась бы ровно в
    * тот момент, когда человек её не просил. */
   grid = NO_SNAP,
-): Promise<{ positions: Map<number, Point>; boxes: Map<number, Box> }> {
-  const busy = new Set<number>();
-  for (const card of cards) {
-    // Пустая рамка раскладке не нужна: ELK считает размер по содержимому, а
-    // у неё его нет. Она остаётся там, где стояла.
-    for (let at = card.group; at != null; at = groups.find((g) => g.id === at)?.parent_id ?? null) {
-      busy.add(at);
-    }
-  }
+): Promise<{ positions: Map<number, Point> }> {
   const laid = await layoutLayered(
-    [
-      ...groups
-        .filter((group) => busy.has(group.id))
-        .map((group) => ({
-          id: `g${group.id}`,
-          parent: group.parent_id != null && busy.has(group.parent_id) ? `g${group.parent_id}` : null,
-        })),
-      ...cards.map((card) => ({
-        id: `d${card.id}`,
-        width: card.width,
-        height: card.height,
-        parent: card.group != null ? `g${card.group}` : null,
-      })),
-    ],
+    cards.map((card) => ({ id: `d${card.id}`, width: card.width, height: card.height, parent: null })),
     links.map((link) => ({ from: `d${link.a}`, to: `d${link.b}` })),
-    { algorithm, direction: 'RIGHT', layerGap: gaps.row, nodeGap: gaps.node, padding: FRAME_PADDING },
+    { algorithm, direction: 'RIGHT', layerGap: gaps.row, nodeGap: gaps.node },
   );
 
   const positions = new Map<number, Point>();
@@ -156,16 +118,6 @@ export async function computeAutoLayout(
     // цепляется кабель, и от неё зависит, пойдёт он прямо или с изломом.
     if (at) positions.set(card.id, snapPoint({ x: at.x + at.width / 2, y: at.y + at.height / 2 }, grid));
   }
-  const boxes = new Map<number, Box>();
-  for (const group of groups) {
-    const at = laid.get(`g${group.id}`);
-    if (!at) continue;
-    boxes.set(group.id, snapBoxOut({
-      x: at.x, y: at.y,
-      width: Math.max(at.width, GROUP_MIN.width),
-      height: Math.max(at.height, GROUP_MIN.height),
-    }, grid));
-  }
-  return { positions, boxes };
+  return { positions };
 }
 

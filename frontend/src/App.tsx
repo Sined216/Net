@@ -7,7 +7,6 @@ import { DevicePage } from './pages/DevicePage';
 import { TemplatesPage } from './pages/TemplatesPage';
 import { LinksPage } from './pages/LinksPage';
 import { TopologyPage } from './pages/TopologyPage';
-import { TopologyTestPage } from './pages/TopologyTestPage';
 import { SearchPage } from './pages/SearchPage';
 import { TagsPage } from './pages/TagsPage';
 import { VlansPage } from './pages/VlansPage';
@@ -40,10 +39,9 @@ export function App() {
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/links" element={<LinksPage />} />
         <Route path="/topology" element={<TopologyPage />} />
-        {/* Прежний адрес второй схемы: ссылки на неё могли осесть в закладках. */}
+        {/* Прежние адреса второй схемы: ссылки на них могли осесть в закладках. */}
         <Route path="/topology-joint" element={<Navigate to="/topology" replace />} />
-        {/* Та же схема без единого понятия группы — см. шапку TopologyTestPage.tsx. */}
-        <Route path="/topology-test" element={<TopologyTestPage />} />
+        <Route path="/topology-test" element={<Navigate to="/topology" replace />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/vlans" element={<VlansPage />} />

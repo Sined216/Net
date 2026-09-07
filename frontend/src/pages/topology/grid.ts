@@ -16,15 +16,11 @@
  * карточек разной ширины теперь в столбце не совпадают. На схеме связей
  * читают кабели, поэтому середина важнее краёв.
  *
- * Рамки групп — исключение: их ровняют по контуру (`snapBoxOut` и округление
- * размера в `joint/tools.ts`), кабели к ним не цепляются.
- *
  * Само полотно JointJS привязывает только перетаскивание и только по углу,
  * поэтому его привязка выключена (`gridSize: 1`), а перетаскивание
  * округляет свой вид ячейки — см. `snapCornerToCenteredGrid` и
- * `useJointPaper.ts`. Всё остальное — растяжка рамки, обе автоматические
- * раскладки, расчёт рамки по содержимому — идёт мимо полотна и округляет
- * себя здесь.
+ * `useJointPaper.ts`. Автоматическая раскладка идёт мимо полотна и
+ * округляет себя здесь же.
  *
  * Шаг привязки и шаг рисуемой сетки — намеренно разные величины:
  * выключенная привязка это шаг в пиксель, и рисуй сетку тем же числом,
@@ -52,25 +48,6 @@ export function snapValue(value: number, step: number): number {
 export function snapPoint<T extends { x: number; y: number }>(point: T, step: number): T {
   if (step <= NO_SNAP) return point;
   return { ...point, x: snapValue(point.x, step), y: snapValue(point.y, step) };
-}
-
-/** Рамка округляется наружу, а не к ближайшему узлу: она обводит содержимое,
- * и округление внутрь подрезало бы крайнюю карточку ради ровного края. */
-export function snapBoxOut<T extends { x: number; y: number; width: number; height: number }>(
-  box: T, step: number,
-): T {
-  if (step <= NO_SNAP) return box;
-  const x = Math.floor(box.x / step) * step;
-  const y = Math.floor(box.y / step) * step;
-  return {
-    ...box,
-    x,
-    y,
-    // Ширина считается от нового угла: сдвинув левый край влево, надо на
-    // столько же прибавить ширину, иначе правый край уедет внутрь.
-    width: Math.ceil((box.x + box.width - x) / step) * step,
-    height: Math.ceil((box.y + box.height - y) / step) * step,
-  };
 }
 
 /** Угол, при котором на узел сетки попадает середина.

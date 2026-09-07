@@ -7,22 +7,8 @@ export type LinkSide = 'top' | 'right' | 'bottom' | 'left';
 /** Внешний вид схемы связей.
  *
  * Настройка личная и лежит в браузере, а не в базе: это вкус, а не данные.
- * Двое смотрят на одну и ту же схему по-разному — один любит плотную
- * заливку групп, другому она мешает читать подписи, — и навязывать общий
- * выбор здесь незачем.
  */
 export interface TopologyAppearance {
-  /** Линия рамки группы. `none` — только заливка, без контура. */
-  groupBorder: 'solid' | 'dashed' | 'dotted' | 'none';
-  groupBorderWidth: number;
-  groupRadius: number;
-  /** Плотность заливки рамки, проценты. 0 — прозрачная. */
-  groupFill: number;
-  /** Где подпись группы: врезкой в рамку, внутри неё или нигде. */
-  groupTitle: 'onFrame' | 'inside' | 'hidden';
-  /** Показывать число устройств рядом с названием группы. */
-  groupCount: boolean;
-
   /** Строки под названием. Каждая — своя, потому что нужны они разным
    * людям: снабженцу важна фирма и модель, наладчику — код на наклейке.
    * Карточка растёт и сжимается по числу включённых строк. */
@@ -63,10 +49,6 @@ export interface TopologyAppearance {
    * набор равносилен всем четырём. */
   routerStartSides: LinkSide[];
   routerEndSides: LinkSide[];
-  /** Считать ли рамки групп препятствием. По умолчанию нет: рамка
-   * обозначает область, а не стену, и обход по её контуру гонит кабель
-   * вокруг соседних шкафов. */
-  routerFramesAreObstacles: boolean;
   /** Предел перебора при поиске пути. Не нашёл за столько шагов — отдаёт
    * запасной путь, не разбирая препятствий. */
   routerMaxLoops: number;
@@ -91,8 +73,6 @@ export interface TopologyAppearance {
   edgeLabelName: boolean;
   /** Размер подписи порта. */
   edgeLabelSize: number;
-  /** Размер подписи группы. */
-  groupTitleSize: number;
 
   /** Расстояние между рядами при автоматической раскладке («Разложить»).
    * Между рядами идут кабели с подписями портов — слишком тесно подписи
@@ -116,13 +96,6 @@ export interface TopologyAppearance {
 }
 
 export const DEFAULT_APPEARANCE: TopologyAppearance = {
-  groupBorder: 'solid',
-  groupBorderWidth: 1.5,
-  groupRadius: 12,
-  groupFill: 6,
-  groupTitle: 'onFrame',
-  groupCount: true,
-
   deviceSubtitle: true,
   deviceIp: false,
   deviceTemplate: false,
@@ -147,7 +120,6 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   // Пустые наборы — «все четыре стороны», как и в самой библиотеке.
   routerStartSides: [],
   routerEndSides: [],
-  routerFramesAreObstacles: false,
   routerMaxLoops: 2000,
 
   anchorMode: 'auto',
@@ -156,7 +128,6 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   edgeLabels: 'always',
   edgeLabelName: true,
   edgeLabelSize: 10,
-  groupTitleSize: 12,
 
   layoutRowGap: 120,
   layoutNodeGap: 44,
@@ -176,6 +147,11 @@ const STORAGE_KEY = 'netdoc.topology.appearance';
 const DROPPED_KEYS = [
   'edgeRouter', 'routerMaxTurn', 'edgeConnector', 'connectorRadius',
   'jumpSize', 'jumpKind', 'cornerType', 'curveDirection', 'curveTension',
+  // Рамки групп ушли с полотна целиком (группа осталась полем устройства,
+  // но не рисуется и не настраивается здесь) — вместе с ними и всё, чем
+  // рамку можно было оформить.
+  'groupBorder', 'groupBorderWidth', 'groupRadius', 'groupFill', 'groupTitle',
+  'groupCount', 'groupTitleSize', 'routerFramesAreObstacles',
 ];
 
 /** Прочитать настройки. Незнакомые и отсутствующие поля берутся из
@@ -248,16 +224,14 @@ export function nodeColors(dark: boolean, scheme: ColorScheme) {
 
 export type ColorScheme = 'light' | 'dark';
 
-/** Цвета того, что лежит на полотне поверх линий: подписи портов, врезка
- * подписи группы, кнопки панелей. Своими значениями, а не переменными темы:
- * в атрибутах SVG переменные CSS работают не везде. Сами значения берутся
- * из темы (`CANVAS`), а не пишутся здесь второй раз: разойтись им нельзя —
- * полотно это и есть фон страницы. */
+/** Цвета того, что лежит на полотне поверх линий: подписи портов, кнопки
+ * панелей. Своими значениями, а не переменными темы: в атрибутах SVG
+ * переменные CSS работают не везде. Сами значения берутся из темы
+ * (`CANVAS`), а не пишутся здесь второй раз: разойтись им нельзя — полотно
+ * это и есть фон страницы. */
 export function canvasColors(scheme: ColorScheme) {
   const dark = scheme === 'dark';
   return {
-    /** Фон полотна — им закрашивается врезка подписи группы. */
-    canvas: dark ? CANVAS.background : '#ffffff',
     /** Подложка подписи и кнопки. */
     plate: dark ? CANVAS.surface : '#ffffff',
     plateBorder: dark ? CANVAS.border : '#dee2e6',
