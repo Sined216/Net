@@ -9,6 +9,7 @@ import { LinksPage } from './pages/LinksPage';
 import { TopologyPage } from './pages/TopologyPage';
 import { SearchPage } from './pages/SearchPage';
 import { TagsPage } from './pages/TagsPage';
+import { GroupsPage } from './pages/GroupsPage';
 import { VlansPage } from './pages/VlansPage';
 import { UsersPage } from './pages/UsersPage';
 import { SchemaPage } from './pages/SchemaPage';
@@ -44,6 +45,7 @@ export function App() {
         <Route path="/topology-test" element={<Navigate to="/topology" replace />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/tags" element={<TagsPage />} />
+        <Route path="/groups" element={<GroupsPage />} />
         <Route path="/vlans" element={<VlansPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/import" element={<ImportPage />} />

@@ -1,4 +1,4 @@
-import type { TopologyGroupOut } from '../../api/types';
+import type { TopologyGroupOut } from '../api/types';
 
 /** Уровень вложенности группы: 0 — цех, 1 — участок, 2 — линия. */
 export function groupDepth(groups: TopologyGroupOut[], groupId: number | null): number {

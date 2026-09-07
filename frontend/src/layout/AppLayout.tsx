@@ -4,7 +4,7 @@ import {
 } from '@mantine/core';
 import {
   IconDeviceDesktop, IconPlugConnected, IconTopologyStar,
-  IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
+  IconSearch, IconTags, IconSitemap, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
   IconFileImport, IconBuildingFactory2, IconHistory, IconRouter, IconSettings,
 } from '@tabler/icons-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
@@ -41,6 +41,7 @@ const NAV_SECTIONS: {
     title: 'Классификация',
     items: [
       { to: '/tags', label: 'Теги', icon: IconTags },
+      { to: '/groups', label: 'Группы', icon: IconSitemap },
       { to: '/vlans', label: 'VLAN', icon: IconNetwork },
     ],
   },
@@ -84,6 +85,7 @@ const PAGE_TITLES: { test: (path: string) => boolean; title: string }[] = [
   { test: (p) => p === '/topology', title: 'Топология' },
   { test: (p) => p === '/search', title: 'Поиск' },
   { test: (p) => p === '/tags', title: 'Теги' },
+  { test: (p) => p === '/groups', title: 'Группы' },
   { test: (p) => p === '/vlans', title: 'VLAN' },
   { test: (p) => p === '/import', title: 'Импорт' },
   { test: (p) => p === '/history', title: 'История' },

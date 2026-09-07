@@ -3,7 +3,7 @@ import { Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { RowAction } from '../../components/RowAction';
 import { useTags } from '../../api/hooks';
-import { GroupEditModal } from '../topology/GroupEditModal';
+import { GroupEditModal } from '../GroupsPage';
 import { TagFormModal } from '../TagsPage';
 import { TemplateFormModal } from '../TemplatesPage';
 import type { ImportRowOut } from '../../api/types';
@@ -18,7 +18,7 @@ import type { ImportRowOut } from '../../api/types';
  * группой, шаблоном и тегами.
  *
  * «+» открывает обычное окно справочника с подставленным названием — то же
- * самое, что на вкладках «Шаблоны», «Топология» и «Теги». Своей упрощённой
+ * самое, что на страницах «Шаблоны», «Группы» и «Теги». Своей упрощённой
  * формы здесь нет намеренно: у шаблона надо выбрать тип и набрать порты, и
  * делать это в двух разных местах по-разному незачем.
  */
@@ -50,7 +50,7 @@ export function MissingRefs({ rows }: { rows: ImportRowOut[] }) {
             </Text>
           </div>
           <NameTable title="Шаблоны устройств" names={missingTemplates} onAdd={setNewTemplate} />
-          <NameTable title="Группы на топологии" names={missingGroups} onAdd={setNewGroup} />
+          <NameTable title="Группы" names={missingGroups} onAdd={setNewGroup} />
           <NameTable title="Теги" names={missingTags} onAdd={setNewTag} />
         </Stack>
       </Paper>
