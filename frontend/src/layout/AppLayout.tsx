@@ -5,7 +5,7 @@ import {
 import {
   IconDeviceDesktop, IconPlugConnected, IconTopologyStar,
   IconSearch, IconTags, IconNetwork, IconUsers, IconLogout, IconKey, IconDatabase,
-  IconFileImport, IconBuildingFactory2, IconHistory, IconRouter, IconSettings,
+  IconFileImport, IconBuildingFactory2, IconHistory, IconRouter, IconSettings, IconFlask2,
 } from '@tabler/icons-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -35,6 +35,10 @@ const NAV_SECTIONS: {
       },
       { to: '/links', label: 'Связи', icon: IconPlugConnected },
       { to: '/topology', label: 'Топология', icon: IconTopologyStar },
+      // Та же схема, но без единого понятия группы — площадка для проверки
+      // перемещения и авто-раскладки без рамок-кластеров. См. шапку
+      // TopologyTestPage.tsx.
+      { to: '/topology-test', label: 'Топология (тест)', icon: IconFlask2 },
     ],
   },
   {
@@ -81,6 +85,7 @@ const PAGE_TITLES: { test: (path: string) => boolean; title: string }[] = [
   { test: (p) => p === '/templates', title: 'Шаблоны' },
   { test: (p) => p === '/catalog', title: 'Справочники' },
   { test: (p) => p === '/links', title: 'Связи' },
+  { test: (p) => p === '/topology-test', title: 'Топология (тест)' },
   { test: (p) => p === '/topology', title: 'Топология' },
   { test: (p) => p === '/search', title: 'Поиск' },
   { test: (p) => p === '/tags', title: 'Теги' },

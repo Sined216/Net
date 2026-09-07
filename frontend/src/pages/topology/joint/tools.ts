@@ -119,22 +119,31 @@ const ResizeControl = elementTools.Control.extend({
 
 export function deviceTools(deviceId: number, actions: {
   edit: Action; copy: Action; regroup: Action; remove: Action;
-}, look: ToolsLook): dia.ToolsView {
+}, look: ToolsLook, opts: { regroup?: boolean } = {}): dia.ToolsView {
   const icon = look.paint.icon;
+  // Список, а не жёсткая нумерация: страница без групп (`useJointPaper`,
+  // `groupsEnabled: false`) убирает кнопку «В группу» вовсе — не «в
+  // отключенном виде», а из разметки, — и остальные кнопки должны сомкнуться,
+  // а не оставить дыру на её месте.
+  const entries = [
+    { icon: ICONS.pencil, title: 'Редактировать', color: icon, action: () => actions.edit(deviceId) },
+    { icon: ICONS.copy, title: 'Копировать — новое устройство по той же модели', color: icon,
+      action: () => actions.copy(deviceId) },
+    ...(opts.regroup === false ? [] : [
+      { icon: ICONS.group, title: 'В группу — или из неё', color: icon, action: () => actions.regroup(deviceId) },
+    ]),
+    { icon: ICONS.trash, title: 'Удалить', color: '#e03131', action: () => actions.remove(deviceId) },
+  ];
   return new dia.ToolsView({
     name: 'device',
     tools: [
-      button(ICONS.pencil, 'Редактировать', icon, 0, look, () => actions.edit(deviceId)),
-      button(ICONS.copy, 'Копировать — новое устройство по той же модели', icon, 1, look,
-             () => actions.copy(deviceId)),
-      button(ICONS.group, 'В группу — или из неё', icon, 2, look, () => actions.regroup(deviceId)),
-      button(ICONS.trash, 'Удалить', '#e03131', 3, look, () => actions.remove(deviceId)),
+      ...entries.map((e, i) => button(e.icon, e.title, e.color, i, look, e.action)),
       // Кабель тянут отсюда: своей «точки подключения» у узла нет, и это
       // честнее, чем делать магнитом весь корпус — иначе перетаскивание узла
       // и протягивание кабеля были бы одним жестом.
       new elementTools.Connect({
         x: 0, y: 0, scale: look.zoom,
-        offset: { x: (18 + 4 * 30) * look.zoom, y: -20 * look.zoom },
+        offset: { x: (18 + entries.length * 30) * look.zoom, y: -20 * look.zoom },
         markup: [
           {
             tagName: 'rect',

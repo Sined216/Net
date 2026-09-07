@@ -157,6 +157,7 @@ function snappingElementView(step: () => number) {
 
 export function useJointPaper({
   canEdit, scheme, background, gridSize, gridSnap, connectionPoint, actions, handlers,
+  groupsEnabled,
 }: {
   canEdit: boolean;
   scheme: 'light' | 'dark';
@@ -169,11 +170,20 @@ export function useJointPaper({
   gridSnap: boolean;
   actions: React.RefObject<JointActions>;
   handlers: React.RefObject<PaperHandlers>;
+  /** Есть ли на странице группы вообще. По умолчанию — да: тестовая страница
+   * без единой группы (`TopologyTestPage.tsx`) передаёт `false`, и панель
+   * узла остаётся без кнопки «В группу» — на странице, где рамок нет
+   * физически, эта кнопка была бы единственной дверью, через которую группа
+   * всё же могла бы появиться (модалка смены группы сама читает и пишет
+   * `/topology-groups`, минуя пустой список `groups` этой страницы). */
+  groupsEnabled?: boolean;
 }): JointPaper {
   const holder = useRef<HTMLDivElement>(null);
   const paperRef = useRef<dia.Paper | null>(null);
   const graphRef = useRef<dia.Graph | null>(null);
   const selection = useRef<Selection>(null);
+  const groupsEnabledRef = useRef(groupsEnabled ?? true);
+  groupsEnabledRef.current = groupsEnabled ?? true;
   /** Выделенное рамкой. Держится ссылкой, потому что читается из
    * обработчиков полотна, поставленных один раз; счётчик рядом — чтобы
    * страница могла показать, сколько выделено. */
@@ -261,7 +271,7 @@ export function useJointPaper({
     if (target.kind === 'device') outline(view, 'selected', false);
     if (!withPanel || !canEdit) return;
     if (target.kind === 'device') {
-      view.addTools(deviceTools(target.id, toolActions(), look));
+      view.addTools(deviceTools(target.id, toolActions(), look, { regroup: groupsEnabledRef.current }));
     } else {
       view.addTools(groupTools(
         target.id, toolActions(), cell.get('accent') ?? '#4dabf7', look, cell.get('variant') === 'cabinet',
