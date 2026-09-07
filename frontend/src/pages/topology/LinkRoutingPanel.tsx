@@ -5,7 +5,12 @@ import {
 import { IconRotate } from '@tabler/icons-react';
 import { DEFAULT_APPEARANCE, type LinkSide, type TopologyAppearance } from './appearance';
 
-/** Разводка кабелей и начертание линии — всё, что даёт роутер JointJS.
+/** Разводка кабелей: то в поиске пути, что зависит от конкретной сети.
+ *
+ * Способ ведения кабеля и его начертание отсюда сняты — они выбраны один
+ * раз на живой схеме и вшиты в `joint/buildGraph.ts`. Осталось то, что
+ * подобрать за человека нельзя: ширина коридоров между карточками,
+ * разрешённые стороны выхода, крепление кабеля.
  *
  * Панель сбоку, а не окно посреди экрана, и это не вкусовщина. Ручки здесь
  * крутят десятками раз подряд, глядя на схему: на редкой сети и на плотном
@@ -19,10 +24,9 @@ import { DEFAULT_APPEARANCE, type LinkSide, type TopologyAppearance } from './ap
 /** Поля, которые сбрасывает кнопка внизу. Перечислены явно: сбрасывать весь
  * вид целиком человек не просил — он пришёл за разводкой. */
 const ROUTING_KEYS = [
-  'edgeRouter', 'routerStep', 'routerPadding', 'routerLaneSpread', 'routerMaxTurn',
-  'routerStartSides', 'routerEndSides', 'routerFramesAreObstacles',
-  'routerMaxLoops', 'edgeConnector', 'connectorRadius', 'jumpSize', 'jumpKind', 'cornerType',
-  'curveDirection', 'curveTension', 'anchorMode', 'anchorPadding', 'connectionPoint',
+  'routerStep', 'routerPadding', 'routerLaneSpread',
+  'routerStartSides', 'routerEndSides', 'routerFramesAreObstacles', 'routerMaxLoops',
+  'anchorMode', 'anchorPadding', 'connectionPoint',
 ] as const satisfies readonly (keyof TopologyAppearance)[];
 
 /** Открыта ли панель — своим ключом, отдельно от настроек вида: это
@@ -67,11 +71,9 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
     onChange(next);
   };
 
-  const routes = value.edgeRouter === 'metro';
-
   return (
     <Drawer
-      opened onClose={onClose} position="right" size={360} title="Разводка и линии"
+      opened onClose={onClose} position="right" size={360} title="Разводка кабелей"
       // Полотно видно и остаётся рабочим: затемнение сняли, прокрутку не
       // блокируем, щелчок мимо панели её не закрывает — по схеме в это время
       // как раз и щёлкают.
@@ -84,41 +86,15 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
           Всё применяется сразу — схема видна за окном, и подбирать значения имеет смысл, глядя на неё.
           Настройки личные и хранятся в браузере.
         </Text>
+        <Text size="xs" c="dimmed">
+          Кабель всегда ведётся в обход чужих карточек, ломаной с косыми кусками, а углы скругляются.
+          Выбора здесь больше нет: остальные способы проверены на живой схеме и проиграли.
+        </Text>
 
         <Section title="Разводка" />
-        <Field label="Как ведётся кабель">
-          <SegmentedControl
-            size="xs" fullWidth value={value.edgeRouter}
-            onChange={(v) => set('edgeRouter', v as TopologyAppearance['edgeRouter'])}
-            data={[
-              { value: 'normal', label: 'Прямая' },
-              { value: 'metro', label: 'В обход карточек' },
-            ]}
-          />
-        </Field>
-        <Text size="xs" c="dimmed">
-          «Прямая» — отрезок между карточками, ничего не обходит. «В обход» ведёт кабель ломаной, огибая
-          чужие карточки: чем плотнее схема, тем нужнее.
-        </Text>
-
-        <Field label="Форма кабеля">
-          <SegmentedControl
-            size="xs" fullWidth value={String(value.routerMaxTurn)} disabled={!routes}
-            onChange={(v) => set('routerMaxTurn', Number(v) as TopologyAppearance['routerMaxTurn'])}
-            data={[
-              { value: '90', label: 'Прямые углы' },
-              { value: '45', label: 'С диагоналями' },
-            ]}
-          />
-        </Field>
-        <Text size="xs" c="dimmed">
-          «Прямые углы» — кабель идёт только по горизонтали и вертикали, как на схемах от руки.
-          «С диагоналями» разрешает косые куски: путь короче, но картинка беспокойнее.
-        </Text>
-
         <Field label={`Отступ от карточек — ${value.routerPadding} px`}>
           <Slider
-            size="sm" min={2} max={60} step={2} value={value.routerPadding} disabled={!routes}
+            size="sm" min={2} max={60} step={2} value={value.routerPadding}
             onChange={(v) => set('routerPadding', v)}
             marks={[{ value: 2 }, { value: 10 }, { value: 30 }, { value: 60 }]}
           />
@@ -130,14 +106,14 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
 
         <Field label={`Разнос параллельных кабелей — ${value.routerLaneSpread} px`}>
           <Slider
-            size="sm" min={0} max={24} step={2} value={value.routerLaneSpread} disabled={!routes}
+            size="sm" min={0} max={24} step={2} value={value.routerLaneSpread}
             onChange={(v) => set('routerLaneSpread', v)}
             marks={[{ value: 0 }, { value: 6 }, { value: 24 }]}
           />
         </Field>
         <Field label={`Шаг поиска пути — ${value.routerStep} px`}>
           <Slider
-            size="sm" min={4} max={40} step={2} value={value.routerStep} disabled={!routes}
+            size="sm" min={4} max={40} step={2} value={value.routerStep}
             onChange={(v) => set('routerStep', v)}
             marks={[{ value: 4 }, { value: 16 }, { value: 40 }]}
           />
@@ -150,7 +126,7 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
           >
             <Group gap={6}>
               {SIDES.map((s) => (
-                <Chip key={s.value} value={s.value} size="xs" disabled={!routes}>{s.label}</Chip>
+                <Chip key={s.value} value={s.value} size="xs">{s.label}</Chip>
               ))}
             </Group>
           </Chip.Group>
@@ -162,7 +138,7 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
           >
             <Group gap={6}>
               {SIDES.map((s) => (
-                <Chip key={s.value} value={s.value} size="xs" disabled={!routes}>{s.label}</Chip>
+                <Chip key={s.value} value={s.value} size="xs">{s.label}</Chip>
               ))}
             </Group>
           </Chip.Group>
@@ -173,7 +149,7 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
 
         <Switch
           size="xs" label="Рамки групп — препятствия" checked={value.routerFramesAreObstacles}
-          disabled={!routes} onChange={(e) => set('routerFramesAreObstacles', e.currentTarget.checked)}
+          onChange={(e) => set('routerFramesAreObstacles', e.currentTarget.checked)}
         />
         <Text size="xs" c="dimmed">
           По умолчанию выключено: рамка обозначает область, а не стену, и обход по её контуру уводит кабель
@@ -181,98 +157,11 @@ export function LinkRoutingPanel({ value, onChange, onClose }: {
         </Text>
         <Field label="Предел перебора при поиске пути">
           <NumberInput
-            size="xs" min={100} max={20000} step={100} value={value.routerMaxLoops} disabled={!routes}
+            size="xs" min={100} max={20000} step={100} value={value.routerMaxLoops}
             onChange={(v) => set('routerMaxLoops', typeof v === 'number' ? v : DEFAULT_APPEARANCE.routerMaxLoops)}
             description="Не нашёл за столько шагов — отдаёт запасной путь, не разбирая препятствий"
           />
         </Field>
-
-        <Divider my={4} />
-        <Section title="Стиль линии" />
-        {/* Список, а не переключатель в строку: шесть подписей в полосу панели
-            не влезают и режутся на середине слова. */}
-        <Select
-          size="xs" label="Начертание" allowDeselect={false} comboboxProps={{ withinPortal: false }}
-          value={value.edgeConnector}
-          onChange={(v) => v && set('edgeConnector', v as TopologyAppearance['edgeConnector'])}
-          data={[
-            { value: 'normal', label: 'Острые углы' },
-            { value: 'rounded', label: 'Скруглить углы' },
-            { value: 'smooth', label: 'Плавная кривая' },
-            { value: 'curve', label: 'Дуга' },
-            { value: 'straight', label: 'Отрезки с обработкой угла' },
-            { value: 'jumpover', label: 'Мостики на пересечениях' },
-          ]}
-        />
-
-        {(value.edgeConnector === 'rounded' || value.edgeConnector === 'straight') && (
-          <Field label={`Радиус скругления — ${value.connectorRadius} px`}>
-            <Slider
-              size="sm" min={0} max={40} step={2} value={value.connectorRadius}
-              onChange={(v) => set('connectorRadius', v)}
-              marks={[{ value: 0 }, { value: 8 }, { value: 40 }]}
-            />
-          </Field>
-        )}
-        {value.edgeConnector === 'straight' && (
-          <Field label="Что делать с углом">
-            <SegmentedControl
-              size="xs" fullWidth value={value.cornerType}
-              onChange={(v) => set('cornerType', v as TopologyAppearance['cornerType'])}
-              data={[
-                { value: 'point', label: 'Острый' },
-                { value: 'cubic', label: 'Скруглить' },
-                { value: 'line', label: 'Срезать' },
-                { value: 'gap', label: 'Разрыв' },
-              ]}
-            />
-          </Field>
-        )}
-        {value.edgeConnector === 'jumpover' && (
-          <>
-            <Field label={`Размер мостика — ${value.jumpSize} px`}>
-              <Slider
-                size="sm" min={2} max={20} step={1} value={value.jumpSize}
-                onChange={(v) => set('jumpSize', v)}
-                marks={[{ value: 2 }, { value: 5 }, { value: 20 }]}
-              />
-            </Field>
-            <Field label="Вид мостика">
-              <SegmentedControl
-                size="xs" fullWidth value={value.jumpKind}
-                onChange={(v) => set('jumpKind', v as TopologyAppearance['jumpKind'])}
-                data={[
-                  { value: 'arc', label: 'Дужка' },
-                  { value: 'gap', label: 'Разрыв' },
-                  { value: 'cubic', label: 'Волна' },
-                ]}
-              />
-            </Field>
-          </>
-        )}
-        {value.edgeConnector === 'curve' && (
-          <>
-            <Field label="Направление дуги">
-              <SegmentedControl
-                size="xs" fullWidth value={value.curveDirection}
-                onChange={(v) => set('curveDirection', v as TopologyAppearance['curveDirection'])}
-                data={[
-                  { value: 'auto', label: 'Само' },
-                  { value: 'horizontal', label: 'Вбок' },
-                  { value: 'vertical', label: 'Вверх-вниз' },
-                  { value: 'outwards', label: 'Наружу' },
-                ]}
-              />
-            </Field>
-            <Field label={`Натяжение — ${value.curveTension}`}>
-              <Slider
-                size="sm" min={0} max={1} step={0.05} value={value.curveTension}
-                onChange={(v) => set('curveTension', v)}
-                marks={[{ value: 0 }, { value: 0.5 }, { value: 1 }]}
-              />
-            </Field>
-          </>
-        )}
 
         <Divider my={4} />
         <Section title="Крепление к карточке" />

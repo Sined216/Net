@@ -47,19 +47,6 @@ export interface TopologyAppearance {
   deviceDark: boolean;
 
   edgeWidth: number;
-  /** Как кабель ищет путь между карточками. `normal` — отрезок напрямую,
-   * ничего не обходит; `metro` ведёт его в обход чужих карточек.
-   *
-   * В окне обходчик один, но под именем `metro` их два. Раньше здесь было
-   * написано, что `metro` — это `manhattan` с углом 45°; это неверно, и
-   * ошибка стоила кривых кабелей. `metro` подменяет ещё и набор шагов
-   * поиска: к четырём прямым добавляются четыре косых, и запасной путь у
-   * него тоже ломается под 45°. Поэтому одним углом косые не убрать — он
-   * ограничивает поворот между шагами, а не сам набор. Прямые углы даёт
-   * `manhattan`, и `routerMaxTurn` 90° выбирает именно его
-   * (`joint/buildGraph.ts`). А `rightAngle` снят совсем: прямые углы он
-   * держал, но препятствий не разбирал и проходил по чужим карточкам. */
-  edgeRouter: 'normal' | 'metro';
   /** Шаг сетки поиска пути. Мельче — путь точнее ложится между карточками,
    * но искать дольше. */
   routerStep: number;
@@ -72,9 +59,6 @@ export interface TopologyAppearance {
   /** Насколько разносить соседние кабели по разным коридорам. Ноль —
    * не разносить: параллельные кабели лягут одной линией. */
   routerLaneSpread: number;
-  /** Форма кабеля: 90° — только прямые углы (обходчик `manhattan`), 45° —
-   * разрешены косые куски (обходчик `metro`). */
-  routerMaxTurn: 45 | 90;
   /** С каких сторон кабелю разрешено выходить и в какие входить. Пустой
    * набор равносилен всем четырём. */
   routerStartSides: LinkSide[];
@@ -86,22 +70,6 @@ export interface TopologyAppearance {
   /** Предел перебора при поиске пути. Не нашёл за столько шагов — отдаёт
    * запасной путь, не разбирая препятствий. */
   routerMaxLoops: number;
-
-  /** Чем нарисован найденный путь. `rounded` скругляет углы маршрута — на
-   * прямой разводке ему нечего скруглять; заметную кривизну там даёт
-   * `curve`. `jumpover` — про другое: он рисует «мостик» в месте, где две
-   * линии пересекаются, иначе они читаются как одна с ответвлением. */
-  edgeConnector: 'normal' | 'rounded' | 'smooth' | 'jumpover' | 'straight' | 'curve';
-  /** Радиус скругления углов — у `rounded` и у `straight`. */
-  connectorRadius: number;
-  /** Размер и вид «мостика» на пересечении — у `jumpover`. */
-  jumpSize: number;
-  jumpKind: 'arc' | 'gap' | 'cubic';
-  /** Чем обрабатывается угол у `straight`. */
-  cornerType: 'point' | 'cubic' | 'line' | 'gap';
-  /** Направление и натяжение дуги — у `curve`. */
-  curveDirection: 'auto' | 'horizontal' | 'vertical' | 'closest-point' | 'outwards';
-  curveTension: number;
 
   /** Какой стороной карточки кабель к ней цепляется: `auto` — ближайшей к
    * другому концу, остальные режимы принуждают к горизонтали или
@@ -168,7 +136,6 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   deviceDark: true,
 
   edgeWidth: 2,
-  edgeRouter: 'normal',
   // Значения подобраны на живой схеме, а не взяты из головы. Шаг 16 —
   // компромисс между точностью пути и скоростью поиска. Отступ маленький
   // намеренно: препятствие раздувается на его величину, и при прежних
@@ -177,20 +144,11 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   routerStep: 16,
   routerPadding: 10,
   routerLaneSpread: 6,
-  routerMaxTurn: 90,
   // Пустые наборы — «все четыре стороны», как и в самой библиотеке.
   routerStartSides: [],
   routerEndSides: [],
   routerFramesAreObstacles: false,
   routerMaxLoops: 2000,
-
-  edgeConnector: 'rounded',
-  connectorRadius: 8,
-  jumpSize: 5,
-  jumpKind: 'arc',
-  cornerType: 'point',
-  curveDirection: 'auto',
-  curveTension: 0.5,
 
   anchorMode: 'auto',
   anchorPadding: 0,
@@ -213,6 +171,13 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
 
 const STORAGE_KEY = 'netdoc.topology.appearance';
 
+/** Настройки, которых больше нет. Список нужен только чтению старых
+ * значений из браузера — см. `loadAppearance`. */
+const DROPPED_KEYS = [
+  'edgeRouter', 'routerMaxTurn', 'edgeConnector', 'connectorRadius',
+  'jumpSize', 'jumpKind', 'cornerType', 'curveDirection', 'curveTension',
+];
+
 /** Прочитать настройки. Незнакомые и отсутствующие поля берутся из
  * умолчаний: настройки, сохранённые прошлой версией интерфейса, не должны
  * ронять страницу после обновления. */
@@ -227,21 +192,13 @@ export function loadAppearance(): TopologyAppearance {
     if (typeof saved.edgeLabels === 'boolean') {
       saved.edgeLabels = saved.edgeLabels ? 'always' : 'never';
     }
-    // Роутеров было четыре, стало два. `manhattan` — это `metro` с прямым
-    // углом поворота, и он переносится без потери вида; `rightAngle`
-    // потерян осознанно (он не обходил чужие карточки), поэтому просто
-    // становится обходчиком. Без перевода у человека в настройках остался
-    // бы роутер, которого больше нет.
-    // Сравнение через строку: снятых значений в типе уже нет, и компилятор
-    // справедливо считает такое сравнение бессмысленным — а в чужом
-    // localStorage они лежат до сих пор.
-    const savedRouter = saved.edgeRouter as string | undefined;
-    if (savedRouter === 'manhattan') {
-      saved.edgeRouter = 'metro';
-      saved.routerMaxTurn = saved.routerMaxTurn ?? 90;
-    } else if (savedRouter === 'rightAngle') {
-      saved.edgeRouter = 'metro';
-    }
+    // Выброшенные настройки выбрасываем и из прочитанного. Раньше здесь
+    // выбирали, вести кабель прямой или в обход, каким углом его ломать и
+    // чем рисовать путь; все варианты проверены на живой схеме, выбранный
+    // остался один и вшит в `joint/buildGraph.ts`. В чужих браузерах
+    // настройки лежат целым объектом, и без этой уборки снятые поля молча
+    // переехали бы обратно и жили бы там вечно, ни на что не влияя.
+    for (const key of DROPPED_KEYS) delete (saved as Record<string, unknown>)[key];
     return { ...DEFAULT_APPEARANCE, ...saved } as TopologyAppearance;
   } catch {
     return DEFAULT_APPEARANCE;
