@@ -1,12 +1,12 @@
 import { dia, shapes } from '@joint/core';
-import { canvasColors, nodeColors, tint, type TopologyAppearance } from '../appearance';
+import { canvasColors, nodeColors, type LinkSide, type TopologyAppearance } from '../appearance';
 import {
-  CARD_LINES, DeviceShape, GroupShape, StubShape, GROUP_MIN, NEUTRAL, nodeMetrics, nodeSizes,
-  STUB_SIZE, withAlpha, type NodeSize,
+  CARD_LINES, DeviceShape, StubShape, NEUTRAL, nodeMetrics, nodeSizes, STUB_SIZE, withAlpha,
+  type NodeSize,
 } from './shapes';
-import { groupDepth } from '../groups';
+import { NO_SNAP, snapPoint, snapStep } from '../grid';
 import { computeForceLayout, type LayoutNode, type Spring } from '../layout';
-import type { TopologyEdge, TopologyGroupOut, TopologyNode } from '../../../api/types';
+import type { TopologyEdge, TopologyNode } from '../../../api/types';
 
 /** Схема, присланная сервером, → ячейки полотна.
  *
@@ -20,12 +20,10 @@ import type { TopologyEdge, TopologyGroupOut, TopologyNode } from '../../../api/
 export type Box = { x: number; y: number; width: number; height: number };
 export type Point = { x: number; y: number };
 
-/** Что рисуем. Узлы и линии — от сервера, рамки групп — свой справочник:
- * они правятся отдельно от устройств и на схеме живут своей жизнью. */
+/** Что рисуем: узлы и линии, как их прислал сервер. */
 export interface GraphData {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
-  groups: TopologyGroupOut[];
 }
 
 /** Как рисуем: настройки вида, тема интерфейса и расположение узлов. */
@@ -33,17 +31,12 @@ export interface GraphView {
   look: TopologyAppearance;
   scheme: 'light' | 'dark';
   positions: Map<number, Point>;
-  /** Рамки, подвинутые в этой сессии, но ещё не сохранённые — см.
-   * комментарий у `computeBoxes`. */
-  pendingBoxes?: Map<number, Box>;
 }
 
 /** Что из построенного нужно странице дальше: по ячейке устройства она
- * наводится на него по ссылке, по рамкам — дозаписывает те, что ещё не
- * заданы руками. */
+ * наводится на него по ссылке. */
 export interface BuiltGraph {
   deviceCells: Map<number, dia.Element>;
-  boxes: Map<number, Box>;
 }
 
 /** Что написано на карточке: крупная строка, счётчик портов и строки под
@@ -65,117 +58,61 @@ export function cardText(node: TopologyNode, look: TopologyAppearance) {
   };
 }
 
-/** Отступ от содержимого до рамки группы, посчитанной по нему. */
-const GROUP_PADDING = 34;
+/** Сторона карточки, к которой прицепится кабель, — по тому же правилу,
+ * что и якорь `midSide` в библиотеке. «Ближайшая» там считается по
+ * расстоянию со знаком: партнёр ниже на 60 px, но в стороне на 110 — и
+ * ближайшей окажется боковая сторона. Повторяем это здесь, чтобы роутер и
+ * якорь говорили об одной и той же стороне.
+ */
+function anchorSide(from: Box, to: Box, mode: TopologyAppearance['anchorMode']): LinkSide {
+  const point = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
+  const cx = from.x + from.width / 2;
+  const cy = from.y + from.height / 2;
+  const beside = point.y > from.y && point.y < from.y + from.height;
+  const above = point.x > from.x && point.x < from.x + from.width;
+  switch (mode) {
+    case 'horizontal':
+      return point.x < cx ? 'left' : 'right';
+    case 'vertical':
+      return point.y < cy ? 'top' : 'bottom';
+    case 'prefer-horizontal':
+      return above ? (point.y < cy ? 'top' : 'bottom') : (point.x < cx ? 'left' : 'right');
+    case 'prefer-vertical':
+      return beside ? (point.x < cx ? 'left' : 'right') : (point.y < cy ? 'top' : 'bottom');
+    default: {
+      const distance: Record<LinkSide, number> = {
+        left: point.x - from.x,
+        right: from.x + from.width - point.x,
+        top: point.y - from.y,
+        bottom: from.y + from.height - point.y,
+      };
+      return (Object.keys(distance) as LinkSide[])
+        .reduce((best, side) => (distance[side] < distance[best] ? side : best), 'left');
+    }
+  }
+}
+
+/** Наибольший угол поворота у обходчика: 45° — те самые косые куски. */
+const METRO_TURN = 45;
+/** Радиус скругления угла кабеля. Маленький намеренно: угол читается как
+ * угол, а не как дуга. */
+const CORNER_RADIUS = 2;
+
 type CanvasPaint = ReturnType<typeof canvasColors>;
 
 export function buildGraph(graph: dia.Graph, data: GraphData, view: GraphView): BuiltGraph {
-  const { nodes, edges, groups } = data;
-  const { look, scheme, positions, pendingBoxes } = view;
+  const { nodes, edges } = data;
+  const { look, scheme, positions } = view;
 
   const colors = nodeColors(look.deviceDark, scheme);
   const paint = canvasColors(scheme);
   const card = nodeMetrics(look);
   const sizes = nodeSizes(nodes.map((n) => cardText(n, look)), look);
-  const boxes = computeBoxes(groups, nodes, positions, look, sizes, pendingBoxes);
 
-  const groupCells = addGroups(graph, groups, nodes, boxes, look, paint);
-  const deviceCells = addDevices(graph, nodes, positions, boxes, groupCells, look, colors, card, sizes);
+  const deviceCells = addDevices(graph, nodes, positions, look, colors, card, sizes);
   addLinks(graph, edges, deviceCells, look, paint);
 
-  return { deviceCells, boxes };
-}
-
-/** Насколько бледнее рамка на своей глубине вложенности: цех — обычным
- * цветом, каждый следующий уровень внутри — тише, чтобы глаз в первую
- * очередь читал внешний контур, а не терялся в наложенных друг на друга
- * линиях одной яркости. Формула вместо таблицы на три записи — раньше
- * глубже второго уровня цвет переставал меняться вовсе, хотя вложенность
- * теперь достаёт до шести. Пол в 0.35: тусклее рамку видно уже плохо. */
-function frameFade(depth: number): number {
-  return Math.max(0.35, 1 - depth * 0.16);
-}
-
-/** Рамки групп. Идут первыми: JointJS рисует ячейки в порядке добавления, и
- * рамка, добавленная после узлов, накрыла бы их собой. */
-function addGroups(
-  graph: dia.Graph,
-  groups: TopologyGroupOut[],
-  nodes: TopologyNode[],
-  boxes: Map<number, Box>,
-  look: TopologyAppearance,
-  paint: CanvasPaint,
-): Map<number, dia.Element> {
-  const cells = new Map<number, dia.Element>();
-  const byDepth = [...groups].sort((a, b) => groupDepth(groups, a.id) - groupDepth(groups, b.id));
-  for (const group of byDepth) {
-    const box = boxes.get(group.id);
-    if (!box) continue;
-    const accent = group.color ?? '#4dabf7';
-    const fade = frameFade(groupDepth(groups, group.id));
-    const inside = nodes.filter((n) => n.topology_group_id === group.id).length;
-    const title = look.groupCount ? `${group.name} · ${inside}` : group.name;
-    const isCabinet = group.kind === 'cabinet';
-    const titleY = look.groupTitle === 'onFrame' ? 0 : look.groupTitleSize;
-    const cell = new GroupShape({
-      position: { x: box.x, y: box.y },
-      size: { width: box.width, height: box.height },
-      kind: 'group',
-      groupId: group.id,
-      accent,
-      // Отдельно от `kind` (тип ячейки JointJS: устройство/группа/заглушка)
-      // — вид самой группы, как в базе.
-      variant: group.kind,
-      z: 1,
-      attrs: {
-        body: isCabinet ? {
-          // Шкаф виден всегда, что бы ни стояло в настройках вида: это не
-          // оформление на вкус, а то, чем он отличается от обычной группы.
-          // Штрих-пунктир — свой узор, ни на одну из трёх обычных обводок
-          // не похожий.
-          stroke: tint(accent, 100 * fade),
-          strokeWidth: look.groupBorderWidth + 1.5,
-          strokeDasharray: '10 3 2 3',
-          rx: Math.min(look.groupRadius, 4),
-          ry: Math.min(look.groupRadius, 4),
-          fill: look.groupFill > 0 ? tint(accent, look.groupFill * fade) : 'transparent',
-        } : {
-          stroke: look.groupBorder === 'none' ? 'transparent' : tint(accent, 100 * fade),
-          strokeWidth: look.groupBorderWidth,
-          strokeDasharray: look.groupBorder === 'dashed' ? '7 5' : look.groupBorder === 'dotted' ? '2 4' : undefined,
-          rx: look.groupRadius, ry: look.groupRadius,
-          fill: look.groupFill > 0 ? tint(accent, look.groupFill * fade) : 'transparent',
-        },
-        // Врезкой подпись сидит на самом контуре рамки, внутри — чуть ниже
-        // него. Подложка едет за подписью сама: её размер и положение
-        // считаются от текста. У шкафа название сдвинуто правее — левый
-        // край занят значком.
-        label: {
-          text: look.groupTitle === 'hidden' ? '' : title,
-          fill: accent,
-          fontSize: look.groupTitleSize,
-          x: isCabinet ? 30 : 14,
-          y: titleY,
-        },
-        labelBack: {
-          display: look.groupTitle === 'hidden' ? 'none' : 'block',
-          fill: look.groupTitle === 'onFrame' ? paint.canvas : 'transparent',
-        },
-        cabinetPlate: isCabinet ? {
-          display: 'block', y: titleY - 10, fill: paint.plate, stroke: paint.plateBorder,
-        } : { display: 'none' },
-        cabinetIcon: isCabinet ? {
-          display: 'block', transform: `translate(5.6,${titleY - 8.4}) scale(0.7)`, stroke: accent,
-        } : { display: 'none' },
-      },
-    });
-    graph.addCell(cell);
-    cells.set(group.id, cell);
-
-    const parentCell = group.parent_id != null ? cells.get(group.parent_id) : undefined;
-    if (parentCell) parentCell.embed(cell);
-  }
-  return cells;
+  return { deviceCells };
 }
 
 /** Карточки устройств. */
@@ -183,8 +120,6 @@ function addDevices(
   graph: dia.Graph,
   nodes: TopologyNode[],
   positions: Map<number, Point>,
-  boxes: Map<number, Box>,
-  groupCells: Map<number, dia.Element>,
   look: TopologyAppearance,
   colors: ReturnType<typeof nodeColors>,
   card: ReturnType<typeof nodeMetrics>,
@@ -194,16 +129,10 @@ function addDevices(
   for (const node of nodes) {
     const accent = node.color ?? NEUTRAL;
     const raw = positions.get(node.id)!;
-    const groupCell = node.topology_group_id != null ? groupCells.get(node.topology_group_id) : undefined;
-    const frame = node.topology_group_id != null ? boxes.get(node.topology_group_id) : undefined;
     const text = cardText(node, look);
     const lines = text.lines;
     const size = sizes.get(node.id) ?? { ...card, titleRoom: card.width - 74 };
-    // Узел не должен торчать из своей рамки. Перетаскивание за неё не
-    // выпускает само полотно, но координаты, пришедшие из базы, оно не
-    // подрезает: рамку могли сузить, а устройство — перенести в группу
-    // из другого угла схемы.
-    const at = clampToFrame({ x: raw.x - size.width / 2, y: raw.y - size.height / 2 }, frame, size);
+    const at = { x: raw.x - size.width / 2, y: raw.y - size.height / 2 };
 
     const cell = new DeviceShape({
       position: at,
@@ -249,19 +178,18 @@ function addDevices(
     });
     graph.addCell(cell);
     cells.set(node.id, cell);
-
-    if (groupCell) groupCell.embed(cell);
   }
   return cells;
 }
 
 /** Кабели: целые — между двумя карточками, повисшие концы — заглушкой под
- * своим устройством. Линия всегда прямая: связей на схеме немного, и
- * прямой отрезок между двумя точками читается короче и однозначнее ломаной,
- * которая вдобавок обходит чужие карточки стороной, петляя через всё
- * полотно. Раньше был выбор — ортогональная разводка или прямая, — но
- * ортогональную убрали: прямая читается яснее, а держать оба способа
- * разводки значило чинить схему дважды на каждую правку. */
+ * своим устройством.
+ *
+ * Как ведётся линия и чем она нарисована, настройками больше не являются:
+ * обход чужих карточек, косые куски и скруглённый угол выбраны один раз,
+ * на живой схеме, против всех прочих вариантов. Настройками остались
+ * только те числа, что и правда зависят от конкретной сети, — ширина
+ * коридоров, стороны выхода, крепление кабеля к карточке. */
 function addLinks(
   graph: dia.Graph,
   edges: TopologyEdge[],
@@ -281,10 +209,97 @@ function addLinks(
       endsOfDevice.get(deviceId)!.push(edge.link_id);
     }
   }
-  // Прямая линия узлы пересекает, поэтому идёт под карточками — иначе она
-  // легла бы поверх соседних узлов и их подписей портов.
-  const linkConnector = { name: 'rounded', args: { radius: 8 } };
-  const linkZ = 5;
+  // Кабель кладётся поверх узлов: обход карточек он всё равно строит по
+  // их контурам, и линия, прошедшая впритирку, под карточкой пропала бы.
+  const linkZ = 20;
+
+  // Разводка и начертание собираются из настроек вида: числа, которые
+  // раньше стояли здесь, переехали в умолчания (`appearance.ts`), а сами
+  // ручки — в панель «Разводка кабелей». Подбирать их всё равно приходится
+  // глядя на свою схему, и делать это должен тот, кто на неё смотрит.
+  //
+  // Заглушка повисшего конца — не препятствие: она сама часть кабеля, а не
+  // чужая карточка на пути.
+  const notObstacles = ['netdoc.Stub'];
+  // Пустой набор сторон библиотека понимает как «ни одной», а человек в
+  // окне — как «любая»; переводим.
+  const sidesOrAll = (sides: LinkSide[]) => (sides.length ? sides : ['top', 'right', 'bottom', 'left']);
+
+  // Соседние кабели разносятся по разным коридорам: с одинаковым отступом
+  // они лягут одной линией. Разброс маленький — препятствие раздувается на
+  // величину отступа, и слишком большой закрывает проход между двумя
+  // карточками совсем.
+  const linkOrder = new Map(edges.map((edge, index) => [edge.link_id, index]));
+  const routerFor = (linkId: number, from?: dia.Element, to?: dia.Element) => {
+    const lane = (linkOrder.get(linkId) ?? 0) % 4;
+    // Сторона выхода и сторона крепления считаются в библиотеке порознь:
+    // якорь `midSide` берёт свою, роутер — свою из разрешённого набора, и
+    // они расходятся. Видно это как «кабель вышел справа и сразу свернул
+    // вниз»: нарисован он от правой стороны, а ведёт его роутер от нижней.
+    // Поэтому, пока человек не задал стороны сам, выдаём роутеру ровно ту,
+    // к которой прицепится кабель.
+    const start = look.routerStartSides.length || !from || !to
+      ? sidesOrAll(look.routerStartSides)
+      : [anchorSide(from.getBBox(), to.getBBox(), look.anchorMode)];
+    const end = look.routerEndSides.length || !from || !to
+      ? sidesOrAll(look.routerEndSides)
+      : [anchorSide(to.getBBox(), from.getBBox(), look.anchorMode)];
+    return {
+      // Обходчик один и выбору не подлежит — но подменять его на
+      // `manhattan` тут было бы соблазнительно, поэтому: `metro` — не
+      // «`manhattan` с углом 45°». Он подменяет ещё и набор шагов поиска,
+      // добавляя к четырём прямым четыре косых (joint.js, config у metro),
+      // и запасной путь у него тоже ломается под 45°. Одним углом косые не
+      // убрать — он ограничивает поворот между шагами, а не сам набор;
+      // прямые углы даёт только `manhattan`. Оба проверены на живой схеме,
+      // и человек выбрал косые.
+      name: 'metro',
+      args: {
+        step: look.routerStep,
+        padding: look.routerPadding + lane * look.routerLaneSpread,
+        maxAllowedDirectionChange: METRO_TURN,
+        // Библиотечное умолчание, наружу не вынесено: проверено на живой
+        // схеме — с нашими якорями (`midSide`, точка уже на стороне
+        // карточки) переключение не меняет ни одного пути. Ручка, которая
+        // ничего не делает, хуже её отсутствия.
+        perpendicular: true,
+        startDirections: start,
+        endDirections: end,
+        maximumLoops: look.routerMaxLoops,
+        excludeTypes: notObstacles,
+        // Без этого списка кабель считает препятствием и собственные же
+        // концы: `ObstacleMap.build` в joint.js исключает из препятствий
+        // только `excludeTypes` и `excludeEnds` — рамки-предки концов
+        // линии (`excludedAncestors`) он находит сам, а вот сами
+        // источник и цель остаются обычными элементами графа и, раздутые
+        // на `padding`, обычными препятствиями. Заметно это было как
+        // короткий лишний излом посреди почти прямого пролёта: точка
+        // выхода и раздутый бокс, который ей, возможно, придётся обходить,
+        // — буквально одна и та же карточка. На двух изолированных узлах
+        // без единого стороннего объекта путь и так делал крюк ради обхода
+        // самого себя (проверено: пик до 32 px там, где рядом нет вообще
+        // ничего постороннего).
+        excludeEnds: ['source', 'target'],
+      },
+    };
+  };
+
+  // Кабель цепляется к середине той стороны карточки, что обращена к другому
+  // концу связи, а не к середине самой карточки. Дело не только в том, что
+  // линия перестаёт выползать из-под карточки: от якоря роутер берёт сторону
+  // выхода — он спрашивает у прямоугольника сторону, ближайшую к якорю, а
+  // середина карточки 179×57 ближе всего к верху и низу всегда, куда бы ни
+  // стояло второе устройство.
+  const endAnchor = {
+    name: 'midSide',
+    args: { mode: look.anchorMode, padding: look.anchorPadding },
+  };
+
+  // Начертание одно: скруглённые углы малым радиусом. Остальные пять
+  // (острые, плавная, дуга, отрезки с обработкой угла, мостики) стояли
+  // ручкой в панели, были опробованы на живой схеме и сняты — держать
+  // выбор ради выбора значит предлагать вернуться к худшему.
+  const linkConnector = { name: 'rounded', args: { radius: CORNER_RADIUS } };
 
   // «Никогда» — подписей в модели вовсе нет, как и раньше. «При наведении»
   // — они есть, но прозрачные с самого начала; полотно показывает их по
@@ -301,10 +316,11 @@ function addLinks(
       const target = deviceCells.get(edge.device_b_id);
       if (!source || !target) continue;
       graph.addCell(new shapes.standard.Link({
-        source: { id: source.id, anchor: { name: 'center' } },
-        target: { id: target.id, anchor: { name: 'center' } },
+        source: { id: source.id, anchor: endAnchor },
+        target: { id: target.id, anchor: endAnchor },
         linkId: edge.link_id,
         hoverLabels: hoverOnly,
+        router: routerFor(edge.link_id, source, target),
         connector: linkConnector,
         z: linkZ,
         attrs: {
@@ -349,8 +365,12 @@ function addLinks(
       attrs: { body: { fill: paint.plate } },
     });
     graph.addCell(stub);
+    // Отвес до заглушки настройкам разводки намеренно не подчиняется: это
+    // короткий отрезок под собственной карточкой, обходить которому нечего,
+    // а ломаная или дуга на нём читались бы как настоящий кабель куда-то в
+    // сторону.
     graph.addCell(new shapes.standard.Link({
-      source: { id: deviceCell.id }, target: { id: stub.id },
+      source: { id: deviceCell.id, anchor: endAnchor }, target: { id: stub.id, anchor: endAnchor },
       linkId: edge.link_id,
       hoverLabels: hoverOnly,
       z: linkZ,
@@ -388,16 +408,6 @@ function labelShift(ends: number[] | undefined, linkId: number, fontSize: number
   const lap = Math.floor(index / 2);
   const labelHeight = fontSize + 6;
   return side * (fontSize + 10 + lap * (labelHeight + 4));
-}
-
-/** Загнать узел внутрь рамки: рамка — это область, за которую он не выходит. */
-function clampToFrame(at: Point, frame: Box | undefined, card: { width: number; height: number }): Point {
-  if (!frame) return at;
-  const pad = 8;
-  return {
-    x: Math.min(Math.max(at.x, frame.x + pad), Math.max(frame.x + pad, frame.x + frame.width - card.width - pad)),
-    y: Math.min(Math.max(at.y, frame.y + 24), Math.max(frame.y + 24, frame.y + frame.height - card.height - pad)),
-  };
 }
 
 /** Строки под названием — по местам, посчитанным заранее. Выключенные
@@ -483,12 +493,6 @@ function portLabelCell(
   };
 }
 
-/** Рамка, заданная руками. */
-export function storedBox(group: TopologyGroupOut): Box | null {
-  if (group.x == null || group.y == null || group.width == null || group.height == null) return null;
-  return { x: group.x, y: group.y, width: group.width, height: group.height };
-}
-
 /** Положение узлов: сохранённое в базе, затем сложившееся в этой сессии, и
  * только новым устройствам — пружинная симуляция.
  *
@@ -503,13 +507,16 @@ export function computePositions(
   nodes: TopologyNode[],
   edges: TopologyEdge[],
   placed: React.RefObject<Map<number, Point>>,
+  /** Настройки вида — ради шага привязки. Привязываются только те узлы,
+   * место которым придумала пружинная раскладка: сохранённые позиции не
+   * трогаются, их поставил человек, и подвинуть их при открытии схемы
+   * значило бы молча переставить чужую работу. */
+  look?: TopologyAppearance,
 ): Map<number, Point> {
   const layout: LayoutNode[] = nodes.map((n) => {
     // Сложившееся в этой сессии важнее сохранённого: запись позиции нарочно
     // не обновляет схему (иначе она дёргалась бы на каждое перетаскивание),
-    // поэтому в присланных узлах ещё лежат прежние координаты. Брать их
-    // после перетаскивания рамки группы значило бы вернуть узлы туда, откуда
-    // человек их только что увёз, — рамка уехала, а узлы прыгнули назад.
+    // поэтому в присланных узлах ещё лежат прежние координаты.
     const saved = placed.current!.get(n.id)
       ?? (n.topology_x != null && n.topology_y != null ? { x: n.topology_x, y: n.topology_y } : undefined);
     return {
@@ -531,109 +538,17 @@ export function computePositions(
   }
   if (layout.some((n) => !n.fixed)) computeForceLayout(layout, springs, 1100, 750);
 
+  // Здесь координата — середина карточки, её и округляем: к середине
+  // цепляется кабель, и от неё зависит, пойдёт он между двумя устройствами
+  // прямо или с изломом.
+  const step = look ? snapStep(look) : NO_SNAP;
+
   const result = new Map<number, Point>();
   for (const node of layout) {
-    const at = { x: node.x, y: node.y };
-    result.set(parseInt(node.id, 10), at);
-    placed.current!.set(parseInt(node.id, 10), at);
+    const id = parseInt(node.id, 10);
+    const at = node.fixed ? { x: node.x, y: node.y } : snapPoint({ x: node.x, y: node.y }, step);
+    result.set(id, at);
+    placed.current!.set(id, at);
   }
   return result;
-}
-
-/** Рамки групп: сложившаяся в этой сессии, иначе сохранённая руками, иначе —
- * по содержимому.
- *
- * Подгруппы считаются всегда, даже когда у родителя рамка уже задана.
- * Раньше расчёт на такой рамке останавливался и внутрь не заглядывал —
- * подгруппы просто не рисовались. Заметить это было непросто: пока рамку
- * родителя ни разу не двигали, её тоже считали по содержимому, и всё
- * работало; но посчитанная рамка один раз сохраняется в базу, и со
- * следующего открытия схемы подгруппы исчезали.
- *
- * `pendingBoxes` — рамки, подвинутые в этой сессии, но ещё не отправленные
- * на сервер (раскладка сохраняется по кнопке, см. `TopologyPage`). Без этой
- * подмешки несохранённая рамка возвращалась бы на прежнее место при любой
- * перерисовке схемы, вызванной вообще чем угодно — правкой другого
- * устройства, сменой настройки вида, — а не только своей собственной волей.
- */
-export function computeBoxes(
-  groups: TopologyGroupOut[],
-  nodes: TopologyNode[],
-  positions: Map<number, Point>,
-  look: TopologyAppearance,
-  sizes?: Map<number, NodeSize>,
-  pendingBoxes?: Map<number, Box>,
-): Map<number, Box> {
-  const card = nodeMetrics(look);
-  const boxes = new Map<number, Box>();
-
-  const measure = (group: TopologyGroupOut, visited: Set<number>): Box | null => {
-    if (visited.has(group.id)) return null;
-    visited.add(group.id);
-
-    // Дети — раньше себя, независимо от того, задана ли своя рамка: их
-    // рамки живут отдельно, и пропускать их нельзя.
-    const inner: Box[] = [];
-    for (const child of groups.filter((g) => g.parent_id === group.id)) {
-      const box = measure(child, visited);
-      if (box) inner.push(box);
-    }
-
-    const stored = pendingBoxes?.get(group.id) ?? storedBox(group);
-    if (stored) {
-      boxes.set(group.id, stored);
-      // Подгруппа не должна торчать из родителя: рамку родителя могли
-      // сузить руками уже после того, как посчиталась дочерняя.
-      for (const child of groups.filter((g) => g.parent_id === group.id)) {
-        const box = boxes.get(child.id);
-        if (box) boxes.set(child.id, fitInside(box, stored));
-      }
-      return stored;
-    }
-
-    const parts: Box[] = [...inner];
-    for (const node of nodes) {
-      if (node.topology_group_id !== group.id) continue;
-      const at = positions.get(node.id);
-      if (!at) continue;
-      const size = sizes?.get(node.id) ?? card;
-      parts.push({
-        x: at.x - size.width / 2, y: at.y - size.height / 2,
-        width: size.width, height: size.height,
-      });
-    }
-    // Пустая группа без заданной рамки не рисуется: пустой прямоугольник
-    // только мешает, а сама группа никуда не делась.
-    if (parts.length === 0) return null;
-
-    const minX = Math.min(...parts.map((p) => p.x)) - GROUP_PADDING;
-    const minY = Math.min(...parts.map((p) => p.y)) - GROUP_PADDING;
-    const maxX = Math.max(...parts.map((p) => p.x + p.width)) + GROUP_PADDING;
-    const maxY = Math.max(...parts.map((p) => p.y + p.height)) + GROUP_PADDING;
-    const box = {
-      x: minX, y: minY,
-      width: Math.max(maxX - minX, GROUP_MIN.width),
-      height: Math.max(maxY - minY, GROUP_MIN.height),
-    };
-    boxes.set(group.id, box);
-    return box;
-  };
-
-  for (const group of groups.filter((g) => g.parent_id == null)) measure(group, new Set());
-  return boxes;
-}
-
-/** Вложить рамку в рамку: сначала подвинуть, а если не влезает — ужать.
- * Сверху отступ больше: там подпись группы. */
-function fitInside(box: Box, frame: Box): Box {
-  const pad = 10;
-  const top = 26;
-  const width = Math.min(box.width, Math.max(GROUP_MIN.width, frame.width - pad * 2));
-  const height = Math.min(box.height, Math.max(GROUP_MIN.height, frame.height - top - pad));
-  return {
-    width,
-    height,
-    x: Math.min(Math.max(box.x, frame.x + pad), Math.max(frame.x + pad, frame.x + frame.width - width - pad)),
-    y: Math.min(Math.max(box.y, frame.y + top), Math.max(frame.y + top, frame.y + frame.height - height - pad)),
-  };
 }

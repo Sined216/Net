@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert, Center, Loader } from '@mantine/core';
+import { Alert, Button, Center, Group, Loader, Stack, Text } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { getSiteId, setSiteId } from '../api/client';
 import { useSites } from '../api/hooks';
+import { useAuth } from '../auth/AuthContext';
 import type { SiteOut } from '../api/types';
 
 /** Выбранная площадка — контекст всего, что человек видит.
@@ -25,6 +26,7 @@ const SiteContext = createContext<SiteState | null>(null);
 
 export function SiteProvider({ children }: { children: ReactNode }) {
   const { data: sites = [], isLoading } = useSites();
+  const { user, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [siteId, setCurrent] = useState<number | null>(getSiteId);
   const queryClient = useQueryClient();
@@ -99,10 +101,20 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     return (
       <Center h="100vh">
         {isLoading || sites.length > 0 ? <Loader /> : (
-          <Alert color="yellow" variant="light" maw={520}>
-            Вам не назначена ни одна площадка. Попросите администратора выдать доступ — без площадки
-            смотреть нечего: всё оборудование описано внутри них.
-          </Alert>
+          <Stack maw={520} gap="sm">
+            <Alert color="yellow" variant="light">
+              Вам не назначена ни одна площадка. Попросите администратора выдать доступ — без площадки
+              смотреть нечего: всё оборудование описано внутри них.
+            </Alert>
+            {/* Выход отсюда обязателен: этот экран подменяет собой всё
+                приложение вместе с шапкой, где кнопка выхода живёт обычно.
+                Без неё человек, вошедший без площадок, заперт — не вернуться
+                даже под администратором, чтобы доступ себе и выдать. */}
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">{user ? `Вы вошли как ${user.username}` : null}</Text>
+              <Button variant="default" onClick={signOut}>Выйти</Button>
+            </Group>
+          </Stack>
         )}
       </Center>
     );

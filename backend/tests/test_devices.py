@@ -264,3 +264,52 @@ def test_search_by_device_code_is_one_row_not_one_per_port(client, headers, make
     device = make_device()
     found = client.get("/search", params={"query": device["code"]}, headers=headers["viewer"]).json()
     assert [r["device_id"] for r in found] == [device["id"]]
+
+
+def test_device_carries_group_name(client, headers, make_device):
+    """Карточка устройства получает имя группы, а не только id — искать
+    его самим клиентам не нужно (список устройств делает это сам, но
+    карточка одного устройства и мобильный снимок — нет)."""
+    group = client.post(
+        "/topology-groups", json={"name": "Цех сборки", "color": "#94a3b8"}, headers=headers["editor"],
+    ).json()
+    device = make_device()
+
+    ungrouped = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert ungrouped["topology_group_name"] is None
+
+    client.patch(f"/devices/{device['id']}", json={"topology_group_id": group["id"]}, headers=headers["editor"])
+    grouped = client.get(f"/devices/{device['id']}", headers=headers["viewer"]).json()
+    assert grouped["topology_group_name"] == "Цех сборки"
+
+
+def test_device_qr_returns_svg(client, headers, make_device):
+    device = make_device()
+    response = client.get(f"/devices/{device['id']}/qr", headers=headers["viewer"])
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert response.content.startswith(b"<?xml") or b"<svg" in response.content[:100]
+
+
+def test_device_qr_unknown_device_is_404(client, headers):
+    response = client.get("/devices/999999/qr", headers=headers["viewer"])
+    assert response.status_code == 404
+
+
+def test_device_qr_respects_site_isolation(client, headers, make_device, db):
+    """Устройство одной площадки не видно через QR-ручку другой — даже
+    администратору, которому доступны обе: фильтр по site_id в самом
+    запросе, а не только проверка доступа к площадке."""
+    from app import models
+
+    device = make_device()
+    other_site = models.Site(name="Другая фабрика")
+    db.add(other_site)
+    db.commit()
+    db.refresh(other_site)
+
+    response = client.get(
+        f"/devices/{device['id']}/qr",
+        headers={**headers["admin"], "X-Site-Id": str(other_site.id)},
+    )
+    assert response.status_code == 404

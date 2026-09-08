@@ -23,10 +23,10 @@
 import argparse
 import getpass
 import sys
+from datetime import datetime, timezone
 
-from app import auth, models
+from app import auth, models, password_policy
 from app.database import SessionLocal
-from app.schemas import MIN_PASSWORD_LENGTH
 
 
 def _state(user: models.User) -> str:
@@ -76,13 +76,16 @@ def reset(db, username: str, password: str | None, activate: bool, keep_lock: bo
         if password != getpass.getpass("Ещё раз: "):
             print("Пароли не совпали", file=sys.stderr)
             return 1
-    # Требование то же, что и в интерфейсе, и берётся из того же места:
-    # пароль, который здесь примут, а там отвергнут, только запутает.
-    if len(password) < MIN_PASSWORD_LENGTH:
-        print(f"Пароль короче {MIN_PASSWORD_LENGTH} символов", file=sys.stderr)
+    # Требование то же, что и в интерфейсе, и берётся из того же места —
+    # текущей политики в базе, а не зашитого числа: пароль, который здесь
+    # примут, а там отвергнут, только запутает.
+    error = password_policy.length_error(db, password)
+    if error:
+        print(error, file=sys.stderr)
         return 1
 
     user.password_hash = auth.hash_password(password)
+    user.password_changed_at = datetime.now(timezone.utc)
     # Пароль выбран сейчас и вручную — требовать сменить его при первом же
     # входе незачем, это тот самый пароль, который человек только что задал.
     user.must_change_password = False

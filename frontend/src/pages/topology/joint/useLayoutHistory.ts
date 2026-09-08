@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { Box, Point } from './buildGraph';
+import type { Point } from './buildGraph';
 
 /** Отмена и возврат раскладки схемы.
  *
- * Отменяется только расположение: куда уехали узлы и рамки групп. Это то,
- * что человек портит чаще всего и всегда случайно — потянул не за то, задел
- * пачку, нажал «Разложить» и потерял раскладку, которую собирал полчаса.
+ * Отменяется только расположение: куда уехали узлы. Это то, что человек
+ * портит чаще всего и всегда случайно — потянул не за то, задел пачку,
+ * нажал «Разложить» и потерял раскладку, которую собирал полчаса.
  *
  * Заведение и удаление сюда намеренно не попали. «Отменить удаление» — это
  * не движение назад по экрану, а восстановление железки с её кодом,
@@ -16,17 +16,13 @@ import type { Box, Point } from './buildGraph';
  * Шаг хранит «было» и «стало» целиком, а не разницу: применить его в любую
  * сторону — значит просто выставить координаты. Отменённое положение на
  * сервер само по себе не уходит — оно, как и любое другое перетаскивание,
- * ждёт кнопки «Сохранить» (см. `pendingDevices`/`pendingBoxes` в
- * `TopologyPage`).
+ * ждёт кнопки «Сохранить» (см. `pendingDevices` в `TopologyPage`).
  */
 
 export interface LayoutStep {
   /** Что делали — показывается человеку в подсказке к кнопке. */
   title: string;
   devices?: { id: number; from: Point; to: Point }[];
-  /** Рамки, у которых до шага уже было своё положение. Впервые посчитанную
-   * рамку отменять нечем: до неё у группы не было никакой. */
-  groups?: { id: number; from: Box; to: Box }[];
 }
 
 export interface LayoutHistory {
@@ -64,9 +60,8 @@ export function useLayoutHistory(apply: (step: LayoutStep, back: boolean) => voi
 
   const push = useCallback((step: LayoutStep) => {
     const devices = (step.devices ?? []).filter((m) => m.from.x !== m.to.x || m.from.y !== m.to.y);
-    const groups = (step.groups ?? []).filter((g) => !sameBox(g.from, g.to));
-    if (!devices.length && !groups.length) return;
-    done.current = [...done.current, { ...step, devices, groups }].slice(-DEPTH);
+    if (!devices.length) return;
+    done.current = [...done.current, { ...step, devices }].slice(-DEPTH);
     // Новое действие обрывает ветку возврата: вернуть то, поверх чего уже
     // сделали другое, значит получить смесь двух раскладок.
     undone.current = [];
@@ -105,8 +100,4 @@ export function useLayoutHistory(apply: (step: LayoutStep, back: boolean) => voi
     () => ({ push, undo, redo, clear, canUndo: labels.undo, canRedo: labels.redo }),
     [push, undo, redo, clear, labels.undo, labels.redo],
   );
-}
-
-function sameBox(a: Box, b: Box): boolean {
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }

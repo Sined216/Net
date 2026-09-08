@@ -9,12 +9,14 @@ import { LinksPage } from './pages/LinksPage';
 import { TopologyPage } from './pages/TopologyPage';
 import { SearchPage } from './pages/SearchPage';
 import { TagsPage } from './pages/TagsPage';
+import { GroupsPage } from './pages/GroupsPage';
 import { VlansPage } from './pages/VlansPage';
 import { UsersPage } from './pages/UsersPage';
 import { SchemaPage } from './pages/SchemaPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { ImportPage } from './pages/ImportPage';
 import { SitesPage } from './pages/SitesPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SnmpProbePage } from './pages/SnmpProbePage';
 import { SiteProvider } from './sites/SiteContext';
@@ -38,10 +40,12 @@ export function App() {
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/links" element={<LinksPage />} />
         <Route path="/topology" element={<TopologyPage />} />
-        {/* Прежний адрес второй схемы: ссылки на неё могли осесть в закладках. */}
+        {/* Прежние адреса второй схемы: ссылки на них могли осесть в закладках. */}
         <Route path="/topology-joint" element={<Navigate to="/topology" replace />} />
+        <Route path="/topology-test" element={<Navigate to="/topology" replace />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/tags" element={<TagsPage />} />
+        <Route path="/groups" element={<GroupsPage />} />
         <Route path="/vlans" element={<VlansPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/import" element={<ImportPage />} />
@@ -61,6 +65,14 @@ export function App() {
           element={
             <RequireAdmin>
               <SitesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireAdmin>
+              <SettingsPage />
             </RequireAdmin>
           }
         />

@@ -1,13 +1,103 @@
 import { useState } from 'react';
 import {
-  Button, ColorInput, Group, Modal, MultiSelect, SegmentedControl, Select, Stack, Text, TextInput,
+  Button, ColorInput, Group, Modal, MultiSelect, SegmentedControl, Select, Stack, Table, Text, TextInput, Title,
 } from '@mantine/core';
+import { IconFolderPlus, IconPlus, IconServer2 } from '@tabler/icons-react';
+import { DeleteAction, EditAction, RowAction } from '../components/RowAction';
 import {
-  useCreateTopologyGroup, useDevices, useTopologyGroups, useUpdateDevice, useUpdateTopologyGroup,
-} from '../../api/hooks';
-import { notifyError, notifySuccess } from '../../lib/notify';
-import { orderedGroups } from './groups';
-import type { TopologyGroupOut } from '../../api/types';
+  useCreateTopologyGroup, useDeleteTopologyGroup, useDevices, useTopologyGroups, useUpdateDevice,
+  useUpdateTopologyGroup,
+} from '../api/hooks';
+import { notifyError, notifySuccess } from '../lib/notify';
+import { confirmAction } from '../lib/confirm';
+import { orderedGroups } from '../lib/groups';
+import type { TopologyGroupOut } from '../api/types';
+import { useCan } from '../auth/permissions';
+
+/** Группы устройств: цех — участок — линия.
+ *
+ * Отдельный от тегов параметр устройства — ровно одна группа, самая
+ * внутренняя. Раньше группу заводили только со схемы связей, кнопкой над
+ * полотном, — рамка была там же, и заодно с ней жило и управление
+ * составом. Рамки на схеме больше нет (была кластером-рамкой вокруг узлов,
+ * снята целиком — README, «Заметки»), а список групп остался и переехал
+ * на свою страницу, как теги и VLAN.
+ */
+export function GroupsPage() {
+  const canEdit = useCan('edit');
+  const { data: groups = [] } = useTopologyGroups();
+  const deleteGroup = useDeleteTopologyGroup();
+  const [editing, setEditing] = useState<{ group: TopologyGroupOut | null; parentId: number | null } | null>(null);
+
+  async function handleDelete(group: TopologyGroupOut) {
+    if (!(await confirmAction(`Удалить группу «${group.name}»? Устройства останутся, подгруппы поднимутся на уровень выше.`))) return;
+    deleteGroup.mutate(group.id, { onSuccess: () => notifySuccess('Группа удалена'), onError: notifyError });
+  }
+
+  const rows = orderedGroups(groups);
+
+  return (
+    <Stack>
+      <Group justify="space-between">
+        <Title order={2}>Группы</Title>
+        {canEdit && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing({ group: null, parentId: null })}>
+            Группа
+          </Button>
+        )}
+      </Group>
+      <Text c="dimmed" size="sm">
+        Отдельный от тегов параметр — ровно одна группа на устройство, самая внутренняя. Группы вкладываются друг в
+        друга: цех — участок — линия. На схеме связей группа не рисуется — здесь только список и состав.
+      </Text>
+
+      <Table withTableBorder verticalSpacing="xs">
+        <Table.Tbody>
+          {rows.map(({ group, depth }) => {
+            // Сколько устройств в группе, считает сервер: возить ради этой
+            // цифры всю спецификацию незачем.
+            const count = group.device_count;
+            return (
+              <Table.Tr key={group.id}>
+                <Table.Td>
+                  <Group gap={6} wrap="nowrap" style={{ paddingLeft: depth * 22 }}>
+                    <span className="tag-badge-dot" style={{ background: group.color ?? '#94a3b8' }} />
+                    <Text size="sm">{group.name}</Text>
+                    {group.kind === 'cabinet' && (
+                      <IconServer2 size={13} color="var(--mantine-color-dimmed)" title="Шкаф" />
+                    )}
+                    <Text size="xs" c="dimmed">{count} уст.</Text>
+                  </Group>
+                </Table.Td>
+                <Table.Td w={110}>
+                  {canEdit && (
+                    <Group gap={2} justify="flex-end" wrap="nowrap">
+                      <EditAction label={`Изменить группу «${group.name}»`} onClick={() => setEditing({ group, parentId: null })} />
+                      {group.kind !== 'cabinet' && (
+                        <RowAction
+                          label={`Добавить подгруппу в «${group.name}»`} icon={<IconFolderPlus size={15} />}
+                          onClick={() => setEditing({ group: null, parentId: group.id })}
+                        />
+                      )}
+                      <DeleteAction label={`Удалить группу «${group.name}»`} onClick={() => handleDelete(group)} />
+                    </Group>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+          {rows.length === 0 && (
+            <Table.Tr><Table.Td colSpan={2}><Text c="dimmed">Групп ещё нет</Text></Table.Td></Table.Tr>
+          )}
+        </Table.Tbody>
+      </Table>
+
+      {editing && (
+        <GroupEditModal group={editing.group} parentId={editing.parentId} onClose={() => setEditing(null)} />
+      )}
+    </Stack>
+  );
+}
 
 /** Сколько устройств помещается в список выбора состава.
  *
@@ -19,17 +109,15 @@ const MEMBER_LIMIT = 500;
 
 /** Правка группы: название, цвет, место во вложенности и состав устройств.
  *
- * Состав меняется только здесь и в панели самого устройства — перетаскивание
- * узла в рамку его не меняет: жест «подвинуть узел» и жест «сменить группу»
- * не должны быть одним и тем же, иначе схему нельзя разложить, не задев
- * данные.
+ * Состав меняется только здесь и в карточке самого устройства: на схеме
+ * связей группа не рисуется, перетащить туда узел мышью просто негде.
  */
 export function GroupEditModal({
   group, parentId = null, draftName, onClose,
 }: {
   /** Правим существующую группу или заводим новую (null). */
   group: TopologyGroupOut | null;
-  /** Родитель для новой группы — «добавить подгруппу» из панели. */
+  /** Родитель для новой группы — «добавить подгруппу» из строки списка. */
   parentId?: number | null;
   /** Название для новой группы — например взятое из строки файла импорта. */
   draftName?: string;
@@ -96,7 +184,6 @@ export function GroupEditModal({
     }
 
     // Номер правки — тот, что видели при открытии формы: см. app/versioning.py.
-    // Перетаскивание рамки мышью сюда не заходит — у него свой маршрут /box.
     updateGroup.mutate({ id: group!.id, body: { ...body, version: group!.version } }, {
       onSuccess: () => {
         // Состав применяется отдельными правками устройств: группа у
@@ -124,7 +211,7 @@ export function GroupEditModal({
             value={name} onChange={(e) => setName(e.currentTarget.value)}
           />
           <Group grow>
-            <ColorInput label="Цвет рамки" value={color} onChange={setColor} format="hex"
+            <ColorInput label="Цвет" value={color} onChange={setColor} format="hex"
               swatches={['#94a3b8', '#4dabf7', '#40c057', '#fab005', '#fa5252', '#be4bdb', '#15aabf']} />
             <Select
               label="Внутри группы" placeholder="— верхний уровень —" clearable
@@ -153,8 +240,8 @@ export function GroupEditModal({
           </div>
           {isEdit && trimmed && (
             <Text size="xs" c="orange">
-              Показаны первые {MEMBER_LIMIT} устройств по коду — на этой площадке их больше. Остальные
-              переносятся в группу из своей карточки или кнопкой «В группу» на схеме.
+              Показаны первые {MEMBER_LIMIT} устройств по коду — на этой площадке их больше. Остальные переносятся в
+              группу из своей карточки.
             </Text>
           )}
           {isEdit && (
@@ -165,9 +252,6 @@ export function GroupEditModal({
               value={members} onChange={setPicked}
             />
           )}
-          <Text size="xs" c="dimmed">
-            Рамку на схеме двигают и растягивают мышью — состав группы от этого не меняется.
-          </Text>
           <Group justify="flex-end" mt="sm">
             <Button variant="subtle" onClick={onClose}>Отмена</Button>
             <Button type="submit" loading={createGroup.isPending || updateGroup.isPending}>

@@ -19,11 +19,13 @@ LinkSource = Literal["manual", "snmp", "lldp"]
 
 
 # ---------- Auth ----------
-# Двенадцать символов — рекомендация OWASP для паролей без второго фактора.
-# Требование длины, а не «одна заглавная и цифра»: длина даёт стойкость, а
-# правила состава лишь толкают людей к «Password1!».
-MIN_PASSWORD_LENGTH = 12
-Password = Field(min_length=MIN_PASSWORD_LENGTH, max_length=128)
+# Минимальная длина настраивается администратором (см. PasswordPolicy,
+# app/password_policy.py) и потому не может быть ограничением самого поля:
+# pydantic вычисляет Field(...) один раз при импорте модуля, а не на каждый
+# запрос, — заглянуть в базу оно не в состоянии. Верхняя граница здесь
+# осталась: это не часть политики, а защита от абсурдно длинных значений
+# в самом поле, вне зависимости от того, что настроил админ.
+Password = Field(max_length=128)
 
 
 class Token(BaseModel):
@@ -36,6 +38,11 @@ class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=100)
     password: str = Password
     role: Role = "viewer"
+    # Обязательна не на уровне схемы, а в обработчике — и только для
+    # не-админа: администратору площадки не назначают, `sites.
+    # accessible_sites()` отдаёт ему все безусловно. Требовать выбор у
+    # него значило бы просить о том, что ни на что не повлияет.
+    site_ids: list[int] = Field(default_factory=list)
 
 
 class UserUpdate(BaseModel):
@@ -72,6 +79,12 @@ class UserOut(BaseModel):
     role: Role
     is_active: bool
     must_change_password: bool
+    # Считается на лету по PasswordPolicy.max_age_days, а не хранится:
+    # значение верно только в момент ответа. Заполняется только в /auth/me
+    # (auth_router.read_me) — там же, где фронтенд решает, показывать ли
+    # принудительную форму смены пароля; в остальных ответах остаётся
+    # `null`, потому что там этот вопрос не задаётся.
+    password_expired: Optional[bool] = None
     created_at: datetime
     version: int = 1
 
@@ -79,6 +92,55 @@ class UserOut(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class PasswordPolicyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    min_length: int
+    max_age_days: Optional[int] = None
+    version: int = 1
+
+
+class PasswordPolicyUpdate(BaseModel):
+    """Правка политики. Читается обработчиком через `exclude_unset=True`
+    (тот же приём, что у `UserUpdate`/`SiteUpdate`) — иначе не отличить
+    «поле не прислали» от «прислали null», а `max_age_days: null` — это
+    осмысленное значение: выключить срок действия, а не оставить как есть.
+    """
+    version: Optional[int] = None
+    min_length: Optional[int] = Field(default=None, ge=8, le=128)
+    max_age_days: Optional[int] = Field(default=None, ge=1)
+
+
+# ---------- Настройки принтера этикеток ----------
+class PrinterSettingsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    host: Optional[str] = None
+    port: int = 9100
+    version: int = 1
+
+
+class PrinterSettingsUpdate(BaseModel):
+    """Та же оговорка про `exclude_unset=True`, что у политики паролей:
+    `host: null` — осознанно снять адрес, а не «оставить как было»."""
+    version: Optional[int] = None
+    host: Optional[str] = Field(default=None, max_length=255)
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+
+
+class PrintLabelRequest(BaseModel):
+    """Пусто — печать берёт сохранённый адрес принтера. Оба поля можно
+    прислать, чтобы напечатать разово на другой, не трогая настройку."""
+    host: Optional[str] = Field(default=None, max_length=255)
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+
+
+class PrintLabelResult(BaseModel):
+    """Тот же принцип, что у SnmpProbeResult: неответивший принтер — не
+    HTTP-ошибка, а обычный исход с `ok=False` и текстом причины."""
+    ok: bool
+    elapsed_ms: int
+    error: Optional[str] = None
 
 
 # ---------- Журнал изменений ----------
@@ -172,17 +234,9 @@ class TagOut(TagBase):
 
 
 # ---------- Topology group (отдельный от тегов параметр: одна группа на
-# устройство — только для визуальной кластеризации на топологии; группы
-# вкладываются друг в друга: цех — участок — линия) ----------
-class TopologyGroupBox(BaseModel):
-    """Положение и размер рамки на схеме. Рамку двигают и тянут руками —
-    под содержимое она не подгоняется."""
-    x: float
-    y: float
-    width: float = Field(gt=0)
-    height: float = Field(gt=0)
-
-
+# устройство; группы вкладываются друг в друга: цех — участок — линия.
+# Раньше ещё и рамка-кластер на схеме связей — снята, группа осталась
+# только данными, заводится и правится на своей странице) ----------
 GroupKind = Literal["area", "cabinet"]
 
 
@@ -191,8 +245,8 @@ class TopologyGroupCreate(BaseModel):
     color: Optional[str] = None
     # Группа внутри группы: цех — участок — линия.
     parent_id: Optional[int] = None
-    # Обычная рамка или шкаф — реальная железка, а не область на плане.
-    # У шкафа не бывает подгрупп: см. проверку в роутере.
+    # Обычная группа или шкаф — реальная железка, а не организационная
+    # область. У шкафа не бывает подгрупп: см. проверку в роутере.
     kind: GroupKind = "area"
 
 
@@ -200,8 +254,6 @@ class TopologyGroupUpdate(BaseModel):
     # Номер правки, который клиент видел на экране. Расхождение с текущим
     # значит, что кто-то сохранил раньше, — см. app/versioning.py. Пусто —
     # проверки нет: так ведут себя старые клиенты и служебные вызовы.
-    # Перетаскивание рамки (TopologyGroupBox) через эту схему не идёт —
-    # у него свой маршрут /box, и номер правки он не трогает.
     version: Optional[int] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     color: Optional[str] = None
@@ -217,12 +269,6 @@ class TopologyGroupOut(BaseModel):
     parent_id: Optional[int] = None
     kind: GroupKind = "area"
     version: int = 1
-    # Пусто, пока рамку ни разу не двигали: тогда она считается по
-    # содержимому, как было до появления ручной правки.
-    x: Optional[float] = None
-    y: Optional[float] = None
-    width: Optional[float] = None
-    height: Optional[float] = None
     # Сколько устройств лежит прямо в этой группе (без подгрупп). Считает
     # база: список групп показывает эту цифру, и везти ради неё все
     # устройства площадки было бы странно.
@@ -238,8 +284,12 @@ class ImportRowOut(BaseModel):
     устройства и правит, если файл врёт."""
     model_config = ConfigDict(from_attributes=True)
     id: int
-    source_file: str
-    row_number: int
+    # 'file' — строка из загруженного файла, 'mobile' — запись из обхода с
+    # телефоном. Разбирают их одинаково и на одном экране; у обхода нет
+    # файла, поэтому две колонки ниже у него пусты.
+    source: str = "file"
+    source_file: Optional[str] = None
+    row_number: Optional[int] = None
     name: Optional[str] = None
     template_name: Optional[str] = None
     type_name: Optional[str] = None
@@ -263,6 +313,48 @@ class ImportRowOut(BaseModel):
     same_name_device_id: Optional[int] = None
     same_ip_device_id: Optional[int] = None
     same_mac_device_id: Optional[int] = None
+
+
+class ImportLinkRowOut(BaseModel):
+    """Связь из обхода и то, что удалось по ней опознать.
+
+    Подсказки (`suggested_*`) — попытка узнать в тексте («свитч у окна»,
+    «порт 3») уже заведённые устройство и гнездо. Ничего не решают: человек
+    видит их подставленными в окне связи и правит, если не угадали.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    source: str = "mobile"
+    a_device_text: Optional[str] = None
+    a_port_text: Optional[str] = None
+    b_device_text: Optional[str] = None
+    b_port_text: Optional[str] = None
+    a_device_id: Optional[int] = None
+    b_device_id: Optional[int] = None
+    medium: Optional[str] = None
+    notes: Optional[str] = None
+    extra: Optional[dict] = None
+    status: str
+    link_id: Optional[int] = None
+    imported_at: Optional[datetime] = None
+
+    # Опознанные концы. Устройство ищется по коду и названию, гнездо —
+    # внутри найденного устройства по подписи и номеру.
+    suggested_a_device_id: Optional[int] = None
+    suggested_b_device_id: Optional[int] = None
+    suggested_a_interface_id: Optional[int] = None
+    suggested_b_interface_id: Optional[int] = None
+    # Подписи опознанного — чтобы в таблице было видно, во что метится
+    # строка, не открывая окно.
+    suggested_a_device_code: Optional[str] = None
+    suggested_b_device_code: Optional[str] = None
+    suggested_a_interface_label: Optional[str] = None
+    suggested_b_interface_label: Optional[str] = None
+    # Гнездо уже занято другой связью — переносить строку, скорее всего, не
+    # нужно. Не запрет: в цеху могли переткнуть кабель, и тогда сначала
+    # правят старую связь.
+    a_interface_busy: bool = False
+    b_interface_busy: bool = False
 
 
 class ImportSummary(BaseModel):
@@ -695,6 +787,14 @@ class DeviceOut(DeviceBase):
     tags: List[TagOut] = []
     topology_x: Optional[float] = None
     topology_y: Optional[float] = None
+    # Имя группы — не только id. Список устройств ищет его сам, джойном по
+    # уже загруженному списку групп площадки; у карточки одного устройства
+    # (и у копии этой же схемы в снимке для обхода, где живого списка групп
+    # рядом нет) такого списка нет, поэтому имя приезжает готовым отсюда.
+    # Только имя, не полный путь: TopologyGroup.name уникально в пределах
+    # площадки (UniqueConstraint("site_id", "name")), так что неоднозначности
+    # не возникает.
+    topology_group_name: Optional[str] = None
 
 
 # ---------- Link template (пресет: среда + кабель + оформление на топологии) ----------
@@ -831,6 +931,11 @@ class TopologyNode(BaseModel):
     topology_y: Optional[float] = None
     ports_total: int = 0
     ports_connected: int = 0
+    # VLAN по всем портам устройства разом — и access (`interfaces.vlan_id`),
+    # и транковые (`interface_trunk_vlans`), объединением. Список, а не
+    # раскладка по портам: карточке всё равно, на каком именно порту какой
+    # VLAN, только «этот VLAN где-то тут есть».
+    vlan_ids: List[int] = []
 
 
 class TopologyEdge(BaseModel):
@@ -853,6 +958,11 @@ class TopologyEdge(BaseModel):
     color: Optional[str] = None
     line_style: Optional[str] = None
     confirmed: bool
+    # VLAN кабеля — объединение VLAN двух его портов, не пересечение: транк
+    # с двух разных сторон обычно несёт разный набор, и связь стоит
+    # подсветить в VLAN, для которого она несёт хоть какой-то трафик, а не
+    # только в общем для обоих концов.
+    vlan_ids: List[int] = []
 
 
 class TopologyOut(BaseModel):

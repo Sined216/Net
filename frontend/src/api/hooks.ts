@@ -12,8 +12,8 @@ import type {
   InterfaceCreate, InterfaceUpdate,
   LinkTemplateCreate, LinkTemplateUpdate,
   LinkCreate, LinkUpdate,
-  TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
-  UserCreate, UserUpdate, PasswordReset,
+  TopologyGroupCreate, TopologyGroupUpdate,
+  UserCreate, UserUpdate, PasswordReset, PasswordPolicyUpdate, PrinterSettingsUpdate, PrintLabelRequest,
   SiteCreate, SiteUpdate, AuditQuery, DeviceQuery, LinkQuery, FreePortQuery,
   SnmpProbeRequest, SnmpWalkRequest,
 } from './types';
@@ -33,6 +33,10 @@ export const useDevices = (query: DeviceQuery = {}, enabled = true) =>
  * среди всех устройств, то есть везла всю спецификацию ради одной железки. */
 export const useDevice = (id: number | null) =>
   useQuery({ queryKey: ['device', id], queryFn: () => api.getDevice(id!), enabled: id != null && !Number.isNaN(id) });
+// QR не меняется, пока не сменился код устройства (переименование его не
+// трогает) — можно не считать staleTime, кэш живёт весь визит на страницу.
+export const useDeviceQr = (id: number | null) =>
+  useQuery({ queryKey: ['deviceQr', id], queryFn: () => api.getDeviceQr(id!), enabled: id != null && !Number.isNaN(id) });
 /** Схема связей: узлы и линии, собранные сервером.
  *
  * Раньше её собирал браузер — из всех устройств площадки со всеми портами
@@ -217,6 +221,34 @@ export function useClearImportRows() {
   return useMutation({
     mutationFn: (status?: 'new' | 'moved') => api.clearImportRows(status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['importRows'] }),
+  });
+}
+
+// Связи из обхода — вторая половина той же промежуточной таблицы.
+export const useImportLinkRows = () =>
+  useQuery({ queryKey: ['importLinkRows'], queryFn: api.listImportLinkRows });
+export function useMoveImportLinkRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, body }: { rowId: number; body: LinkCreate }) =>
+      api.moveImportLinkRow(rowId, body),
+    // Появилась связь — устарели списки связей, топология и сама строка;
+    // ещё и порты: они стали занятыми.
+    onSuccess: () => invalidateAll(qc, ['importLinkRows', 'links', 'devices', 'topology']),
+  });
+}
+export function useDeleteImportLinkRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rowId: number) => api.deleteImportLinkRow(rowId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importLinkRows'] }),
+  });
+}
+export function useClearImportLinkRows() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (status?: 'new' | 'moved') => api.clearImportLinkRows(status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['importLinkRows'] }),
   });
 }
 
@@ -407,28 +439,6 @@ export function useUpdateTopologyGroup() {
     onSuccess: () => invalidateAll(qc, ['topologyGroups', 'devices', 'topology']),
   });
 }
-export function useSetTopologyGroupBox() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: TopologyGroupBox }) => api.setTopologyGroupBox(id, body),
-    // Новая рамка кладётся прямо в кэш, не дожидаясь ответа и без повторного
-    // запроса списка. Иначе схема, перерисованная по любой другой причине
-    // (а положение устройств меняется тут же, вместе с рамкой), брала бы из
-    // кэша прежние координаты — и рамка прыгала бы обратно.
-    onMutate: async ({ id, body }) => {
-      await qc.cancelQueries({ queryKey: ['topologyGroups'] });
-      const previous = qc.getQueryData<TopologyGroupOut[]>(['topologyGroups']);
-      qc.setQueryData<TopologyGroupOut[]>(['topologyGroups'], (groups) =>
-        (groups ?? []).map((g) => (g.id === id ? { ...g, ...body } : g)));
-      return { previous };
-    },
-    onError: (_error, _variables, context) => {
-      // Сервер не принял — возвращаем то, что было, иначе схема показывала
-      // бы рамку там, где её нет.
-      if (context?.previous) qc.setQueryData(['topologyGroups'], context.previous);
-    },
-  });
-}
 export function useDeleteTopologyGroup() {
   const qc = useQueryClient();
   return useMutation({
@@ -522,11 +532,49 @@ export function useDeactivateUser() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }
+export function useDeleteUserPermanently() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteUserPermanently(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
 export function useResetUserPassword() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: PasswordReset }) => api.resetUserPassword(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+// ---------- Настройки ----------
+// Свежая всегда: без длинного staleTime — форма входа/смены пароля должна
+// увидеть новое требование сразу после того, как админ его поправил, а не
+// в следующей вкладке.
+export const usePasswordPolicy = () =>
+  useQuery({ queryKey: ['passwordPolicy'], queryFn: api.getPasswordPolicy });
+export function useUpdatePasswordPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PasswordPolicyUpdate) => api.updatePasswordPolicy(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['passwordPolicy'] }),
+  });
+}
+export const usePrinterSettings = () =>
+  useQuery({ queryKey: ['printerSettings'], queryFn: api.getPrinterSettings });
+export function useUpdatePrinterSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PrinterSettingsUpdate) => api.updatePrinterSettings(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['printerSettings'] }),
+  });
+}
+/** Печать этикетки — не список и не запрос настроек: результат нужен один
+ * раз, показать в уведомлении, кэшировать нечего (тот же принцип, что у
+ * SNMP-опроса ниже). */
+export function usePrintDeviceLabel() {
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body?: PrintLabelRequest }) => api.printDeviceLabel(id, body),
   });
 }
 

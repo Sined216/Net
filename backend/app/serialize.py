@@ -139,6 +139,7 @@ def serialize_device(device: models.Device, link_map: Optional[Dict[int, LinkEnd
         install_date=device.install_date,
         notes=device.notes,
         topology_group_id=device.topology_group_id,
+        topology_group_name=device.topology_group.name if device.topology_group else None,
         topology_x=device.topology_x,
         topology_y=device.topology_y,
         created_at=device.created_at,

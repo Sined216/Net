@@ -1,25 +1,14 @@
 import type { ElkAlgorithm } from '../../lib/elk';
 import { CANVAS } from '../../theme';
 
+/** Сторона карточки — ими роутер описывает, куда можно выходить. */
+export type LinkSide = 'top' | 'right' | 'bottom' | 'left';
+
 /** Внешний вид схемы связей.
  *
  * Настройка личная и лежит в браузере, а не в базе: это вкус, а не данные.
- * Двое смотрят на одну и ту же схему по-разному — один любит плотную
- * заливку групп, другому она мешает читать подписи, — и навязывать общий
- * выбор здесь незачем.
  */
 export interface TopologyAppearance {
-  /** Линия рамки группы. `none` — только заливка, без контура. */
-  groupBorder: 'solid' | 'dashed' | 'dotted' | 'none';
-  groupBorderWidth: number;
-  groupRadius: number;
-  /** Плотность заливки рамки, проценты. 0 — прозрачная. */
-  groupFill: number;
-  /** Где подпись группы: врезкой в рамку, внутри неё или нигде. */
-  groupTitle: 'onFrame' | 'inside' | 'hidden';
-  /** Показывать число устройств рядом с названием группы. */
-  groupCount: boolean;
-
   /** Строки под названием. Каждая — своя, потому что нужны они разным
    * людям: снабженцу важна фирма и модель, наладчику — код на наклейке.
    * Карточка растёт и сжимается по числу включённых строк. */
@@ -44,6 +33,35 @@ export interface TopologyAppearance {
   deviceDark: boolean;
 
   edgeWidth: number;
+  /** Шаг сетки поиска пути. Мельче — путь точнее ложится между карточками,
+   * но искать дольше. */
+  routerStep: number;
+  /** На сколько раздувается карточка, прежде чем роутер начнёт искать путь.
+   * Мало — линия жмётся к карточкам, много — коридор между двумя близкими
+   * карточками закрывается совсем, и кабель уходит в обход через всю схему
+   * (так и было: при 76 пикселях пара в одном шкафу разводилась петлёй в
+   * 1903 пикселя вместо 123). */
+  routerPadding: number;
+  /** Насколько разносить соседние кабели по разным коридорам. Ноль —
+   * не разносить: параллельные кабели лягут одной линией. */
+  routerLaneSpread: number;
+  /** С каких сторон кабелю разрешено выходить и в какие входить. Пустой
+   * набор равносилен всем четырём. */
+  routerStartSides: LinkSide[];
+  routerEndSides: LinkSide[];
+  /** Предел перебора при поиске пути. Не нашёл за столько шагов — отдаёт
+   * запасной путь, не разбирая препятствий. */
+  routerMaxLoops: number;
+
+  /** Какой стороной карточки кабель к ней цепляется: `auto` — ближайшей к
+   * другому концу, остальные режимы принуждают к горизонтали или
+   * вертикали. От этого же выбора роутер берёт сторону выхода. */
+  anchorMode: 'auto' | 'prefer-horizontal' | 'prefer-vertical' | 'horizontal' | 'vertical';
+  /** Насколько отодвинуть точку крепления от края карточки. */
+  anchorPadding: number;
+  /** Где кончается нарисованная линия: в самой точке крепления или на
+   * границе карточки. */
+  connectionPoint: 'anchor' | 'boundary';
   /** Подписи портов на концах линии: всегда видны, появляются при
    * наведении на кабель, или не показываются вовсе. На плотной схеме
    * подписи всех кабелей разом читать так же трудно, как не иметь их —
@@ -55,8 +73,6 @@ export interface TopologyAppearance {
   edgeLabelName: boolean;
   /** Размер подписи порта. */
   edgeLabelSize: number;
-  /** Размер подписи группы. */
-  groupTitleSize: number;
 
   /** Расстояние между рядами при автоматической раскладке («Разложить»).
    * Между рядами идут кабели с подписями портов — слишком тесно подписи
@@ -70,16 +86,16 @@ export interface TopologyAppearance {
   layoutAlgorithm: ElkAlgorithm;
 
   background: 'dots' | 'lines' | 'cross' | 'none';
+  /** Привязка к сетке: узел, рамка и её размер встают по её узлам. Ровнять
+   * схему на глаз — работа, которую никто не доделывает до конца, и разница
+   * в три пикселя видна именно тогда, когда схему показывают другим. */
+  gridSnap: boolean;
+  /** Шаг сетки — и привязки, и рисунка. Разным схемам нужен разный: под
+   * плотную стойку шаг мельче, под цех с десятком шкафов крупнее. */
+  gridSize: number;
 }
 
 export const DEFAULT_APPEARANCE: TopologyAppearance = {
-  groupBorder: 'solid',
-  groupBorderWidth: 1.5,
-  groupRadius: 12,
-  groupFill: 6,
-  groupTitle: 'onFrame',
-  groupCount: true,
-
   deviceSubtitle: true,
   deviceIp: false,
   deviceTemplate: false,
@@ -93,19 +109,50 @@ export const DEFAULT_APPEARANCE: TopologyAppearance = {
   deviceDark: true,
 
   edgeWidth: 2,
+  // Значения подобраны на живой схеме, а не взяты из головы. Шаг 16 —
+  // компромисс между точностью пути и скоростью поиска. Отступ маленький
+  // намеренно: препятствие раздувается на его величину, и при прежних
+  // 22–76 пикселях коридор между двумя карточками в одном шкафу
+  // закрывался — кабель уходил петлёй в 1903 пикселя вместо 123.
+  routerStep: 16,
+  routerPadding: 10,
+  routerLaneSpread: 6,
+  // Пустые наборы — «все четыре стороны», как и в самой библиотеке.
+  routerStartSides: [],
+  routerEndSides: [],
+  routerMaxLoops: 2000,
+
+  anchorMode: 'auto',
+  anchorPadding: 0,
+  connectionPoint: 'anchor',
   edgeLabels: 'always',
   edgeLabelName: true,
   edgeLabelSize: 10,
-  groupTitleSize: 12,
 
   layoutRowGap: 120,
   layoutNodeGap: 44,
   layoutAlgorithm: 'layered',
 
   background: 'dots',
+  // Десять — то, чем полотно привязывало перетаскивание и до появления
+  // настройки: у тех, кто её не тронет, ничего не поменяется.
+  gridSnap: true,
+  gridSize: 10,
 };
 
 const STORAGE_KEY = 'netdoc.topology.appearance';
+
+/** Настройки, которых больше нет. Список нужен только чтению старых
+ * значений из браузера — см. `loadAppearance`. */
+const DROPPED_KEYS = [
+  'edgeRouter', 'routerMaxTurn', 'edgeConnector', 'connectorRadius',
+  'jumpSize', 'jumpKind', 'cornerType', 'curveDirection', 'curveTension',
+  // Рамки групп ушли с полотна целиком (группа осталась полем устройства,
+  // но не рисуется и не настраивается здесь) — вместе с ними и всё, чем
+  // рамку можно было оформить.
+  'groupBorder', 'groupBorderWidth', 'groupRadius', 'groupFill', 'groupTitle',
+  'groupCount', 'groupTitleSize', 'routerFramesAreObstacles',
+];
 
 /** Прочитать настройки. Незнакомые и отсутствующие поля берутся из
  * умолчаний: настройки, сохранённые прошлой версией интерфейса, не должны
@@ -121,6 +168,13 @@ export function loadAppearance(): TopologyAppearance {
     if (typeof saved.edgeLabels === 'boolean') {
       saved.edgeLabels = saved.edgeLabels ? 'always' : 'never';
     }
+    // Выброшенные настройки выбрасываем и из прочитанного. Раньше здесь
+    // выбирали, вести кабель прямой или в обход, каким углом его ломать и
+    // чем рисовать путь; все варианты проверены на живой схеме, выбранный
+    // остался один и вшит в `joint/buildGraph.ts`. В чужих браузерах
+    // настройки лежат целым объектом, и без этой уборки снятые поля молча
+    // переехали бы обратно и жили бы там вечно, ни на что не влияя.
+    for (const key of DROPPED_KEYS) delete (saved as Record<string, unknown>)[key];
     return { ...DEFAULT_APPEARANCE, ...saved } as TopologyAppearance;
   } catch {
     return DEFAULT_APPEARANCE;
@@ -170,16 +224,14 @@ export function nodeColors(dark: boolean, scheme: ColorScheme) {
 
 export type ColorScheme = 'light' | 'dark';
 
-/** Цвета того, что лежит на полотне поверх линий: подписи портов, врезка
- * подписи группы, кнопки панелей. Своими значениями, а не переменными темы:
- * в атрибутах SVG переменные CSS работают не везде. Сами значения берутся
- * из темы (`CANVAS`), а не пишутся здесь второй раз: разойтись им нельзя —
- * полотно это и есть фон страницы. */
+/** Цвета того, что лежит на полотне поверх линий: подписи портов, кнопки
+ * панелей. Своими значениями, а не переменными темы: в атрибутах SVG
+ * переменные CSS работают не везде. Сами значения берутся из темы
+ * (`CANVAS`), а не пишутся здесь второй раз: разойтись им нельзя — полотно
+ * это и есть фон страницы. */
 export function canvasColors(scheme: ColorScheme) {
   const dark = scheme === 'dark';
   return {
-    /** Фон полотна — им закрашивается врезка подписи группы. */
-    canvas: dark ? CANVAS.background : '#ffffff',
     /** Подложка подписи и кнопки. */
     plate: dark ? CANVAS.surface : '#ffffff',
     plateBorder: dark ? CANVAS.border : '#dee2e6',

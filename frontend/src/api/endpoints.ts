@@ -1,6 +1,8 @@
 import { apiFetch, setToken } from './client';
 import type {
   Token, UserOut, UserCreate, UserUpdate, PasswordChange, PasswordReset,
+  PasswordPolicyOut, PasswordPolicyUpdate,
+  PrinterSettingsOut, PrinterSettingsUpdate, PrintLabelRequest, PrintLabelResult,
   TagOut, TagCreate, TagUpdate,
   DeviceTypeOut, DeviceTypeCreate, DeviceTypeUpdate,
   ConnectorTypeOut, ConnectorTypeCreate, ConnectorTypeUpdate,
@@ -12,8 +14,8 @@ import type {
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
-  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyOut,
-  SearchResult, DatabaseSchema, ImportRowOut, ImportSummary,
+  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyOut,
+  SearchResult, DatabaseSchema, ImportRowOut, ImportLinkRowOut, ImportSummary,
   SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
   DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
   SnmpProbeRequest, SnmpProbeResult, SnmpWalkRequest, SnmpWalkResult,
@@ -33,10 +35,19 @@ export const listUsers = () => apiFetch<UserOut[]>('/auth/users');
 export const createUser = (body: UserCreate) => apiFetch<UserOut>('/auth/users', { method: 'POST', body });
 export const updateUser = (id: number, body: UserUpdate) => apiFetch<UserOut>(`/auth/users/${id}`, { method: 'PATCH', body });
 export const deactivateUser = (id: number) => apiFetch<UserOut>(`/auth/users/${id}`, { method: 'DELETE' });
+export const deleteUserPermanently = (id: number) => apiFetch<void>(`/auth/users/${id}/permanent`, { method: 'DELETE' });
 export const resetUserPassword = (id: number, body: PasswordReset) =>
   apiFetch<UserOut>(`/auth/users/${id}/password`, { method: 'POST', body });
 export const changeOwnPassword = (body: PasswordChange) =>
   apiFetch<UserOut>('/auth/me/password', { method: 'POST', body });
+
+// ---------- Настройки ----------
+export const getPasswordPolicy = () => apiFetch<PasswordPolicyOut>('/settings/password-policy');
+export const updatePasswordPolicy = (body: PasswordPolicyUpdate) =>
+  apiFetch<PasswordPolicyOut>('/settings/password-policy', { method: 'PATCH', body });
+export const getPrinterSettings = () => apiFetch<PrinterSettingsOut>('/settings/printer');
+export const updatePrinterSettings = (body: PrinterSettingsUpdate) =>
+  apiFetch<PrinterSettingsOut>('/settings/printer', { method: 'PATCH', body });
 
 // ---------- Tags ----------
 export const listTags = () => apiFetch<TagOut[]>('/tags');
@@ -83,6 +94,16 @@ export const deleteImportRow = (rowId: number) => apiFetch<void>(`/import/rows/$
 export const clearImportRows = (status?: 'new' | 'moved') =>
   apiFetch<void>('/import/rows', { method: 'DELETE', query: { status } });
 
+// Связи из обхода с телефоном — вторая половина той же промежуточной
+// таблицы: устройства ложатся в /import/rows, кабели сюда.
+export const listImportLinkRows = () => apiFetch<ImportLinkRowOut[]>('/import/link-rows');
+export const moveImportLinkRow = (rowId: number, body: LinkCreate) =>
+  apiFetch<LinkOut>(`/import/link-rows/${rowId}/move`, { method: 'POST', body });
+export const deleteImportLinkRow = (rowId: number) =>
+  apiFetch<void>(`/import/link-rows/${rowId}`, { method: 'DELETE' });
+export const clearImportLinkRows = (status?: 'new' | 'moved') =>
+  apiFetch<void>('/import/link-rows', { method: 'DELETE', query: { status } });
+
 export const listVlans = () => apiFetch<VlanOut[]>('/vlans');
 export const createVlan = (body: VlanCreate) => apiFetch<VlanOut>('/vlans', { method: 'POST', body });
 export const updateVlan = (id: number, body: VlanUpdate) => apiFetch<VlanOut>(`/vlans/${id}`, { method: 'PATCH', body });
@@ -104,6 +125,14 @@ export const listDevices = (query: DeviceQuery = {}) =>
 export const listFreePorts = (query: FreePortQuery = {}) =>
   apiFetch<FreePortOut[]>('/interfaces/free', { query: query as Record<string, string | number | undefined> });
 export const getDevice = (id: number) => apiFetch<DeviceOut>(`/devices/${id}`);
+// Тело — не JSON, а SVG: apiFetch распознаёт это сам (JSON.parse падает,
+// остаётся исходный текст) и возвращает разметку строкой, готовой к
+// dangerouslySetInnerHTML.
+export const getDeviceQr = (id: number) => apiFetch<string>(`/devices/${id}/qr`);
+// Тело не обязательно: без него используется сохранённый адрес принтера
+// (см. настройки), с ним — разовая печать на другой адрес.
+export const printDeviceLabel = (id: number, body: PrintLabelRequest = {}) =>
+  apiFetch<PrintLabelResult>(`/devices/${id}/print-label`, { method: 'POST', body });
 export const listInterfaces = (deviceId: number) =>
   apiFetch<InterfaceOut[]>(`/devices/${deviceId}/interfaces`);
 export const createDevice = (body: DeviceCreate) => apiFetch<DeviceOut>('/devices', { method: 'POST', body });
@@ -130,7 +159,6 @@ export const getTopology = (tagId: number | null) =>
   apiFetch<TopologyOut>('/topology', { query: { tag_id: tagId ?? undefined } });
 export const createTopologyGroup = (body: TopologyGroupCreate) => apiFetch<TopologyGroupOut>('/topology-groups', { method: 'POST', body });
 export const updateTopologyGroup = (id: number, body: TopologyGroupUpdate) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}`, { method: 'PATCH', body });
-export const setTopologyGroupBox = (id: number, body: TopologyGroupBox) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}/box`, { method: 'PATCH', body });
 export const deleteTopologyGroup = (id: number) => apiFetch<void>(`/topology-groups/${id}`, { method: 'DELETE' });
 
 // ---------- Link templates ----------

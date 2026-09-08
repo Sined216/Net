@@ -1,9 +1,11 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, auth, versioning
+from app import models, schemas, auth, password_policy, versioning
 from app.audit import log_change
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,7 +87,12 @@ def _human(seconds: int) -> str:
 
 
 @router.get("/me", response_model=schemas.UserOut)
-def read_me(current_user: models.User = Depends(auth.get_current_user)):
+def read_me(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # Обычный атрибут, не колонка — в базу не пишется. `/auth/me` не несёт
+    # `require_password_not_expired` (см. main.py), поэтому это единственное
+    # место, где интерфейс может узнать про устаревший пароль заранее, не
+    # дожидаясь 403 на первом же обычном запросе.
+    current_user.password_expired = password_policy.is_expired(db, current_user)
     return current_user
 
 
@@ -96,9 +103,13 @@ def change_own_password(payload: schemas.PasswordChange, db: Session = Depends(g
         raise HTTPException(status_code=400, detail="Текущий пароль указан неверно")
     if payload.new_password == payload.current_password:
         raise HTTPException(status_code=400, detail="Новый пароль совпадает с текущим")
+    length_error = password_policy.length_error(db, payload.new_password)
+    if length_error:
+        raise HTTPException(status_code=422, detail=length_error)
 
     current_user.password_hash = auth.hash_password(payload.new_password)
     current_user.must_change_password = False
+    current_user.password_changed_at = datetime.now(timezone.utc)
     log_change(db, current_user.id, "update", "user", current_user.id,
                old={"password": "изменён"}, new=None)
     db.commit()
@@ -116,6 +127,20 @@ def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db),
                 admin: models.User = Depends(auth.can_admin)):
     if db.query(models.User).filter(models.User.username == payload.username).first():
         raise HTTPException(status_code=409, detail="Пользователь с таким логином уже существует")
+    length_error = password_policy.length_error(db, payload.password)
+    if length_error:
+        raise HTTPException(status_code=422, detail=length_error)
+
+    site_ids = sorted(set(payload.site_ids))
+    if payload.role != "admin" and not site_ids:
+        # Админу площадку не назначают — он видит все по роли; остальным
+        # без неё нечего делать: первый же запрос упрётся в «нет доступа».
+        raise HTTPException(status_code=422, detail="Выберите хотя бы одну площадку")
+    if site_ids:
+        found = db.query(models.Site.id).filter(models.Site.id.in_(site_ids)).count()
+        if found != len(site_ids):
+            raise HTTPException(status_code=404, detail="Одна из площадок не найдена")
+
     user = models.User(
         full_name=payload.full_name,
         username=payload.username,
@@ -125,7 +150,12 @@ def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db),
         must_change_password=True,
     )
     db.add(user)
-    log_change(db, admin.id, "create", "user", None, old=None, new={"username": payload.username, "role": payload.role})
+    db.flush()  # нужен user.id — площадки вставляются в том же коммите
+    for site_id in site_ids:
+        db.execute(models.user_sites.insert().values(user_id=user.id, site_id=site_id))
+
+    log_change(db, admin.id, "create", "user", None, old=None,
+               new={"username": payload.username, "role": payload.role, "доступ": site_ids})
     db.commit()
     db.refresh(user)
     return user
@@ -159,9 +189,13 @@ def update_user(user_id: int, payload: schemas.UserUpdate, db: Session = Depends
 def reset_user_password(user_id: int, payload: schemas.PasswordReset, db: Session = Depends(get_db),
                         admin: models.User = Depends(auth.can_admin)):
     user = _get_user(db, user_id)
+    length_error = password_policy.length_error(db, payload.new_password)
+    if length_error:
+        raise HTTPException(status_code=422, detail=length_error)
     user.password_hash = auth.hash_password(payload.new_password)
     # Пароль назначен чужим человеком — владелец обязан сменить его при входе.
     user.must_change_password = True
+    user.password_changed_at = datetime.now(timezone.utc)
 
     log_change(db, admin.id, "update", "user", user.id, old={"password": "сброшен администратором"}, new=None)
     db.commit()
@@ -188,3 +222,35 @@ def deactivate_user(user_id: int, db: Session = Depends(get_db),
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.delete("/users/{user_id}/permanent", status_code=204)
+def delete_user_permanently(user_id: int, db: Session = Depends(get_db),
+                            admin: models.User = Depends(auth.can_admin)):
+    """Настоящее удаление — рядом с блокировкой, а не вместо неё.
+
+    Требует, чтобы учётная запись уже была заблокирована: это не лишняя
+    формальность, а пауза перед необратимым шагом — блокировка и так снимает
+    доступ, удалять сразу же почти никогда не нужно. Защиты «не последний
+    администратор» здесь нарочно нет: она бережёт активных админов, а
+    заблокированный админ в их число и так не входит (см.
+    `_assert_not_last_admin`) — его удаление на этот счёт ничего не меняет,
+    решение уже было принято блокировкой.
+
+    Ссылки на пользователя (`audit_log.user_id` и подобные) — все
+    `ON DELETE SET NULL`, кроме `user_sites` (`CASCADE`), так что запись
+    пропадает, не ломая прошлые записи журнала — они просто теряют указание
+    на автора, оставаясь на месте. Поэтому имя и логин фиксируются в самой
+    записи об удалении, пока ссылаться ещё на что: дальше узнать, кто это
+    был, будет неоткуда.
+    """
+    user = _get_user(db, user_id)
+    if user.id == admin.id:
+        raise HTTPException(status_code=409, detail="Нельзя удалить самого себя")
+    if user.is_active:
+        raise HTTPException(status_code=409, detail="Сначала заблокируйте учётную запись, прежде чем удалять её насовсем")
+
+    log_change(db, admin.id, "delete", "user", user.id,
+               old={"full_name": user.full_name, "username": user.username, "role": user.role}, new=None)
+    db.delete(user)
+    db.commit()

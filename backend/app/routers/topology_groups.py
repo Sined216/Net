@@ -161,28 +161,6 @@ def update_topology_group(group_id: int, payload: schemas.TopologyGroupUpdate, d
     return group
 
 
-@router.patch("/{group_id}/box", response_model=schemas.TopologyGroupOut)
-def set_topology_group_box(group_id: int, payload: schemas.TopologyGroupBox, db: Session = Depends(get_db),
-                            _: models.User = Depends(auth.can_edit),
-                            site_id: int = Depends(sites.current_site_id)):
-    """Куда сдвинули и до какого размера растянули рамку.
-
-    Отдельно от общей правки: рамку двигают мышью часто, и в журнал
-    изменений такие движения не пишутся — это оформление схемы, а не данные
-    об оборудовании.
-    """
-    group = db.query(models.TopologyGroup).filter(
-        models.TopologyGroup.id == group_id, models.TopologyGroup.site_id == site_id
-    ).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Группа не найдена")
-    group.x, group.y = payload.x, payload.y
-    group.width, group.height = payload.width, payload.height
-    db.commit()
-    db.refresh(group)
-    return group
-
-
 @router.delete("/{group_id}", status_code=204)
 def delete_topology_group(group_id: int, db: Session = Depends(get_db),
                            user: models.User = Depends(auth.can_edit),

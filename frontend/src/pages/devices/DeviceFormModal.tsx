@@ -213,11 +213,11 @@ export function DeviceFormModal({ device, onClose, onCreated, draft, importRowId
             value={mac} onChange={(e) => setMac(e.currentTarget.value)}
           />
           {/* «Расположение» свободным текстом отсюда убрано: место железки
-              задаёт группа на топологии — она проверяемая, вложенная и видна
-              на схеме, а два способа записать одно и то же расходились при
-              первой же правке. */}
+              задаёт группа — она проверяемая и вложенная (цех — участок —
+              линия, страница «Группы»), а два способа записать одно и то же
+              расходились при первой же правке. */}
           <Select
-            label="Группа на топологии" placeholder="— без группы —" clearable
+            label="Группа" placeholder="— без группы —" clearable
             data={topologyGroups.map((g) => ({ value: String(g.id), label: g.name }))}
             value={groupId} onChange={setGroupId}
           />

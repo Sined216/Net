@@ -1,8 +1,7 @@
 import { dia } from '@joint/core';
 import type { TopologyAppearance } from '../appearance';
 
-/** Фигуры схемы на JointJS: устройство, рамка группы и заглушка свободного
- * конца кабеля.
+/** Фигуры схемы на JointJS: устройство и заглушка свободного конца кабеля.
  *
  * Вынесены из страницы, потому что определяются один раз на всё приложение:
  * `dia.Element.define` регистрирует тип в пространстве имён, и повторный
@@ -106,7 +105,6 @@ export interface NodeSize {
 }
 
 export const STUB_SIZE = 26;
-export const GROUP_MIN = { width: 240, height: 140 };
 export const NEUTRAL = '#adb5bd';
 
 /** Узел устройства: карточка с цветной рамкой-градиентом по модели техники,
@@ -169,66 +167,6 @@ export const DeviceShape = dia.Element.define(
  * общая на все узлы и списком не повторяется — поэтому мест ровно столько,
  * сколько селекторов заведено выше. */
 export const CARD_LINES = 4;
-
-/** Значок шкафа на его рамке — контур серверного шкафа, тем же набором
- * (Tabler), что и панели действий в `tools.ts`. */
-export const CABINET_ICON = 'M3 4m0 1a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1z '
-  + 'M3 14m0 1a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1z M7 8l.01 0 M7 18l.01 0';
-
-/** Рамка группы: прямоугольник позади узлов с подписью, врезанной в контур.
- *
- * Шкаф — отдельный вид этой же фигуры, не новая: у него та же геометрия и
- * то же место в дереве, только отличается на глаз — своя обводка (двойная,
- * а не одна из трёх обычных) и значок в углу рамки. И то и другое рисуется
- * всегда, вне зависимости от настроек вида: это не оформление на вкус, а
- * то, чем шкаф отличается от цеха и линии по смыслу.
- */
-export const GroupShape = dia.Element.define(
-  'netdoc.Group',
-  {
-    size: GROUP_MIN,
-    attrs: {
-      body: {
-        width: 'calc(w)', height: 'calc(h)', rx: 12, ry: 12,
-        fill: 'transparent', stroke: '#4dabf7', strokeWidth: 1.5,
-      },
-      // Подложка меряется по самой подписи (`ref` и `calc`), а не по числу
-      // букв: ширина буквы у кириллицы и латиницы разная, и подобранный на
-      // глаз коэффициент оставлял то пустое поле справа, то обрезанный хвост.
-      labelBack: {
-        ref: 'label',
-        x: 'calc(x-9)', y: 'calc(y-5)', width: 'calc(w+18)', height: 'calc(h+10)',
-        rx: 7, ry: 7, fill: '#ffffff',
-      },
-      label: {
-        x: 14, fontSize: 12, fontWeight: 600, fill: '#4dabf7', fontFamily: 'inherit',
-        textVerticalAnchor: 'middle',
-      },
-      // Значок шкафа — плашка с контуром, того же вида, что кнопки панелей
-      // действий; скрыта у обычной группы. Положение (`y`) выставляется
-      // вместе с положением подписи: обе привязаны к тому же краю рамки.
-      cabinetPlate: {
-        x: 4, y: -10, width: 20, height: 20, rx: 5, ry: 5,
-        fill: '#ffffff', stroke: '#dee2e6', strokeWidth: 1, display: 'none',
-      },
-      cabinetIcon: {
-        d: CABINET_ICON, transform: 'translate(5.6,-8.4) scale(0.7)',
-        fill: 'none', stroke: '#4dabf7', strokeWidth: 2,
-        strokeLinecap: 'round', strokeLinejoin: 'round',
-        pointerEvents: 'none', display: 'none',
-      },
-    },
-  },
-  {
-    markup: [
-      { tagName: 'rect', selector: 'body' },
-      { tagName: 'rect', selector: 'labelBack' },
-      { tagName: 'text', selector: 'label' },
-      { tagName: 'rect', selector: 'cabinetPlate' },
-      { tagName: 'path', selector: 'cabinetIcon' },
-    ],
-  },
-);
 
 /** Свободный конец кабеля: порт, в который он был воткнут, сняли, а кабель
  * остался проложен. Рисуется кружком под устройством — его тянут на другое

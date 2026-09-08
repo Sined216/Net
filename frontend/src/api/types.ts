@@ -26,6 +26,12 @@ export type UserOut = S['UserOut'];
 /** Роль вытаскивается из поля, а не переписывается: перечисление живёт в
  * `schemas.py`, и здесь оно должно совпадать с ним само. */
 export type UserRole = UserOut['role'];
+export type PasswordPolicyOut = S['PasswordPolicyOut'];
+export type PasswordPolicyUpdate = S['PasswordPolicyUpdate'];
+export type PrinterSettingsOut = S['PrinterSettingsOut'];
+export type PrinterSettingsUpdate = S['PrinterSettingsUpdate'];
+export type PrintLabelRequest = S['PrintLabelRequest'];
+export type PrintLabelResult = S['PrintLabelResult'];
 
 // ---------- Журнал изменений ----------
 export type AuditChange = S['AuditChange'];
@@ -42,11 +48,10 @@ export type TagCreate = S['TagCreate'];
 export type TagUpdate = S['TagUpdate'];
 export type TagOut = S['TagOut'];
 
-// ---------- Группы на топологии ----------
+// ---------- Группы ----------
 export type TopologyGroupCreate = S['TopologyGroupCreate'];
 export type TopologyGroupUpdate = S['TopologyGroupUpdate'];
 export type TopologyGroupOut = S['TopologyGroupOut'];
-export type TopologyGroupBox = S['TopologyGroupBox'];
 /** Схема связей, собранная сервером. */
 export type TopologyOut = S['TopologyOut'];
 export type TopologyNode = S['TopologyNode'];
@@ -54,6 +59,7 @@ export type TopologyEdge = S['TopologyEdge'];
 
 // ---------- Импорт устройств из файла ----------
 export type ImportRowOut = S['ImportRowOut'];
+export type ImportLinkRowOut = S['ImportLinkRowOut'];
 export type ImportSummary = S['ImportSummary'];
 
 // ---------- Разъёмы и модули ----------

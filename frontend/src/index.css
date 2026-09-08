@@ -16,3 +16,17 @@ html, body, #root {
   vertical-align: middle;
 }
 
+/* Подсветка ветки дерева на схеме связей (joint/highlight.ts): гаснет всё,
+   что не отмечено `picked`. Только прозрачность — маршруты кабелей и
+   позиции узлов классы не трогают, поэтому переключение веток не требует
+   пересчёта ни одного из них. Переход плавный, но короткий: дерево кликают
+   по многу раз подряд, и схема должна успевать за курсором. */
+.joint-paper.dimmed .joint-cell {
+  transition: opacity 0.12s ease-out;
+  opacity: 0.18;
+}
+
+.joint-paper.dimmed .joint-cell.picked {
+  opacity: 1;
+}
+

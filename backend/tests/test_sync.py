@@ -160,3 +160,45 @@ def test_snapshot_carries_reference_data(client, headers, db, device_type):
     assert response.status_code == 200
     names = [t["name"] for t in response.json()["device_types"]]
     assert "Коммутатор" in names
+
+
+def test_snapshot_carries_devices_with_ports_and_links(client, headers, make_device):
+    """Снимок с настоящими данными, а не с пустой площадкой.
+
+    Пустого снимка мало: устройства и связи собираются не прямо из записи, а
+    сериализаторами — у них есть вычисляемые поля вроде «к чему подключён
+    порт». На пустой площадке это не проверялось, и ручка падала ровно там,
+    где тест её не трогал.
+    """
+    a = make_device(name="Свитч у окна")
+    b = make_device(name="Камера над воротами")
+    client.post("/links", json={
+        "interface_a_id": a["interfaces"][0]["id"],
+        "interface_b_id": b["interfaces"][0]["id"],
+    }, headers=headers["editor"])
+
+    body = client.get("/sync/snapshot", headers=headers["editor"]).json()
+    assert len(body["devices"]) == 2
+    # Порты внутри устройства — по ним человек в цеху и выбирает гнездо.
+    first = next(d for d in body["devices"] if d["id"] == a["id"])
+    assert len(first["interfaces"]) == 2
+    # Связь с обоими концами — иначе на телефоне не показать, что куда воткнуто.
+    assert len(body["links"]) == 1
+    assert body["links"][0]["end_a"] is not None
+    assert body["links"][0]["end_b"] is not None
+    assert len(body["templates"]) >= 1
+
+
+def test_snapshot_carries_device_group_name(client, headers, make_device):
+    """Мобильный снимок хранит устройство целиком как есть (весь DeviceOut),
+    и группа должна быть в нём готовым именем — телефону негде хранить
+    список групп отдельно, чтобы искать по нему id."""
+    group = client.post(
+        "/topology-groups", json={"name": "Участок 3", "color": "#94a3b8"}, headers=headers["editor"],
+    ).json()
+    device = make_device()
+    client.patch(f"/devices/{device['id']}", json={"topology_group_id": group["id"]}, headers=headers["editor"])
+
+    body = client.get("/sync/snapshot", headers=headers["editor"]).json()
+    found = next(d for d in body["devices"] if d["id"] == device["id"])
+    assert found["topology_group_name"] == "Участок 3"

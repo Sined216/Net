@@ -135,6 +135,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/users/{user_id}/permanent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete User Permanently
+         * @description Настоящее удаление — рядом с блокировкой, а не вместо неё.
+         *
+         *     Требует, чтобы учётная запись уже была заблокирована: это не лишняя
+         *     формальность, а пауза перед необратимым шагом — блокировка и так снимает
+         *     доступ, удалять сразу же почти никогда не нужно. Защиты «не последний
+         *     администратор» здесь нарочно нет: она бережёт активных админов, а
+         *     заблокированный админ в их число и так не входит (см.
+         *     `_assert_not_last_admin`) — его удаление на этот счёт ничего не меняет,
+         *     решение уже было принято блокировкой.
+         *
+         *     Ссылки на пользователя (`audit_log.user_id` и подобные) — все
+         *     `ON DELETE SET NULL`, кроме `user_sites` (`CASCADE`), так что запись
+         *     пропадает, не ломая прошлые записи журнала — они просто теряют указание
+         *     на автора, оставаясь на месте. Поэтому имя и логин фиксируются в самой
+         *     записи об удалении, пока ссылаться ещё на что: дальше узнать, кто это
+         *     был, будет неоткуда.
+         */
+        delete: operations["delete_user_permanently_auth_users__user_id__permanent_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/connector-types": {
         parameters: {
             query?: never;
@@ -544,6 +579,68 @@ export interface paths {
         patch: operations["update_device_position_devices__device_id__position_patch"];
         trace?: never;
     };
+    "/devices/{device_id}/print-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Print Device Label
+         * @description Печать этикетки — код устройства, тот же QR, что на карточке, и
+         *     название с моделью. Один встроенный макет, редактора нет.
+         *
+         *     Доступ — как у SNMP-опроса (`can_edit`): запрос уходит с сервера в сеть
+         *     по адресу, который либо сохранён администратором, либо пришёл в теле
+         *     запроса, — это действие на стороне физического мира, а не просмотр.
+         *
+         *     Недоступный или не настроенный принтер — не HTTP-ошибка (кроме случая
+         *     «нет устройства» или «адрес нигде не указан»): `label_printer.
+         *     print_label()` сама никогда не бросает исключение на сетевой отказ, а
+         *     возвращает `ok=False` с текстом причины — тем же принципом, что и у
+         *     SNMP-опроса.
+         */
+        post: operations["print_device_label_devices__device_id__print_label_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{device_id}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Device Qr
+         * @description QR-код устройства — картинкой, не JSON-полем в DeviceOut: это
+         *     отображение по требованию, а не то, что нужно в каждом ответе со списком.
+         *
+         *     Кодируется `code` (например, «SW-0042»), не ссылка: сканера, который
+         *     умел бы её открыть, в проекте пока нет ни в вебе, ни в мобильном
+         *     приложении — значение кладётся на будущее опознание, ручное или
+         *     автоматическое, и `code` для этого лучше `id` — человекочитаем и не
+         *     привязан к конкретной базе (перенос площадки id не переживёт, код —
+         *     переживёт).
+         *
+         *     Доступ — как у чтения самой карточки, не `can_edit`: показ кода ничего
+         *     не меняет.
+         */
+        get: operations["get_device_qr_devices__device_id__qr_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{device_id}/tags": {
         parameters: {
             query?: never;
@@ -592,6 +689,78 @@ export interface paths {
          * @description Прочитать файл и сложить строки в промежуточную таблицу.
          */
         post: operations["upload_devices_import_devices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/import/link-rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Link Rows
+         * @description Связи из обхода вместе с попыткой опознать их концы.
+         *
+         *     Строка приезжает текстом («свитч у окна», «порт 3») — здесь по этому
+         *     тексту ищутся уже заведённые устройство и гнездо. Найденное только
+         *     подставляется: решает человек при переносе.
+         */
+        get: operations["list_link_rows_import_link_rows_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Clear Link Rows
+         * @description Очистить строки обхода целиком или только разобранные.
+         */
+        delete: operations["clear_link_rows_import_link_rows_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/import/link-rows/{row_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Link Row
+         * @description Убрать строку обхода. Заведённая по ней связь остаётся: это уже
+         *     спецификация.
+         */
+        delete: operations["delete_link_row_import_link_rows__row_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/import/link-rows/{row_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Link Row
+         * @description Перенести строку обхода в спецификацию: завести связь и пометить строку.
+         *
+         *     Как и у устройств, данные приходят из окна связи, а не из строки:
+         *     человек мог поправить, и правда — то, что он видел на экране.
+         */
+        post: operations["move_link_row_import_link_rows__row_id__move_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -947,6 +1116,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/password-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Password Policy
+         * @description Доступна любой роли, не только админу: экран входа и смены пароля
+         *     подсказывает требуемую длину до того, как человек её нарушит, и это
+         *     не более чувствительная информация, чем сама форма.
+         */
+        get: operations["read_password_policy_settings_password_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Password Policy */
+        patch: operations["update_password_policy_settings_password_policy_patch"];
+        trace?: never;
+    };
+    "/settings/printer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Printer Settings
+         * @description Доступна любой роли: адрес принтера в заводской сети — не секрет, а
+         *     экран карточки устройства должен уметь показать «принтер не настроен»,
+         *     не будучи админом.
+         */
+        get: operations["read_printer_settings_settings_printer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Printer Settings */
+        patch: operations["update_printer_settings_settings_printer_patch"];
+        trace?: never;
+    };
     "/sites": {
         parameters: {
             query?: never;
@@ -1072,6 +1287,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sync/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Snapshot
+         * @description Снимок площадки для оффлайна.
+         *
+         *     Доступ — как у чтения: унести спецификацию с собой может любая роль,
+         *     это то же самое, что открыть её в браузере. Правки требуют `can_edit`,
+         *     но они и приезжают отдельной ручкой ниже.
+         */
+        get: operations["snapshot_sync_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload
+         * @description Записи из обхода — в промежуточные таблицы, не в спецификацию.
+         *
+         *     Идемпотентно: запись с уже принятым `client_uuid` не заводится второй
+         *     раз, но и ошибкой не считается — телефон узнаёт её в `accepted_uuids`
+         *     и убирает у себя из очереди.
+         */
+        post: operations["upload_sync_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags": {
         parameters: {
             query?: never;
@@ -1126,8 +1389,9 @@ export interface paths {
          *     кабеля номер порта. Здесь то же самое считает база: карточке достаётся
          *     пара чисел, кабелю — номер и подпись его портов.
          *
-         *     Три запроса на весь ответ: устройства, кабели и подсчёт портов. Ни один
-         *     из них не растёт от количества портов.
+         *     Пять запросов на весь ответ: устройства, кабели, подсчёт портов и два
+         *     на VLAN (`_port_vlans` — по устройству и по порту разом, см. её
+         *     комментарий). Ни один не растёт от количества портов.
          */
         get: operations["get_topology_topology_get"];
         put?: never;
@@ -1172,30 +1436,6 @@ export interface paths {
         head?: never;
         /** Update Topology Group */
         patch: operations["update_topology_group_topology_groups__group_id__patch"];
-        trace?: never;
-    };
-    "/topology-groups/{group_id}/box": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Set Topology Group Box
-         * @description Куда сдвинули и до какого размера растянули рамку.
-         *
-         *     Отдельно от общей правки: рамку двигают мышью часто, и в журнал
-         *     изменений такие движения не пишутся — это оформление схемы, а не данные
-         *     об оборудовании.
-         */
-        patch: operations["set_topology_group_box_topology_groups__group_id__box_patch"];
         trace?: never;
     };
     "/vlans": {
@@ -1507,6 +1747,8 @@ export interface components {
             template_id: number;
             /** Topology Group Id */
             topology_group_id?: number | null;
+            /** Topology Group Name */
+            topology_group_name?: string | null;
             /** Topology X */
             topology_x?: number | null;
             /** Topology Y */
@@ -1724,6 +1966,73 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * ImportLinkRowOut
+         * @description Связь из обхода и то, что удалось по ней опознать.
+         *
+         *     Подсказки (`suggested_*`) — попытка узнать в тексте («свитч у окна»,
+         *     «порт 3») уже заведённые устройство и гнездо. Ничего не решают: человек
+         *     видит их подставленными в окне связи и правит, если не угадали.
+         */
+        ImportLinkRowOut: {
+            /** A Device Id */
+            a_device_id?: number | null;
+            /** A Device Text */
+            a_device_text?: string | null;
+            /**
+             * A Interface Busy
+             * @default false
+             */
+            a_interface_busy: boolean;
+            /** A Port Text */
+            a_port_text?: string | null;
+            /** B Device Id */
+            b_device_id?: number | null;
+            /** B Device Text */
+            b_device_text?: string | null;
+            /**
+             * B Interface Busy
+             * @default false
+             */
+            b_interface_busy: boolean;
+            /** B Port Text */
+            b_port_text?: string | null;
+            /** Extra */
+            extra?: Record<string, never> | null;
+            /** Id */
+            id: number;
+            /** Imported At */
+            imported_at?: string | null;
+            /** Link Id */
+            link_id?: number | null;
+            /** Medium */
+            medium?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Source
+             * @default mobile
+             */
+            source: string;
+            /** Status */
+            status: string;
+            /** Suggested A Device Code */
+            suggested_a_device_code?: string | null;
+            /** Suggested A Device Id */
+            suggested_a_device_id?: number | null;
+            /** Suggested A Interface Id */
+            suggested_a_interface_id?: number | null;
+            /** Suggested A Interface Label */
+            suggested_a_interface_label?: string | null;
+            /** Suggested B Device Code */
+            suggested_b_device_code?: string | null;
+            /** Suggested B Device Id */
+            suggested_b_device_id?: number | null;
+            /** Suggested B Interface Id */
+            suggested_b_interface_id?: number | null;
+            /** Suggested B Interface Label */
+            suggested_b_interface_label?: string | null;
+        };
+        /**
          * ImportRowOut
          * @description Строка из файла и то, что удалось по ней опознать.
          *
@@ -1751,15 +2060,20 @@ export interface components {
             /** Notes */
             notes?: string | null;
             /** Row Number */
-            row_number: number;
+            row_number?: number | null;
             /** Same Ip Device Id */
             same_ip_device_id?: number | null;
             /** Same Mac Device Id */
             same_mac_device_id?: number | null;
             /** Same Name Device Id */
             same_name_device_id?: number | null;
+            /**
+             * Source
+             * @default file
+             */
+            source: string;
             /** Source File */
-            source_file: string;
+            source_file?: string | null;
             /** Status */
             status: string;
             /** Suggested Group Id */
@@ -2121,6 +2435,33 @@ export interface components {
             /** New Password */
             new_password: string;
         };
+        /** PasswordPolicyOut */
+        PasswordPolicyOut: {
+            /** Max Age Days */
+            max_age_days?: number | null;
+            /** Min Length */
+            min_length: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * PasswordPolicyUpdate
+         * @description Правка политики. Читается обработчиком через `exclude_unset=True`
+         *     (тот же приём, что у `UserUpdate`/`SiteUpdate`) — иначе не отличить
+         *     «поле не прислали» от «прислали null», а `max_age_days: null` — это
+         *     осмысленное значение: выключить срок действия, а не оставить как есть.
+         */
+        PasswordPolicyUpdate: {
+            /** Max Age Days */
+            max_age_days?: number | null;
+            /** Min Length */
+            min_length?: number | null;
+            /** Version */
+            version?: number | null;
+        };
         /**
          * PasswordReset
          * @description Сброс пароля администратором: текущий он не знает, поэтому не
@@ -2144,6 +2485,58 @@ export interface components {
             connector_id?: number | null;
             /** Count */
             count: number;
+        };
+        /**
+         * PrintLabelRequest
+         * @description Пусто — печать берёт сохранённый адрес принтера. Оба поля можно
+         *     прислать, чтобы напечатать разово на другой, не трогая настройку.
+         */
+        PrintLabelRequest: {
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+        };
+        /**
+         * PrintLabelResult
+         * @description Тот же принцип, что у SnmpProbeResult: неответивший принтер — не
+         *     HTTP-ошибка, а обычный исход с `ok=False` и текстом причины.
+         */
+        PrintLabelResult: {
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** PrinterSettingsOut */
+        PrinterSettingsOut: {
+            /** Host */
+            host?: string | null;
+            /**
+             * Port
+             * @default 9100
+             */
+            port: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * PrinterSettingsUpdate
+         * @description Та же оговорка про `exclude_unset=True`, что у политики паролей:
+         *     `host: null` — осознанно снять адрес, а не «оставить как было».
+         */
+        PrinterSettingsUpdate: {
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Version */
+            version?: number | null;
         };
         /** SchemaColumn */
         SchemaColumn: {
@@ -2484,6 +2877,156 @@ export interface components {
             /** Value */
             value?: string | null;
         };
+        /**
+         * SyncDeviceIn
+         * @description Устройство, замеченное в цеху. Значения текстовые и непроверенные —
+         *     ровно как строка из файла: опознаёт их человек при переносе.
+         */
+        SyncDeviceIn: {
+            /** Client Uuid */
+            client_uuid: string;
+            /** Extra */
+            extra?: Record<string, never> | null;
+            /** Group Name */
+            group_name?: string | null;
+            /** Mac */
+            mac?: string | null;
+            /** Management Ip */
+            management_ip?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Tags Text */
+            tags_text?: string | null;
+            /** Template Name */
+            template_name?: string | null;
+            /** Type Name */
+            type_name?: string | null;
+        };
+        /**
+         * SyncLinkIn
+         * @description Связь, замеченная в цеху. Концы — как их видел человек: подпись на
+         *     железке и номер гнезда.
+         */
+        SyncLinkIn: {
+            /** A Device Id */
+            a_device_id?: number | null;
+            /** A Device Text */
+            a_device_text?: string | null;
+            /** A Port Text */
+            a_port_text?: string | null;
+            /** B Device Id */
+            b_device_id?: number | null;
+            /** B Device Text */
+            b_device_text?: string | null;
+            /** B Port Text */
+            b_port_text?: string | null;
+            /** Client Uuid */
+            client_uuid: string;
+            /** Extra */
+            extra?: Record<string, never> | null;
+            /** Medium */
+            medium?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * SyncSnapshot
+         * @description Всё, что телефон уносит в цех, — одним ответом.
+         *
+         *     Собирается из тех же схем, что отдают обычные ручки: телефон показывает
+         *     ту же спецификацию, что и веб, и заводить ему параллельный набор полей
+         *     незачем. Справочники нужны затем, что оффлайн подставлять их неоткуда:
+         *     человек в цеху выбирает модель устройства из списка, а не печатает
+         *     название по памяти.
+         */
+        SyncSnapshot: {
+            /**
+             * Connector Types
+             * @default []
+             */
+            connector_types: components["schemas"]["ConnectorTypeOut"][];
+            /**
+             * Device Types
+             * @default []
+             */
+            device_types: components["schemas"]["DeviceTypeOut"][];
+            /**
+             * Devices
+             * @default []
+             */
+            devices: components["schemas"]["DeviceOut"][];
+            /**
+             * Groups
+             * @default []
+             */
+            groups: components["schemas"]["TopologyGroupOut"][];
+            /**
+             * Links
+             * @default []
+             */
+            links: components["schemas"]["LinkOut"][];
+            /** Site Id */
+            site_id: number;
+            /** Site Name */
+            site_name: string;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["TagOut"][];
+            /**
+             * Taken At
+             * Format: date-time
+             */
+            taken_at: string;
+            /**
+             * Templates
+             * @default []
+             */
+            templates: components["schemas"]["DeviceTemplateOut"][];
+            /**
+             * Vlans
+             * @default []
+             */
+            vlans: components["schemas"]["VlanOut"][];
+        };
+        /**
+         * SyncUploadRequest
+         * @description Пакет из обхода. Пустой пакет — не ошибка: телефон мог сходить и
+         *     ничего не найти, и «ничего не найдено» тоже результат.
+         */
+        SyncUploadRequest: {
+            /** Devices */
+            devices?: components["schemas"]["SyncDeviceIn"][];
+            /** Links */
+            links?: components["schemas"]["SyncLinkIn"][];
+        };
+        /**
+         * SyncUploadResult
+         * @description Что вышло из выгрузки.
+         *
+         *     `*_duplicate` — записи, чей ключ уже был принят раньше. Это не ошибка,
+         *     а нормальный исход повторной выгрузки: связь оборвалась, телефон не
+         *     дождался ответа и прислал пакет заново. Он должен видеть, что записи
+         *     на месте, и очистить их у себя.
+         */
+        SyncUploadResult: {
+            /**
+             * Accepted Uuids
+             * @default []
+             */
+            accepted_uuids: string[];
+            /** Devices Added */
+            devices_added: number;
+            /** Devices Duplicate */
+            devices_duplicate: number;
+            /** Links Added */
+            links_added: number;
+            /** Links Duplicate */
+            links_duplicate: number;
+        };
         /** TagCreate */
         TagCreate: {
             /** Color */
@@ -2576,21 +3119,11 @@ export interface components {
             port_a_number?: number | null;
             /** Port B Number */
             port_b_number?: number | null;
-        };
-        /**
-         * TopologyGroupBox
-         * @description Положение и размер рамки на схеме. Рамку двигают и тянут руками —
-         *     под содержимое она не подгоняется.
-         */
-        TopologyGroupBox: {
-            /** Height */
-            height: number;
-            /** Width */
-            width: number;
-            /** X */
-            x: number;
-            /** Y */
-            y: number;
+            /**
+             * Vlan Ids
+             * @default []
+             */
+            vlan_ids: number[];
         };
         /** TopologyGroupCreate */
         TopologyGroupCreate: {
@@ -2616,8 +3149,6 @@ export interface components {
              * @default 0
              */
             device_count: number;
-            /** Height */
-            height?: number | null;
             /** Id */
             id: number;
             /**
@@ -2635,12 +3166,6 @@ export interface components {
              * @default 1
              */
             version: number;
-            /** Width */
-            width?: number | null;
-            /** X */
-            x?: number | null;
-            /** Y */
-            y?: number | null;
         };
         /** TopologyGroupUpdate */
         TopologyGroupUpdate: {
@@ -2704,6 +3229,11 @@ export interface components {
             topology_x?: number | null;
             /** Topology Y */
             topology_y?: number | null;
+            /**
+             * Vlan Ids
+             * @default []
+             */
+            vlan_ids: number[];
         };
         /** TopologyOut */
         TopologyOut: {
@@ -2766,6 +3296,8 @@ export interface components {
              * @enum {string}
              */
             role: "admin" | "editor" | "viewer";
+            /** Site Ids */
+            site_ids?: number[];
             /** Username */
             username: string;
         };
@@ -2784,6 +3316,8 @@ export interface components {
             is_active: boolean;
             /** Must Change Password */
             must_change_password: boolean;
+            /** Password Expired */
+            password_expired?: boolean | null;
             /**
              * Role
              * @enum {string}
@@ -3157,6 +3691,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_user_permanently_auth_users__user_id__permanent_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4124,6 +4687,76 @@ export interface operations {
             };
         };
     };
+    print_device_label_devices__device_id__print_label_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PrintLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintLabelResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_qr_devices__device_id__qr_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_device_tags_devices__device_id__tags_put: {
         parameters: {
             query?: never;
@@ -4203,6 +4836,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_link_rows_import_link_rows_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportLinkRowOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_link_rows_import_link_rows_delete: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_link_row_import_link_rows__row_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_link_row_import_link_rows__row_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"];
                 };
             };
             /** @description Validation Error */
@@ -4985,6 +5750,112 @@ export interface operations {
             };
         };
     };
+    read_password_policy_settings_password_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordPolicyOut"];
+                };
+            };
+        };
+    };
+    update_password_policy_settings_password_policy_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordPolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordPolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_printer_settings_settings_printer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrinterSettingsOut"];
+                };
+            };
+        };
+    };
+    update_printer_settings_settings_printer_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrinterSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrinterSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_sites_sites_get: {
         parameters: {
             query?: never;
@@ -5221,6 +6092,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnmpWalkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snapshot_sync_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_sync_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Id"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncUploadResult"];
                 };
             };
             /** @description Validation Error */
@@ -5512,43 +6449,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TopologyGroupUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TopologyGroupOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_topology_group_box_topology_groups__group_id__box_patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Site-Id"?: number | null;
-            };
-            path: {
-                group_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyGroupBox"];
             };
         };
         responses: {
