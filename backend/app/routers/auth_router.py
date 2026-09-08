@@ -248,7 +248,10 @@ def delete_user_permanently(user_id: int, db: Session = Depends(get_db),
     if user.id == admin.id:
         raise HTTPException(status_code=409, detail="Нельзя удалить самого себя")
     if user.is_active:
-        raise HTTPException(status_code=409, detail="Сначала заблокируйте учётную запись, прежде чем удалять её насовсем")
+        raise HTTPException(
+            status_code=409,
+            detail="Сначала заблокируйте учётную запись, прежде чем удалять её насовсем",
+        )
 
     log_change(db, admin.id, "delete", "user", user.id,
                old={"full_name": user.full_name, "username": user.username, "role": user.role}, new=None)

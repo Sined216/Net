@@ -363,7 +363,7 @@ def _match_port(ports: list, text: str | None):
     if not text:
         return None
     key = _key(text)
-    for iface_id, label, number in ports:
+    for iface_id, label, _number in ports:
         if _key(label) == key:
             return (iface_id, label)
     digits = "".join(ch for ch in key if ch.isdigit())

@@ -43,7 +43,9 @@ def test_link_row_resolves_device_by_name_and_port_by_number(client, headers, db
 
 
 def test_link_row_resolves_port_by_exact_label(client, headers, db, site, make_device):
-    device = make_device(name="Свитч")
+    # Железка нужна самим фактом своего существования: строку с ней
+    # сопоставляют по названию, а её id тут ни при чём.
+    make_device(name="Свитч")
     _row(db, site, a_device_text="Свитч", a_port_text="Порт 1")
 
     row = client.get("/import/link-rows", headers=headers["editor"]).json()[0]

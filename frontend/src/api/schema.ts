@@ -942,6 +942,10 @@ export interface paths {
         /**
          * List Links
          * @description Кабели — страницами и сразу с подписями концов.
+         *
+         *     `device` — кусок кода или названия железки на любом из концов. Отбор
+         *     считает база, а не браузер: на тысяче устройств кабелей около десяти
+         *     тысяч, и «показать ещё» сотню раз подряд — это не отбор.
          */
         get: operations["list_links_links_get"];
         put?: never;
@@ -5339,6 +5343,7 @@ export interface operations {
             query?: {
                 device_id?: number | null;
                 dangling?: boolean | null;
+                device?: string | null;
                 limit?: number;
                 offset?: number;
             };

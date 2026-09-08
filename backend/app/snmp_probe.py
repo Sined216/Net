@@ -525,7 +525,9 @@ async def _fetch_system(engine, auth, target, trace) -> tuple:
     values: dict = {}
     got = 0
     lines = []
-    for field_name, (_, value) in zip(_SYSTEM_OIDS.keys(), var_binds):
+    # strict=False намеренно: железка вправе ответить не на все запрошенные
+    # OID, и лишний вопрос без ответа — не повод уронить весь опрос.
+    for field_name, (_, value) in zip(_SYSTEM_OIDS.keys(), var_binds, strict=False):
         v = None if _is_missing(value) else value
         values[field_name] = v
         got += v is not None

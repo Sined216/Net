@@ -174,3 +174,54 @@ def test_viewer_cannot_create_link(client, headers, two_devices):
         headers=headers["viewer"],
     )
     assert response.status_code == 403
+
+
+def test_links_filtered_by_device_code_or_name(client, headers, make_device):
+    """Отбор кабелей по железке на любом из концов.
+
+    Без него страница связей на настоящем объёме бесполезна: кабелей на
+    тысяче железок около десяти тысяч, а искать среди них нажатием
+    «показать ещё» нельзя.
+    """
+    a = make_device(name="Станок с ЧПУ")
+    b = make_device(name="Коммутатор цеха")
+    c = make_device(name="Посторонняя железка")
+    client.post(
+        "/links",
+        json={"interface_a_id": a["interfaces"][0]["id"], "interface_b_id": b["interfaces"][0]["id"]},
+        headers=headers["editor"],
+    )
+    client.post(
+        "/links",
+        json={"interface_a_id": b["interfaces"][1]["id"], "interface_b_id": c["interfaces"][0]["id"]},
+        headers=headers["editor"],
+    )
+
+    # По названию — находится кабель, где железка стоит стороной A.
+    by_name = client.get("/links", params={"device": "ЧПУ"}, headers=headers["viewer"]).json()
+    assert by_name["total"] == 1
+    assert {by_name["items"][0]["end_a"]["device_id"], by_name["items"][0]["end_b"]["device_id"]} == {a["id"], b["id"]}
+
+    # По коду — и та же железка стороной B тоже находится: сторона A/B это
+    # порядок записи в базе, а не то, что человек про кабель знает.
+    by_code = client.get("/links", params={"device": c["code"]}, headers=headers["viewer"]).json()
+    assert by_code["total"] == 1
+
+    # Железка посередине держит оба кабеля.
+    both = client.get("/links", params={"device": "Коммутатор"}, headers=headers["viewer"]).json()
+    assert both["total"] == 2
+
+    # Ничего не подошло — пустая страница, а не весь список.
+    assert client.get("/links", params={"device": "нет такого"}, headers=headers["viewer"]).json()["total"] == 0
+
+
+def test_links_device_filter_treats_percent_as_text(client, headers, make_device):
+    """`%` в отборе — символ названия, а не шаблон LIKE: иначе один
+    случайный процент показывал бы все кабели разом."""
+    a, b = make_device(name="Станок 50%"), make_device(name="Станок 60")
+    client.post(
+        "/links",
+        json={"interface_a_id": a["interfaces"][0]["id"], "interface_b_id": b["interfaces"][0]["id"]},
+        headers=headers["editor"],
+    )
+    assert client.get("/links", params={"device": "%"}, headers=headers["viewer"]).json()["total"] == 1
