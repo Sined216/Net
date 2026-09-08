@@ -7,7 +7,10 @@ from sqlalchemy import Text, cast, false, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app import label_printer, models, ports, printer_settings, provisioning, schemas, auth, serialize, sites, versioning
+from app import (
+    auth, label_printer, models, ports, printer_settings, provisioning, schemas,
+    serialize, sites, versioning,
+)
 from app.audit import log_change
 
 router = APIRouter(prefix="/devices", tags=["devices"])
