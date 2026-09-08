@@ -48,11 +48,10 @@ export type TagCreate = S['TagCreate'];
 export type TagUpdate = S['TagUpdate'];
 export type TagOut = S['TagOut'];
 
-// ---------- Группы на топологии ----------
+// ---------- Группы ----------
 export type TopologyGroupCreate = S['TopologyGroupCreate'];
 export type TopologyGroupUpdate = S['TopologyGroupUpdate'];
 export type TopologyGroupOut = S['TopologyGroupOut'];
-export type TopologyGroupBox = S['TopologyGroupBox'];
 /** Схема связей, собранная сервером. */
 export type TopologyOut = S['TopologyOut'];
 export type TopologyNode = S['TopologyNode'];

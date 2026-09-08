@@ -14,7 +14,7 @@ import type {
   InterfaceOut, InterfaceCreate, InterfaceUpdate,
   LinkTemplateOut, LinkTemplateCreate, LinkTemplateUpdate,
   LinkOut, LinkCreate, LinkUpdate, TemplateImpact,
-  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyOut,
+  TopologyGroupOut, TopologyGroupCreate, TopologyGroupUpdate, TopologyOut,
   SearchResult, DatabaseSchema, ImportRowOut, ImportLinkRowOut, ImportSummary,
   SiteOut, SiteCreate, SiteUpdate, AuditPage, AuditQuery,
   DevicePage, DeviceQuery, LinkPage, LinkQuery, FreePortOut, FreePortQuery,
@@ -159,7 +159,6 @@ export const getTopology = (tagId: number | null) =>
   apiFetch<TopologyOut>('/topology', { query: { tag_id: tagId ?? undefined } });
 export const createTopologyGroup = (body: TopologyGroupCreate) => apiFetch<TopologyGroupOut>('/topology-groups', { method: 'POST', body });
 export const updateTopologyGroup = (id: number, body: TopologyGroupUpdate) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}`, { method: 'PATCH', body });
-export const setTopologyGroupBox = (id: number, body: TopologyGroupBox) => apiFetch<TopologyGroupOut>(`/topology-groups/${id}/box`, { method: 'PATCH', body });
 export const deleteTopologyGroup = (id: number) => apiFetch<void>(`/topology-groups/${id}`, { method: 'DELETE' });
 
 // ---------- Link templates ----------

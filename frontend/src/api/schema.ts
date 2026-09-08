@@ -1438,30 +1438,6 @@ export interface paths {
         patch: operations["update_topology_group_topology_groups__group_id__patch"];
         trace?: never;
     };
-    "/topology-groups/{group_id}/box": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Set Topology Group Box
-         * @description Куда сдвинули и до какого размера растянули рамку.
-         *
-         *     Отдельно от общей правки: рамку двигают мышью часто, и в журнал
-         *     изменений такие движения не пишутся — это оформление схемы, а не данные
-         *     об оборудовании.
-         */
-        patch: operations["set_topology_group_box_topology_groups__group_id__box_patch"];
-        trace?: never;
-    };
     "/vlans": {
         parameters: {
             query?: never;
@@ -3149,21 +3125,6 @@ export interface components {
              */
             vlan_ids: number[];
         };
-        /**
-         * TopologyGroupBox
-         * @description Положение и размер рамки на схеме. Рамку двигают и тянут руками —
-         *     под содержимое она не подгоняется.
-         */
-        TopologyGroupBox: {
-            /** Height */
-            height: number;
-            /** Width */
-            width: number;
-            /** X */
-            x: number;
-            /** Y */
-            y: number;
-        };
         /** TopologyGroupCreate */
         TopologyGroupCreate: {
             /** Color */
@@ -3188,8 +3149,6 @@ export interface components {
              * @default 0
              */
             device_count: number;
-            /** Height */
-            height?: number | null;
             /** Id */
             id: number;
             /**
@@ -3207,12 +3166,6 @@ export interface components {
              * @default 1
              */
             version: number;
-            /** Width */
-            width?: number | null;
-            /** X */
-            x?: number | null;
-            /** Y */
-            y?: number | null;
         };
         /** TopologyGroupUpdate */
         TopologyGroupUpdate: {
@@ -6496,43 +6449,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TopologyGroupUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TopologyGroupOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_topology_group_box_topology_groups__group_id__box_patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Site-Id"?: number | null;
-            };
-            path: {
-                group_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyGroupBox"];
             };
         };
         responses: {

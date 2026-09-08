@@ -12,7 +12,7 @@ import type {
   InterfaceCreate, InterfaceUpdate,
   LinkTemplateCreate, LinkTemplateUpdate,
   LinkCreate, LinkUpdate,
-  TopologyGroupCreate, TopologyGroupUpdate, TopologyGroupBox, TopologyGroupOut,
+  TopologyGroupCreate, TopologyGroupUpdate,
   UserCreate, UserUpdate, PasswordReset, PasswordPolicyUpdate, PrinterSettingsUpdate, PrintLabelRequest,
   SiteCreate, SiteUpdate, AuditQuery, DeviceQuery, LinkQuery, FreePortQuery,
   SnmpProbeRequest, SnmpWalkRequest,
@@ -437,28 +437,6 @@ export function useUpdateTopologyGroup() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: TopologyGroupUpdate }) => api.updateTopologyGroup(id, body),
     onSuccess: () => invalidateAll(qc, ['topologyGroups', 'devices', 'topology']),
-  });
-}
-export function useSetTopologyGroupBox() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: TopologyGroupBox }) => api.setTopologyGroupBox(id, body),
-    // Новая рамка кладётся прямо в кэш, не дожидаясь ответа и без повторного
-    // запроса списка. Иначе схема, перерисованная по любой другой причине
-    // (а положение устройств меняется тут же, вместе с рамкой), брала бы из
-    // кэша прежние координаты — и рамка прыгала бы обратно.
-    onMutate: async ({ id, body }) => {
-      await qc.cancelQueries({ queryKey: ['topologyGroups'] });
-      const previous = qc.getQueryData<TopologyGroupOut[]>(['topologyGroups']);
-      qc.setQueryData<TopologyGroupOut[]>(['topologyGroups'], (groups) =>
-        (groups ?? []).map((g) => (g.id === id ? { ...g, ...body } : g)));
-      return { previous };
-    },
-    onError: (_error, _variables, context) => {
-      // Сервер не принял — возвращаем то, что было, иначе схема показывала
-      // бы рамку там, где её нет.
-      if (context?.previous) qc.setQueryData(['topologyGroups'], context.previous);
-    },
   });
 }
 export function useDeleteTopologyGroup() {

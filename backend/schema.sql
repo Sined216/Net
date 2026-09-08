@@ -112,24 +112,19 @@ CREATE TABLE device_template_interfaces (
     UNIQUE (template_id, port_number)
 );
 
--- Группа устройств на топологии — отдельный от тегов параметр: ровно одна
--- группа на устройство (или ни одной), без вложенности. Теги множественные
--- и для жёсткой визуальной кластеризации не годятся (неясно, в какую рамку
--- класть устройство с двумя тегами) — это узкое поле только под схему.
+-- Группа устройств — отдельный от тегов параметр: ровно одна группа на
+-- устройство (или ни одной), без вложенности. Теги множественные и вложен-
+-- ность вида «цех — участок — линия» с ними не выразить однозначно —
+-- это узкое поле под одну строгую иерархию. Раньше группа была ещё и
+-- рамкой-кластером на схеме связей (своя геометрия, x/y/width/height) —
+-- рамка снята, колонки геометрии удалены следом (0026_drop_group_geometry).
 CREATE TABLE topology_groups (
     id        SERIAL PRIMARY KEY,
     name      TEXT UNIQUE NOT NULL,
     color     TEXT,
     -- Группа внутри группы: цех — участок — линия. SET NULL, а не CASCADE:
     -- удаление цеха не уносит с собой участки вместе с их устройствами.
-    parent_id INTEGER REFERENCES topology_groups(id) ON DELETE SET NULL,
-    -- Рамка на схеме: своё положение и размер, а не подгонка под содержимое.
-    -- Пусто, пока рамку ни разу не двигали, — тогда она считается по
-    -- содержимому и запоминается при первой же правке.
-    x         DOUBLE PRECISION,
-    y         DOUBLE PRECISION,
-    width     DOUBLE PRECISION,
-    height    DOUBLE PRECISION
+    parent_id INTEGER REFERENCES topology_groups(id) ON DELETE SET NULL
 );
 CREATE INDEX ix_topology_groups_parent_id ON topology_groups(parent_id);
 

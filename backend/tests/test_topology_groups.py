@@ -61,34 +61,6 @@ def test_deleted_group_releases_children_and_devices(client, headers, make_devic
     assert refreshed["topology_group_id"] is None
 
 
-def test_group_box_is_saved(client, headers):
-    """Рамку двигают и растягивают руками — положение и размер хранятся."""
-    group = create(client, headers, "Цех 6").json()
-    assert group["x"] is None, "у новой группы рамки ещё нет"
-
-    saved = client.patch(
-        f"/topology-groups/{group['id']}/box",
-        json={"x": 120.5, "y": -40.0, "width": 480.0, "height": 300.0},
-        headers=headers["editor"],
-    )
-    assert saved.status_code == 200
-    assert (saved.json()["x"], saved.json()["width"]) == (120.5, 480.0)
-
-    listed = next(g for g in client.get("/topology-groups", headers=headers["viewer"]).json() if g["id"] == group["id"])
-    assert listed["height"] == 300.0
-
-
-def test_group_box_rejects_zero_size(client, headers):
-    """Нулевая рамка не рисуется и ничего не значит — такую не принимаем."""
-    group = create(client, headers, "Цех 7").json()
-    response = client.patch(
-        f"/topology-groups/{group['id']}/box",
-        json={"x": 0, "y": 0, "width": 0, "height": 100},
-        headers=headers["editor"],
-    )
-    assert response.status_code == 422
-
-
 def test_group_defaults_to_area(client, headers):
     group = create(client, headers, "Цех 8").json()
     assert group["kind"] == "area"

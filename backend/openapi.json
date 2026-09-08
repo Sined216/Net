@@ -5098,37 +5098,6 @@
         "title": "TopologyEdge",
         "type": "object"
       },
-      "TopologyGroupBox": {
-        "description": "Положение и размер рамки на схеме. Рамку двигают и тянут руками —\nпод содержимое она не подгоняется.",
-        "properties": {
-          "height": {
-            "exclusiveMinimum": 0.0,
-            "title": "Height",
-            "type": "number"
-          },
-          "width": {
-            "exclusiveMinimum": 0.0,
-            "title": "Width",
-            "type": "number"
-          },
-          "x": {
-            "title": "X",
-            "type": "number"
-          },
-          "y": {
-            "title": "Y",
-            "type": "number"
-          }
-        },
-        "required": [
-          "x",
-          "y",
-          "width",
-          "height"
-        ],
-        "title": "TopologyGroupBox",
-        "type": "object"
-      },
       "TopologyGroupCreate": {
         "properties": {
           "color": {
@@ -5193,17 +5162,6 @@
             "title": "Device Count",
             "type": "integer"
           },
-          "height": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Height"
-          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -5236,39 +5194,6 @@
             "default": 1,
             "title": "Version",
             "type": "integer"
-          },
-          "width": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Width"
-          },
-          "x": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "X"
-          },
-          "y": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Y"
           }
         },
         "required": [
@@ -11700,80 +11625,6 @@
           }
         ],
         "summary": "Update Topology Group",
-        "tags": [
-          "topology-groups"
-        ]
-      }
-    },
-    "/topology-groups/{group_id}/box": {
-      "patch": {
-        "description": "Куда сдвинули и до какого размера растянули рамку.\n\nОтдельно от общей правки: рамку двигают мышью часто, и в журнал\nизменений такие движения не пишутся — это оформление схемы, а не данные\nоб оборудовании.",
-        "operationId": "set_topology_group_box_topology_groups__group_id__box_patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "title": "Group Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Site-Id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Site-Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TopologyGroupBox"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TopologyGroupOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Set Topology Group Box",
         "tags": [
           "topology-groups"
         ]
